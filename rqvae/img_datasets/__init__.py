@@ -38,7 +38,6 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = ImageNet(root, split='val', transform=transforms_val)
     elif config.dataset.type == 'imagenet_u':
         root = root if root else 'data/imagenet'
-
         def target_transform(_):
             return 0
         dataset_trn = ImageNet(root, split='train', transform=transforms_trn, target_transform=target_transform)

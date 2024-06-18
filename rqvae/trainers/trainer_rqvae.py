@@ -24,7 +24,7 @@ import rqvae.utils.dist as dist_utils
 
 from .accumulator import AccmStage1WithGAN
 from .trainer import TrainerTemplate
-
+import torch_xla.core.xla_model as xm
 logger = logging.getLogger(__name__)
 
 
@@ -159,7 +159,7 @@ class Trainer(TrainerTemplate):
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
-
+            xm.mark_step()
             loss_rec_lat = outputs['loss_total']
             loss_recon = outputs['loss_recon']
             loss_latent = outputs['loss_latent']
@@ -259,7 +259,7 @@ class Trainer(TrainerTemplate):
 
             loss_gen_total = loss_rec_lat + p_weight * loss_pcpt + g_weight * self.disc_weight * loss_gen
             loss_gen_total.backward()
-
+            xm.mark_step()
             optimizer.step()
             scheduler.step()
 

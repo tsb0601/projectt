@@ -4,12 +4,16 @@ import os
 import collections
 import torch
 import torch.distributed as dist
-
-from torch.nn.parallel import DistributedDataParallel
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch_xla as xla
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.distributed.xla_backend
+import torch_xla.core.xla_model as xm
 
 
 def update_argument_parser(parser):
-    parser.add_argument('--dist-backend', default='nccl', type=str, help='distributed backend')
+    parser.add_argument('--dist-backend', default='xla', type=str, help='distributed backend')
     parser.add_argument(
         '--local_rank', default=-1, type=int,
         help='Used for multi-process training. Can either be manually set ' +
@@ -34,30 +38,27 @@ def initialize(args, logger=None):
     args.local_rank = int(os.environ.get('LOCAL_RANK', 0))
 
     if args.world_size > 1:
-
-        os.environ["RANK"] = str(args.rank)
-        os.environ["WORLD_SIZE"] = str(args.world_size)
-        os.environ["LOCAL_RANK"] = str(args.local_rank)
-
-        print(f'[dist] Distributed: wait dist process group:{args.local_rank}')
-        dist.init_process_group(backend=args.dist_backend, init_method='env://',
-                                world_size=args.world_size,
-                                timeout=datetime.timedelta(0, args.timeout))
-        assert (args.world_size == dist.get_world_size())
+        #os.environ["RANK"] = str(args.rank)
+        #os.environ["WORLD_SIZE"] = str(args.world_size)
+        #os.environ["LOCAL_RANK"] = str(args.local_rank)
+        local_rank = os.environ["LOCAL_RANK"]
+        print(f'[dist] Distributed: wait dist process group:{local_rank}')
+        dist.init_process_group(backend=args.dist_backend, init_method='xla://',
+        timeout=datetime.timedelta(0, args.timeout))
         print(
-            f"""[dist] Distributed: success device:{args.local_rank}, """,
+            f"""[dist] Distributed: success device:{local_rank}, """,
             f"""{dist.get_rank()}/{dist.get_world_size()}"""
         )
         distenv = DistEnv(world_size=dist.get_world_size(),
                           world_rank=dist.get_rank(),
-                          local_rank=args.local_rank,
+                          local_rank=local_rank,
                           num_gpus=1,
                           master=(dist.get_rank() == 0),
-                          device_name=torch.cuda.get_device_name(),
+                          device_name=f'TPU:{local_rank}'
                           )
     else:
         print('[dist] Single processed')
-        distenv = DistEnv(1, 0, 0, torch.cuda.device_count(), True, torch.cuda.get_device_name())
+        distenv = DistEnv(1, 0, 0, xm.xrt_world_size(), True, f'TPU:{str(xm.xla_device())[-1]}')
 
     print(f'[dist] {distenv}')
 
@@ -68,27 +69,26 @@ def initialize(args, logger=None):
 
 
 def dataparallel_and_sync(distenv, model, find_unused_parameters=False):
-
     if dist.is_initialized():
-        model = DistributedDataParallel(
-            model, device_ids=[distenv.local_rank], output_device=distenv.local_rank,
-            find_unused_parameters=find_unused_parameters
+        model = DDP(
+            model,
+            find_unused_parameters=find_unused_parameters,
+            gradient_as_bucket_view=True
         )
         for _, param in model.state_dict().items():
             dist.broadcast(param, 0)
-
         dist.barrier()
     else:
         model = torch.nn.DataParallel(model)
-    torch.cuda.synchronize()
-
+    #torch.cuda.synchronize()
     return model
 
 
 def param_sync(param):
     dist.broadcast(param, 0)
     dist.barrier()
-    torch.cuda.synchronize()
+    #torch.cuda.synchronize()
+
 
 
 @torch.no_grad()
@@ -99,5 +99,4 @@ def all_gather_cat(distenv, tensor, dim=0):
     g_tensor = [torch.ones_like(tensor) for _ in range(distenv.world_size)]
     dist.all_gather(g_tensor, tensor)
     g_tensor = torch.cat(g_tensor, dim=dim)
-
     return g_tensor

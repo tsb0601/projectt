@@ -2,7 +2,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.utils.checkpoint import checkpoint
 
 import math
 import numpy as np
@@ -121,7 +120,7 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x, temb):
         if self.checkpointing and self.training:
-            out = checkpoint(self._forward, x, temb)
+            out = self._forward(x, temb) # checkpointing is buggy in xla
         else:
             out = self._forward(x, temb)
         return out

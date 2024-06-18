@@ -29,7 +29,7 @@ arch:
     num_res_blocks: 2
     attn_resolutions: [ 8 ]
     dropout: 0.00
-  checkpointing: true
+  checkpointing: false
  
 
 optimizer:

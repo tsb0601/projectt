@@ -7,7 +7,7 @@ import torch
 from tqdm import tqdm
 from torch.nn import functional as F
 
-
+import torch_xla as xla
 def save_pickle(fname, data):
     with open(fname, 'wb') as fp:
         pickle.dump(data, fp, pickle.HIGHEST_PROTOCOL)
@@ -44,7 +44,7 @@ def set_seed(seed=None):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    #torch.cuda.manual_seed_all(seed)       
     return seed
 
 
