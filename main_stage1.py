@@ -27,7 +27,12 @@ from rqvae.img_datasets import create_dataset
 from rqvae.optimizer import create_optimizer, create_scheduler
 from rqvae.utils.utils import set_seed, compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup
-
+import torch_xla.runtime as xr
+CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
+project_name = 'rq-vae-stage1'
+cache_path = os.path.join(CACHE_DIR, project_name)
+os.makedirs(cache_path, exist_ok=True)
+xr.initialize_cache(cache_path, readonly=False)
 
 parser = argparse.ArgumentParser()
 

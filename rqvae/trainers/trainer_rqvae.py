@@ -235,7 +235,7 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
-
+            print('input_tensor:',xs.shape)
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs)
@@ -274,7 +274,7 @@ class Trainer(TrainerTemplate):
             else:
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
-
+            xm.mark_step()
             # logging
             codes = outputs['codes']
             loss_total = loss_rec_lat.detach() + p_weight * loss_pcpt.detach()  # rec + lat + pcpt
@@ -300,6 +300,8 @@ class Trainer(TrainerTemplate):
                 global_iter = epoch * len(self.loader_trn) + it
                 if (global_iter+1) % 50 == 0:
                     for key, value in metrics.items():
+                        if isinstance(value, torch.Tensor):
+                            value = value.to(torch.float32) # bf16 does not support directly conversion to numpy yet
                         self.writer.add_scalar(f'loss_step/{key}', value, 'train', global_iter)
                     self.writer.add_scalar('lr_step', scheduler.get_last_lr()[0], 'train', global_iter)
                     if use_discriminator:
