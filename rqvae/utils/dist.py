@@ -6,9 +6,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla as xla
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.distributed.xla_multiprocessing as xmp
-import torch_xla.distributed.xla_backend
+import torch_xla.distributed.xla_backend # must be imported as init
 import torch_xla.core.xla_model as xm
 
 

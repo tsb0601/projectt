@@ -38,6 +38,7 @@ def create_optimizer(model, config):
     arch_type = config.arch.type.lower()
     if 'rq-vae' in config.arch.type:
         optimizer = create_resnet_optimizer(model, config.optimizer)
-    else:
-        raise ValueError(f'{arch_type} invalid..')
+    else: # why raise an error...
+        optimizer = create_resnet_optimizer(model, config.optimizer)
+        #raise ValueError(f'{arch_type} invalid..')
     return optimizer

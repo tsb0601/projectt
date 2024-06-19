@@ -15,13 +15,13 @@
 from .trainer_rqvae import Trainer as TrainerRQVAE
 
 STAGE1_ARCH_TYPE = [
-    'rq-vae'
+    'rq-vae','dummy'
 ]
 
 
 def create_trainer(config):
     if config.arch.type in STAGE1_ARCH_TYPE:
         return TrainerRQVAE
-        
+
     else: 
         raise ValueError('architecture type not supported')

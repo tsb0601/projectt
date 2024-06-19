@@ -70,7 +70,6 @@ if __name__ == '__main__':
 
     config, logger, writer = setup(args, extra_args)
     distenv = config.runtime.distenv
-
     device = xm.xla_device()
     print(f'Using device: {device}')
     print_master(f'loading dataset of {config.dataset.type}...')

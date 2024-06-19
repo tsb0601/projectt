@@ -26,7 +26,10 @@ from .accumulator import AccmStage1WithGAN
 from .trainer import TrainerTemplate
 import torch_xla.core.xla_model as xm
 logger = logging.getLogger(__name__)
-
+import os
+DEBUG = bool(os.environ.get("DEBUG", 0))
+if DEBUG:
+    import time # for debugging
 
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
@@ -41,13 +44,6 @@ class Trainer(TrainerTemplate):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        assert len(self.config.arch.hparams.code_shape) in [2, 3]
-
-        if len(self.config.arch.hparams.code_shape) == 2:
-            self.n_codebook = 1
-        else:
-            self.n_codebook = self.config.arch.hparams.code_shape[-1]
 
         # GAN related part
         gan_config = self.config.gan
@@ -95,10 +91,6 @@ class Trainer(TrainerTemplate):
         ]
         accm = AccmStage1WithGAN(
             metric_names,
-            n_codebook=self.n_codebook,
-            codebook_size=config.arch.hparams.n_embed,
-            code_hier=self.config.arch.code_hier,
-            use_padding_idx=self.config.arch.hparams.use_padding_idx,
             device=self.device,
         )
 
@@ -133,12 +125,21 @@ class Trainer(TrainerTemplate):
             logits_avg['logits_fake'] = logits_fake.detach().mean()
 
         return loss_gen, loss_disc, logits_avg
-
+    def wrap_loader(self, loader:torch.utils.data.DataLoader):
+        if self.distenv.TPU:
+            if self.distenv.master:
+                print(f"[!] TPU: using per_device_loader for validation")
+            loader = loader.per_device_loader(self.device) # pl loader for TPU
+        else:
+            if self.distenv.master:
+                print(f"[!] NO TPU: using normal loader for validation")
+        return loader
     @torch.no_grad()
     def eval(self, valid=True, ema=False, verbose=False, epoch=0):
         model = self.model_ema if ema else self.model
         discriminator = self.discriminator
         loader = self.loader_val if valid else self.loader_trn
+        loader = self.wrap_loader(loader)
         n_inst = len(self.dataset_val) if valid else len(self.dataset_trn)
 
         use_discriminator = True if epoch >= self.gan_start_epoch else False
@@ -180,7 +181,6 @@ class Trainer(TrainerTemplate):
             logits = {k: v * xs.size(0) for k, v in logits.items()}
 
             # logging
-            codes = outputs['codes']
             loss_total = loss_rec_lat + p_weight * loss_pcpt  # rec + lat + pcpt
             metrics = dict(loss_total=loss_total,
                            loss_recon=loss_recon,
@@ -190,8 +190,7 @@ class Trainer(TrainerTemplate):
                            loss_disc=loss_disc,
                            **logits,
                            )
-            accm.update(codes,
-                        metrics,
+            accm.update(metrics,
                         count=xs.shape[0],
                         sync=True,
                         distenv=self.distenv)
@@ -207,10 +206,6 @@ class Trainer(TrainerTemplate):
             mode = "%s_ema" % mode if ema else mode
             logger.info(f"""{mode:10s}, """ + line)
             self.reconstruct(xs, epoch=0, mode=mode)
-            if self.n_codebook > 1:
-                for code_idx in range(self.n_codebook):
-                    self.reconstruct_partial_codes(xs, 0, code_idx, mode, 'select')
-                    self.reconstruct_partial_codes(xs, 0, code_idx, mode, 'add')
 
         summary = accm.get_summary(n_inst)
         summary['xs'] = xs
@@ -231,15 +226,15 @@ class Trainer(TrainerTemplate):
             pbar = tqdm(enumerate(self.loader_trn), total=len(self.loader_trn))
         else:
             pbar = enumerate(self.loader_trn)
-
+        if DEBUG:
+            it_st_time = time.time()
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
-            print('input_tensor:',xs.shape)
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs)
-
+            xm.mark_step()
             loss_rec_lat = outputs['loss_total']
             loss_recon = outputs['loss_recon']
             loss_latent = outputs['loss_latent']
@@ -259,22 +254,22 @@ class Trainer(TrainerTemplate):
 
             loss_gen_total = loss_rec_lat + p_weight * loss_pcpt + g_weight * self.disc_weight * loss_gen
             loss_gen_total.backward()
-            xm.optimizer_step(optimizer) # will call xm.mark_step inside
+            optimizer.step() # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
             scheduler.step()
-
+            xm.mark_step()
             # discriminator loss
             discriminator.zero_grad(set_to_none=True)
 
             if use_discriminator:
                 _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode='disc')
                 (self.disc_weight * loss_disc).backward()
-                xm.optimizer_step(self.disc_optimizer)
+                self.disc_optimizer.step()
                 self.disc_scheduler.step()
             else:
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
+            xm.mark_step()
             # logging
-            codes = outputs['codes']
             loss_total = loss_rec_lat.detach() + p_weight * loss_pcpt.detach()  # rec + lat + pcpt
             metrics = {
                 'loss_total': loss_total,
@@ -286,8 +281,10 @@ class Trainer(TrainerTemplate):
                 'g_weight': g_weight.detach(),
                 **logits,
             }
-            accm.update(codes, metrics, count=1)
-
+            accm.update(metrics, count=1)
+            if it == 2 and DEBUG:
+                en_compile_time = time.time()
+                xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
@@ -319,24 +316,8 @@ class Trainer(TrainerTemplate):
     def logging(self, summary, scheduler=None, epoch=0, mode='train'):
         if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
             self.reconstruct(summary['xs'], epoch, mode)
-            if self.n_codebook > 1:
-                for code_idx in range(self.n_codebook):
-                    self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'select')
-                    self.reconstruct_partial_codes(summary['xs'], epoch, code_idx, mode, 'add')
-
         for key, value in summary.metrics.items():
             self.writer.add_scalar(f'loss/{key}', summary[key], mode, epoch)
-
-        for level, ent_codes in enumerate(summary['ent_codes_wo_pad']):
-            for book_idx, ent_code in enumerate(ent_codes):
-                self.writer.add_scalar(f'codebooks-wo-pad/entropy-level-{level}/codebook{book_idx}',
-                                       ent_code, mode, epoch)
-
-        if summary['ent_codes_w_pad'] is not None:
-            for level, ent_codes in enumerate(summary['ent_codes_w_pad']):
-                for book_idx, ent_code in enumerate(ent_codes):
-                    self.writer.add_scalar(f'codebooks-w-pad/entropy-level-{level}/codebook{book_idx}',
-                                           ent_code, mode, epoch)
 
         if mode == 'train':
             self.writer.add_scalar('lr', scheduler.get_last_lr()[0], mode, epoch)
@@ -362,31 +343,6 @@ class Trainer(TrainerTemplate):
         grid = torchvision.utils.make_grid(grid, nrow=8)
         self.writer.add_image('reconstruction', grid, mode, epoch)
 
-    @torch.no_grad()
-    def reconstruct_partial_codes(self, xs, epoch, code_idx, mode='valid', decode_type='select'):
-        r"""
-        Reconstruct input image using partial codebooks.
-        Arguments
-            xs (Tensor): input to be reconstructed
-            epoch (int): the number of epoch for logging
-            code_idx (int): the index of a codebook for reconstruction. (see decode_type)
-            mode (string): train/valid/valid_ema for logging
-            decode_type (string): ``'select'`` or ``'add'``
-                If 'select', only the `code_idx`-th codebook is selected for reconstruction.
-                If 'add', [0, 1, ..., code_idx] codebooks are added for reconstruction.
-        """
-        model = self.model_ema if 'ema' in mode else self.model
-        model.eval()
-        model_fn = model if not hasattr(model, 'module') else model.module
-
-        xs_real = xs[:16]
-        xs_recon = model_fn.forward_partial_code(xs_real, code_idx, decode_type)
-        xs_real, xs_recon = model_fn.get_recon_imgs(xs_real, xs_recon)
-
-        grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
-        grid = torchvision.utils.make_grid(grid, nrow=8)
-        tag = "reconstruction_" + decode_type + f"/{code_idx}-th code"
-        self.writer.add_image(tag, grid, mode, epoch)
 
     def save_ckpt(self, optimizer, scheduler, epoch):
         ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)

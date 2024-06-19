@@ -43,6 +43,12 @@ def augment_arch_defaults(arch_config):
         )
     elif arch_config.type == 'rq-transformer':
         arch_defaults = RQTransformerConfig.create(arch_config)
+    elif arch_config.type == 'dummy':
+        arch_defaults = OmegaConf.create(
+            {
+                'ema': None,
+            }
+        )
     else:
         raise NotImplementedError
 

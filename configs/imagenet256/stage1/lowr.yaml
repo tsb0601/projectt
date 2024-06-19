@@ -4,31 +4,12 @@ dataset:
     type: imagenet256x256
 
 arch:
-  type: rq-vae
-  code_hier: 1
+  type: dummy
   hparams:
-    bottleneck_type: rq
-    embed_dim: 128
-    n_embed: 16384
-    latent_shape: [ 8, 8, 128 ]  # could be inferred: H=W=resolution / (2 ** num_down), D=embed_dim
-    code_shape: [ 8, 8, 2 ]
-    shared_codebook: true
     decay: 0.99
     restart_unused_codes: true
-
     loss_type: mse
     latent_loss_weight: 0.25
-  ddconfig:
-    double_z: false
-    z_channels: 256
-    resolution: 256
-    in_channels: 3
-    out_ch: 3
-    ch: 128
-    ch_mult: [ 1, 1, 2, 2, 4, 4]
-    num_res_blocks: 2
-    attn_resolutions: [ 8 ]
-    dropout: 0.00
   checkpointing: false
  
 
@@ -47,7 +28,7 @@ optimizer:
 
 
 experiment:
-  batch_size: 1
+  batch_size: 2
   epochs: 10
   save_ckpt_freq: 5
   test_freq: 1
@@ -58,7 +39,7 @@ gan:
       in_channels: 3
       num_layers: 2
       use_actnorm: False
-      ndf: 64
+      ndf: 4
       spectral_norm: False
 
   loss:

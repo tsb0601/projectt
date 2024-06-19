@@ -21,30 +21,33 @@ from torch.utils.data.dataloader import DataLoader
 from torch.cuda.amp import GradScaler
 from torch_xla.distributed.parallel_loader import ParallelLoader
 import torch.distributed as dist
+import torch_xla.core.xla_model as xm
 
 logger = logging.getLogger(__name__)
-SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
+DEBUG = bool(os.environ.get("DEBUG", 0))
 
-class TrainerTemplate():
-    def __init__(self,
-                 model,
-                 model_ema,
-                 dataset_trn,
-                 dataset_val,
-                 config,
-                 writer,
-                 device,
-                 distenv,
-                 model_aux=None,
-                 *,
-                 disc_state_dict=None,  # only used in VQGAN trainer
-                 ):
+
+class TrainerTemplate:
+    def __init__(
+        self,
+        model,
+        model_ema,
+        dataset_trn,
+        dataset_val,
+        config,
+        writer,
+        device,
+        distenv,
+        model_aux=None,
+        *,
+        disc_state_dict=None,  # only used in VQGAN trainer
+    ):
         super().__init__()
 
         num_workers = 16
 
-        if SMOKE_TEST:
-            if not torch.distributed.is_initialized():
+        if DEBUG:
+            if not dist.is_initialized():
                 num_workers = 0
             config.experiment.test_freq = 1
             config.experiment.save_ckpt_freq = 1
@@ -69,7 +72,10 @@ class TrainerTemplate():
             seed=self.config.seed,
         )
         self.loader_trn = DataLoader(
-            self.dataset_trn, sampler=self.sampler_trn, shuffle=False, pin_memory=True,
+            self.dataset_trn,
+            sampler=self.sampler_trn,
+            shuffle=False,
+            pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
         )
@@ -78,19 +84,30 @@ class TrainerTemplate():
             self.dataset_val,
             num_replicas=self.distenv.world_size,
             rank=self.distenv.world_rank,
-            shuffle=False
+            shuffle=False,
         )
         self.loader_val = DataLoader(
-            self.dataset_val, sampler=self.sampler_val, shuffle=False, pin_memory=True,
+            self.dataset_val,
+            sampler=self.sampler_val,
+            shuffle=False,
+            pin_memory=True,
             batch_size=config.experiment.batch_size,
-            num_workers=num_workers
+            num_workers=num_workers,
         )
         if self.distenv.master:
-            logger.info(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
-        if dist.get_world_size() > 1:
-            assert dist.is_initialized(), 'Distributed training is not initialized when using multiple xla device'
-            self.parallel_loader_trn = ParallelLoader(self.loader_trn, [self.device]) 
-            self.parallel_loader_val = ParallelLoader(self.loader_val, [self.device]) # in xla we use pl
+            logger.info(
+                f"train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}"
+            )
+        if dist.get_world_size() > 1 and self.distenv.TPU:
+            assert (
+                dist.is_initialized()
+            ), "Distributed training is not initialized when using multiple xla device"
+            self.parallel_loader_trn = ParallelLoader(self.loader_trn, [self.device])
+            self.parallel_loader_val = ParallelLoader(
+                self.loader_val, [self.device]
+            )  # in xla we use pl
+        else:
+            raise NotImplementedError
     def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
         raise NotImplementedError
 
@@ -99,34 +116,43 @@ class TrainerTemplate():
 
     def run_epoch(self, optimizer=None, scheduler=None, epoch_st=0):
         scaler = GradScaler() if self.config.experiment.amp else None
-
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
             summary_trn = self.train(optimizer, scheduler, scaler, epoch=i)
-            if i == 0 or (i+1) % self.config.experiment.test_freq == 0:
+            if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
                 summary_val = self.eval(epoch=i)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i)
 
             if self.distenv.master:
-                self.logging(summary_trn, scheduler=scheduler, epoch=i+1, mode='train')
-
-                if i == 0 or (i+1) % self.config.experiment.test_freq == 0:
-                    self.logging(summary_val, scheduler=scheduler, epoch=i+1, mode='valid')
+                self.logging(
+                    summary_trn, scheduler=scheduler, epoch=i + 1, mode="train"
+                )
+                if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
+                    self.logging(
+                        summary_val, scheduler=scheduler, epoch=i + 1, mode="valid"
+                    )
                     if self.model_ema is not None:
-                        self.logging(summary_val_ema, scheduler=scheduler, epoch=i+1, mode='valid_ema')
-
-                if (i+1) % self.config.experiment.save_ckpt_freq == 0:
-                    self.save_ckpt(optimizer, scheduler, i+1)
+                        self.logging(
+                            summary_val_ema,
+                            scheduler=scheduler,
+                            epoch=i + 1,
+                            mode="valid_ema",
+                        )
+                if (i + 1) % self.config.experiment.save_ckpt_freq == 0:
+                    self.save_ckpt(optimizer, scheduler, i + 1)
+            xm.rendezvous(
+                "epoch_sync"
+            )  # make sure we save the model properly without stuck
 
     def save_ckpt(self, optimizer, scheduler, epoch):
-        ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)
+        ckpt_path = os.path.join(self.config.result_path, "epoch%d_model.pt" % epoch)
         logger.info("epoch: %d, saving %s", epoch, ckpt_path)
         ckpt = {
-            'epoch': epoch,
-            'state_dict': self.model.module.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict()
+            "epoch": epoch,
+            "state_dict": self.model.module.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
         }
         if self.model_ema is not None:
             ckpt.update(state_dict_ema=self.model_ema.module.module.state_dict())

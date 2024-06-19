@@ -35,7 +35,9 @@ def assign_code(codebook, code):
 
 
 class SummaryStage1:
-    def __init__(self, loss_total, loss_recon, loss_latent, ent_codes_w_pad, ent_codes_wo_pad):
+    def __init__(
+        self, loss_total, loss_recon, loss_latent, ent_codes_w_pad, ent_codes_wo_pad
+    ):
         self.loss_total = loss_total
         self.loss_recon = loss_recon
         self.loss_latent = loss_latent
@@ -51,11 +53,11 @@ class SummaryStage1:
 
         if self.ent_codes_w_pad is not None:
             for level, ent_code in enumerate(self.ent_codes_w_pad):
-                ent_code_str = '[' + ', '.join([f'{ent:.4f}' for ent in ent_code]) + ']'
+                ent_code_str = "[" + ", ".join([f"{ent:.4f}" for ent in ent_code]) + "]"
                 line += f"""w/ pad entropy-level-{level}: {ent_code_str}, """
 
         for level, ent_code in enumerate(self.ent_codes_wo_pad):
-            ent_code_str = '[' + ', '.join([f'{ent:.4f}' for ent in ent_code]) + ']'
+            ent_code_str = "[" + ", ".join([f"{ent:.4f}" for ent in ent_code]) + "]"
             line += f"""w/o pad entropy-level-{level}: {ent_code_str}, """
 
         return line
@@ -68,7 +70,14 @@ class SummaryStage1:
 
 
 class AccmStage1:
-    def __init__(self, n_codebook=1, codebook_size=512, code_hier=1, use_padding_idx=False, device='cpu'):
+    def __init__(
+        self,
+        n_codebook=1,
+        codebook_size=512,
+        code_hier=1,
+        use_padding_idx=False,
+        device="cpu",
+    ):
         self.n_codebook = n_codebook
         self.max_codebook_size = self.codebook_size = codebook_size
         self.use_padding_idx = use_padding_idx
@@ -89,24 +98,34 @@ class AccmStage1:
         self.loss_recon = torch.zeros(1, device=self.device)
         self.loss_latent = torch.zeros(1, device=self.device)
 
-        self.codebooks = [torch.zeros(self.n_codebook, self.max_codebook_size, device=self.device)
-                          for _ in range(self.code_hier)]
+        self.codebooks = [
+            torch.zeros(self.n_codebook, self.max_codebook_size, device=self.device)
+            for _ in range(self.code_hier)
+        ]
         self.counter = 0
 
     @torch.no_grad()
-    def update(self,
-               loss_total,
-               loss_recon,
-               loss_latent,
-               codes,
-               count=None,
-               sync=False,
-               distenv=None):
+    def update(
+        self,
+        loss_total,
+        loss_recon,
+        loss_latent,
+        codes,
+        count=None,
+        sync=False,
+        distenv=None,
+    ):
 
         if sync:
-            loss_total = dist_utils.all_gather_cat(distenv, loss_total.unsqueeze(0)).sum()
-            loss_recon = dist_utils.all_gather_cat(distenv, loss_recon.unsqueeze(0)).sum()
-            loss_latent = dist_utils.all_gather_cat(distenv, loss_latent.unsqueeze(0)).sum()
+            loss_total = dist_utils.all_gather_cat(
+                distenv, loss_total.unsqueeze(0)
+            ).sum()
+            loss_recon = dist_utils.all_gather_cat(
+                distenv, loss_recon.unsqueeze(0)
+            ).sum()
+            loss_latent = dist_utils.all_gather_cat(
+                distenv, loss_latent.unsqueeze(0)
+            ).sum()
             codes = [dist_utils.all_gather_cat(distenv, code) for code in codes]
 
         self.loss_total += loss_total.detach()
@@ -127,48 +146,49 @@ class AccmStage1:
         loss_latent = self.loss_latent / n_samples
 
         if self.use_padding_idx:
-            ent_codes_w_pad = [torch_compute_entropy(self.codebooks[i]) for i in range(self.code_hier)]
-            ent_codes_wo_pad = [torch_compute_entropy(self.codebooks[i][:, :-1]) for i in range(self.code_hier)]
+            ent_codes_w_pad = [
+                torch_compute_entropy(self.codebooks[i]) for i in range(self.code_hier)
+            ]
+            ent_codes_wo_pad = [
+                torch_compute_entropy(self.codebooks[i][:, :-1])
+                for i in range(self.code_hier)
+            ]
         else:
             ent_codes_w_pad = None
-            ent_codes_wo_pad = [torch_compute_entropy(self.codebooks[i][:, :-1]) for i in range(self.code_hier)]
+            ent_codes_wo_pad = [
+                torch_compute_entropy(self.codebooks[i][:, :-1])
+                for i in range(self.code_hier)
+            ]
 
-        summary = SummaryStage1(loss_total=loss_total,
-                                loss_recon=loss_recon,
-                                loss_latent=loss_latent,
-                                ent_codes_w_pad=ent_codes_w_pad,
-                                ent_codes_wo_pad=ent_codes_wo_pad)
+        summary = SummaryStage1(
+            loss_total=loss_total,
+            loss_recon=loss_recon,
+            loss_latent=loss_latent,
+            ent_codes_w_pad=ent_codes_w_pad,
+            ent_codes_wo_pad=ent_codes_wo_pad,
+        )
 
         return summary
 
 
 class SummaryStage1WithGAN:
-    def __init__(self, ent_codes_w_pad, ent_codes_wo_pad, **kwargs):
+    def __init__(self, **kwargs):
         for k, v in kwargs.items():
             self[k] = v
-        self.ent_codes_w_pad = ent_codes_w_pad
-        self.ent_codes_wo_pad = ent_codes_wo_pad
 
     def print_line(self):
         line = ""
         for name, value in self.metrics.items():
             line += f"{name}: {value.item():.4f}, "
 
-        if self.ent_codes_w_pad is not None:
-            for level, ent_code in enumerate(self.ent_codes_w_pad):
-                ent_code_str = '[' + ', '.join([f'{ent:.4f}' for ent in ent_code]) + ']'
-                line += f"""w/ pad entropy-level-{level}: {ent_code_str}, """
-
-        for level, ent_code in enumerate(self.ent_codes_wo_pad):
-            ent_code_str = '[' + ', '.join([f'{ent:.4f}' for ent in ent_code]) + ']'
-            line += f"""w/o pad entropy-level-{level}: {ent_code_str}"""
-
         return line
 
     @property
     def metrics(self):
         def is_scalar(value):
-            return (isinstance(value, torch.Tensor) and value.numel() == 1) or isinstance(value, float)
+            return (
+                isinstance(value, torch.Tensor) and value.numel() == 1
+            ) or isinstance(value, float)
 
         return {key: value for key, value in self.__dict__.items() if is_scalar(value)}
 
@@ -180,36 +200,16 @@ class SummaryStage1WithGAN:
 
 
 class AccmStage1WithGAN:
-    def __init__(self, metric_names, n_codebook=1, codebook_size=512, code_hier=1, use_padding_idx=False, device='cpu'):
-        self.n_codebook = n_codebook
-        self.max_codebook_size = self.codebook_size = codebook_size
-        self.use_padding_idx = use_padding_idx
-
-        if isinstance(codebook_size, list):
-            self.max_codebook_size = max(codebook_size)
-
-        if self.use_padding_idx:
-            self.max_codebook_size += 1
-
-        self.code_hier = code_hier
+    # we delete the codebook related attributes, as they are only used for the VQ-VAE
+    def __init__(self, metric_names, device="cpu"):
         self.device = device
-
         self.metrics_sum = {n: torch.zeros(1, device=self.device) for n in metric_names}
-
-        self.codebooks = [torch.zeros(self.n_codebook, self.max_codebook_size, device=self.device)
-                          for _ in range(self.code_hier)]
         self.counter = 0
 
     @torch.no_grad()
-    def update(self,
-               codes,
-               metrics_to_add,
-               count=None,
-               sync=False,
-               distenv=None):
+    def update(self, metrics_to_add, count=None, sync=False, distenv=None):
 
         if sync:
-            codes = [dist_utils.all_gather_cat(distenv, code) for code in codes]
             for name, value in metrics_to_add.items():
                 gathered_value = dist_utils.all_gather_cat(distenv, value.unsqueeze(0))
                 gathered_value = gathered_value.sum().detach()
@@ -217,12 +217,8 @@ class AccmStage1WithGAN:
 
         for name, value in metrics_to_add.items():
             if name not in self.metrics_sum:
-                raise KeyError(f'unexpected metric name: {name}')
+                raise KeyError(f"unexpected metric name: {name}")
             self.metrics_sum[name] += value
-
-        for i in range(self.code_hier):
-            assign_code(self.codebooks[i], codes[i].detach())
-
         self.counter += count if not sync else count * distenv.world_size
 
     @torch.no_grad()
@@ -231,15 +227,6 @@ class AccmStage1WithGAN:
 
         metrics_avg = {k: v / n_samples for k, v in self.metrics_sum.items()}
 
-        if self.use_padding_idx:
-            ent_codes_w_pad = [torch_compute_entropy(self.codebooks[i]) for i in range(self.code_hier)]
-            ent_codes_wo_pad = [torch_compute_entropy(self.codebooks[i][:, :-1]) for i in range(self.code_hier)]
-        else:
-            ent_codes_w_pad = None
-            ent_codes_wo_pad = [torch_compute_entropy(self.codebooks[i]) for i in range(self.code_hier)]
-
-        summary = SummaryStage1WithGAN(ent_codes_w_pad=ent_codes_w_pad,
-                                       ent_codes_wo_pad=ent_codes_wo_pad,
-                                       **metrics_avg)
+        summary = SummaryStage1WithGAN(**metrics_avg)
 
         return summary
