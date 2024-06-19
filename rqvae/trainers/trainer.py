@@ -19,14 +19,13 @@ import torch
 
 from torch.utils.data.dataloader import DataLoader
 from torch.cuda.amp import GradScaler
-
+from torch_xla.distributed.parallel_loader import ParallelLoader
+import torch.distributed as dist
 
 logger = logging.getLogger(__name__)
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
 
-
 class TrainerTemplate():
-
     def __init__(self,
                  model,
                  model_ema,
@@ -86,7 +85,12 @@ class TrainerTemplate():
             batch_size=config.experiment.batch_size,
             num_workers=num_workers
         )
-
+        if self.distenv.master:
+            logger.info(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
+        if dist.get_world_size() > 1:
+            assert dist.is_initialized(), 'Distributed training is not initialized when using multiple xla device'
+            self.parallel_loader_trn = ParallelLoader(self.loader_trn, [self.device]) 
+            self.parallel_loader_val = ParallelLoader(self.loader_val, [self.device]) # in xla we use pl
     def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
         raise NotImplementedError
 

@@ -19,16 +19,16 @@ from torch import nn
 
 class Stage1Model(nn.Module, metaclass=abc.ABCMeta):
 
-    @abc.abstractmethod
-    def get_codes(self, *args, **kwargs):
-        """Generate the code from the input."""
-        pass
+    #@abc.abstractmethod
+    #def get_codes(self, *args, **kwargs):
+    #    """Generate the code from the input."""
+    #    pass
 
-    @abc.abstractmethod
-    def decode_code(self, *args, **kwargs):
-        """Generate the decoded image from the given code."""
-        pass
-
+    #@abc.abstractmethod
+    #def decode_code(self, *args, **kwargs):
+    #    """Generate the decoded image from the given code."""
+    #    pass
+    # for vq based mode you should use the above two, but for more general models only the below two are needed
     @abc.abstractmethod
     def get_recon_imgs(self, *args, **kwargs):
         """Scales the real and recon images properly.

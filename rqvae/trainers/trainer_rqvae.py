@@ -259,8 +259,7 @@ class Trainer(TrainerTemplate):
 
             loss_gen_total = loss_rec_lat + p_weight * loss_pcpt + g_weight * self.disc_weight * loss_gen
             loss_gen_total.backward()
-            xm.mark_step()
-            optimizer.step()
+            xm.optimizer_step(optimizer) # will call xm.mark_step inside
             scheduler.step()
 
             # discriminator loss
@@ -269,12 +268,11 @@ class Trainer(TrainerTemplate):
             if use_discriminator:
                 _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode='disc')
                 (self.disc_weight * loss_disc).backward()
-                self.disc_optimizer.step()
+                xm.optimizer_step(self.disc_optimizer)
                 self.disc_scheduler.step()
             else:
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
-            xm.mark_step()
             # logging
             codes = outputs['codes']
             loss_total = loss_rec_lat.detach() + p_weight * loss_pcpt.detach()  # rec + lat + pcpt

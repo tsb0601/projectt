@@ -39,7 +39,7 @@ class VQEmbedding(nn.Embedding):
             # padding index is not updated by EMA
             self.register_buffer('cluster_size_ema', torch.zeros(n_embed))
             self.register_buffer('embed_ema', self.weight[:-1, :].detach().clone())
-
+            # use :-1 here to exclude padding index
     @torch.no_grad()
     def compute_distances(self, inputs):
         codebook_t = self.weight[:-1, :].t()

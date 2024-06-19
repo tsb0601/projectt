@@ -29,6 +29,7 @@ class DistEnv:
     num_gpus: int
     master: bool
     device_name: str
+    TPU: bool
 
 
 def initialize(args, logger=None):
@@ -54,10 +55,12 @@ def initialize(args, logger=None):
                           local_rank=local_rank,
                           num_gpus=1,
                           master=(dist.get_rank() == 0),
-                          device_name=f'TPU:{local_rank}'
+                          device_name=str(xm.xla_real_devices([str(xm.xla_device())])[0]),
+                          TPU=True
                           )
     else:
         print('[dist] Single processed')
+        raise ValueError('Single processed is currently not supported')
         distenv = DistEnv(1, 0, 0, xm.xrt_world_size(), True, f'TPU:{str(xm.xla_device())[-1]}')
 
     print(f'[dist] {distenv}')
@@ -77,7 +80,10 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=False):
         )
         for _, param in model.state_dict().items():
             dist.broadcast(param, 0)
+        # could be replaced by xm.broadcast_master_param, but this is a feature for torchxla > 2.0
+        # xm.broadcast_master_param(model.parameters(), 0)
         dist.barrier()
+        xm.mark_step() # not sure if this is necessary
     else:
         model = torch.nn.DataParallel(model)
     #torch.cuda.synchronize()
