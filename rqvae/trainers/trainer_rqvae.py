@@ -227,7 +227,9 @@ class Trainer(TrainerTemplate):
         else:
             pbar = enumerate(self.loader_trn)
         if DEBUG:
+            xm.mark_step()
             it_st_time = time.time()
+            xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
@@ -283,8 +285,11 @@ class Trainer(TrainerTemplate):
             }
             accm.update(metrics, count=1)
             if it == 2 and DEBUG:
+                xm.mark_step()
                 en_compile_time = time.time()
                 xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
+                # make sure every process is in sync
+                exit()
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
