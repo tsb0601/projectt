@@ -69,7 +69,7 @@ def initialize(args, logger=None):
     return distenv
 
 
-def dataparallel_and_sync(distenv, model, find_unused_parameters=False):
+def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     if dist.is_initialized():
         model = DDP(
             model,

@@ -28,8 +28,7 @@ import torch_xla.core.xla_model as xm
 logger = logging.getLogger(__name__)
 import os
 DEBUG = bool(os.environ.get("DEBUG", 0))
-if DEBUG:
-    import time # for debugging
+import time # for debugging
 
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]

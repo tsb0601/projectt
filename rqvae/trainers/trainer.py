@@ -78,6 +78,7 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
+            drop_last=True # very important for xla
         )
 
         self.sampler_val = torch.utils.data.distributed.DistributedSampler(
@@ -93,6 +94,7 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
+            drop_last=True # very important for xla
         )
         if self.distenv.master:
             logger.info(

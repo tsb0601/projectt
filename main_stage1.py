@@ -29,8 +29,10 @@ from rqvae.utils.utils import set_seed, compute_model_size, get_num_conv_linear_
 from rqvae.utils.setup import setup
 import torch_xla.runtime as xr
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
-project_name = 'test_256'
+project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)
+cache_path = os.environ.get('XLACACHE_PATH', cache_path)
+print(f'[!]XLACACHE_PATH: {cache_path}')
 os.makedirs(cache_path, exist_ok=True)
 xr.initialize_cache(cache_path, readonly=False)
 

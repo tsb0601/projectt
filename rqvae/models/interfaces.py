@@ -48,7 +48,11 @@ class Stage1Model(nn.Module, metaclass=abc.ABCMeta):
         }
         """
         pass
-
+    @abc.abstractmethod
+    def get_last_layer(self, *args, **kwargs):
+        """Get the last layer of the model.
+        """
+        pass
 
 class Stage2Model(nn.Module, metaclass=abc.ABCMeta):
 
