@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# self-defined 
+ckpt/
+data/imagenet
+test/

@@ -13,42 +13,16 @@
 # limitations under the License.
 
 from .ema import ExponentialMovingAverage
-from .rqvae import get_rqvae
-#from .rqtransformer import get_rqtransformer
 import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import torch
 import os
 import torch.distributed as dist
 from rqvae.models.interfaces import Stage1Model
+from omegaconf import DictConfig
+from typing import Optional, Tuple
 DEBUGING = os.environ.get('DEBUG', False)
-class dummy_loss:
-    def __init__(self) -> None:
-        self.fix_code = torch.Tensor([1,4,5]).long()
-    def get_last_layer (self):
-        return nn.Identity()
-class dummy_model(Stage1Model):
-    def __init__(self,*args,**kwargs):
-        super().__init__()
-        self.dummy_conv = nn.Conv2d(3,3,1)
-        self.fix_code = torch.ones((8,8,4)).long()
-    def forward(self, xs , *args, **kwargs):
-        xs_recon = self.dummy_conv(xs)
-        # expand the code to the same batchsize as the input
-        self.fix_code = self.fix_code.expand(xs.shape[0],-1,-1,-1)
-        return xs_recon, 0.114
-    def compute_loss(self, xs_recon, *args, xs ):
-        loss= (xs_recon - xs).abs().mean()
-        output_dict = {
-            'loss_total' : loss,
-            'loss_recon' : loss,
-            'loss_latent': loss,
-        }
-        return output_dict
-    def get_last_layer (self):
-        return self.dummy_conv.weight
-    def get_recon_imgs(self,x, xs, *args, **kwargs):
-        return x, xs
+from .utils import *
 def xm_step_every_layer(model:nn.Module):
     for m in model.modules():
         if isinstance(m, nn.Sequential):
@@ -56,23 +30,12 @@ def xm_step_every_layer(model:nn.Module):
                 mm.register_forward_hook(lambda m, i, o: xm.mark_step())
         else:
             m.register_forward_hook(lambda m, i, o: xm.mark_step())
-def create_model(config, ema=False):
-    model_type = config.type.lower()
-    if model_type == 'rq-transformer':
-        raise ValueError(f'{model_type} is invalid..')
-        #model = get_rqtransformer(config)
-        #model_ema = get_rqtransformer(config) if ema else None
-    elif model_type == 'rq-vae':
-        model = get_rqvae(config)
-        model_ema = get_rqvae(config) if ema else None
-        #model = dummy_model()
-        #model_ema = dummy_model() if ema else None
-        # add hook to call the mark_step function after forward to every module in the model
-    elif model_type ==  'dummy':
-        model = dummy_model()
-        model_ema = dummy_model() if ema else None
-    else:
-        raise ValueError(f'{model_type} is invalid..')
+def create_model(config:DictConfig, ema:bool=False)->Tuple[Stage1Model, Optional[ExponentialMovingAverage]]:
+    # config: OmegaConf.DictConfig
+    # config to dict for model init
+    print(config)
+    model = instantiate_from_config(config)
+    model_ema = instantiate_from_config(config) if ema else None
     if DEBUGING: # add xm_step for faster compilation and more reusable compilation cache
         if dist.is_initialized() and dist.get_rank() == 0:
             print('[!]DEBUGGING: Adding xm_step to every layer. This will slow down the training.')

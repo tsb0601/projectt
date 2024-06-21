@@ -35,6 +35,8 @@ def create_resnet_optimizer(model, config):
 
 
 def create_optimizer(model, config):
+    optimizer = create_resnet_optimizer(model, config.optimizer)
+    return optimizer
     arch_type = config.arch.type.lower()
     if 'rq-vae' in config.arch.type:
         optimizer = create_resnet_optimizer(model, config.optimizer)

@@ -4,44 +4,62 @@ dataset:
     type: imagenet256x256
 
 arch:
-  type: dummy
-  hparams:
+  stage: 1
+  target: rqvae.models.dummy.dummy_model
+  params:
     decay: 0.99
     restart_unused_codes: true
     loss_type: mse
     latent_loss_weight: 0.25
   checkpointing: false
- 
-
+  ema: false
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adam
   init_lr: 4.0e-5
   weight_decay: 0.0
   betas: [0.5, 0.9]
+  max_gn: None
   warmup:
     epoch: 0.5  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 4.0e-5
     mode: fix
-
+    start_from_zero: true
 
 experiment:
-  batch_size: 256
+  batch_size: 1
   epochs: 10
   save_ckpt_freq: 5
   test_freq: 1
+  amp: false
 
 gan:
   disc:
     arch:
       in_channels: 3
       num_layers: 2
-      use_actnorm: False
+      use_actnorm: false
       ndf: 4
-      spectral_norm: False
-
+      spectral_norm: false
+    optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adam
+      init_lr: 4.0e-5
+      weight_decay: 0.0
+      betas: [0.5, 0.9]
+      max_gn: None
+      warmup:
+        epoch: 0.5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 4.0e-5
+        mode: fix
+        start_from_zero: true
+    experiment:
+      test_freq: 10
+      amp: false
   loss:
     disc_loss: hinge
     gen_loss: vanilla

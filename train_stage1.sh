@@ -7,7 +7,7 @@ then
 fi
 mkdir -p $SAVE_DIR
 echo "Save dir: $SAVE_DIR"
-export DEBUG=1
+#export DEBUG=1
 export PJRT_DEVICE=TPU
 echo "Running stage1 training"
 echo "setting env vars"

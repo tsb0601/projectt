@@ -20,8 +20,8 @@ STAGE1_ARCH_TYPE = [
 
 
 def create_trainer(config):
-    if config.arch.type in STAGE1_ARCH_TYPE:
+    if config.arch.stage == 1:
         return TrainerRQVAE
 
     else: 
-        raise ValueError('architecture type not supported')
+        raise ValueError('stage 2 not supported')
