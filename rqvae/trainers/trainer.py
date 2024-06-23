@@ -115,7 +115,17 @@ class TrainerTemplate:
 
     def eval(self, valid=True, ema=False, verbose=False, epoch=0):
         raise NotImplementedError
-
+    def wrap_loader(self, split:str = 'train'):
+        assert split in ['train', 'valid'], f"split should be either 'train' or 'valid', but got {split}"
+        loader = self.loader_trn if split == 'train' else self.loader_val
+        if self.distenv.TPU:
+            if self.distenv.master:
+                print(f"[!] TPU: using per_device_loader for validation")
+            loader = ParallelLoader(loader, [self.device]).per_device_loader(self.device)
+        else:
+            if self.distenv.master:
+                print(f"[!] NO TPU: using normal loader for validation")
+        return loader
     def run_epoch(self, optimizer=None, scheduler=None, epoch_st=0):
         scaler = GradScaler() if self.config.experiment.amp else None
         for i in range(epoch_st, self.config.experiment.epochs):

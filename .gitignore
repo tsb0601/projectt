@@ -133,3 +133,4 @@ dmypy.json
 ckpt/
 data/imagenet
 test/
+ckpt

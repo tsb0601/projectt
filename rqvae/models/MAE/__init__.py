@@ -2,10 +2,75 @@ from transformers import ViTMAEForPreTraining, ViTImageProcessor
 import torch
 from rqvae.models.interfaces import Stage1Model
 import torch_xla.core.xla_model as xm
+from transformers.models.vit_mae.modeling_vit_mae import ViTMAEDecoderOutput
+
+def custom_forward(
+    self,
+    hidden_states,
+    ids_restore,
+    output_attentions=False,
+    output_hidden_states=False,
+    return_dict=True,
+):
+    # embed tokens
+    x = self.decoder_embed(hidden_states)
+
+    # append mask tokens to sequence
+    #mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.#shape[1], 1)
+    #x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
+    x_ = x[:, 1:, :] 
+    # unshuffle
+    x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x_.device))
+    x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
+
+    # add pos embed
+    hidden_states = x + self.decoder_pos_embed
+
+    # apply Transformer layers (blocks)
+    all_hidden_states = () if output_hidden_states else None
+    all_self_attentions = () if output_attentions else None
+    for i, layer_module in enumerate(self.decoder_layers):
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if self.gradient_checkpointing and self.training:
+            layer_outputs = self._gradient_checkpointing_func(
+                layer_module.__call__,
+                hidden_states,
+                None,
+                output_attentions,
+            )
+        else:
+            layer_outputs = layer_module(hidden_states, head_mask=None, output_attentions=output_attentions)
+
+        hidden_states = layer_outputs[0]
+
+        if output_attentions:
+            all_self_attentions = all_self_attentions + (layer_outputs[1],)
+
+    if output_hidden_states:
+        all_hidden_states = all_hidden_states + (hidden_states,)
+
+    hidden_states = self.decoder_norm(hidden_states)
+
+    # predictor projection
+    logits = self.decoder_pred(hidden_states)
+
+    # remove cls token
+    logits = logits[:, 1:, :]
+
+    if not return_dict:
+        return tuple(v for v in [logits, all_hidden_states, all_self_attentions] if v is not None)
+    return ViTMAEDecoderOutput(
+        logits=logits,
+        hidden_states=all_hidden_states,
+        attentions=all_self_attentions,
+    )
 class Stage1MAE(Stage1Model):
     def __init__(self, ckpt_path:str ,mask_ratio: float = 0. )->None:
         super().__init__()
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
+        self.model.decoder.forward = custom_forward.__get__(self.model.decoder) # original forward method would cause XLA error when mask ratio is zero, we replace it with a custom forward method
         self.model.config.mask_ratio = mask_ratio
         self.model.vit.requires_grad_(False) # freeze encoder
         self.model.decoder.requires_grad_(True)
@@ -29,7 +94,7 @@ class Stage1MAE(Stage1Model):
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
         return (xs_recon ,)
-    def compute_loss(self, xs_recon, xs) -> dict:
+    def compute_loss(self, xs_recon, xs , valid:bool = True) -> dict:
         loss_recon = (xs_recon - xs).abs().mean()
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {

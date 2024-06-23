@@ -99,8 +99,9 @@ def param_sync(param):
 def all_gather_cat(distenv, tensor, dim=0):
     if distenv.world_size == 1:
         return tensor
-
-    g_tensor = [torch.ones_like(tensor) for _ in range(distenv.world_size)]
-    dist.all_gather(g_tensor, tensor)
+    #g_tensor = [torch.ones_like(tensor) for _ in range(distenv.world_size)]
+    #dist.all_gather(g_tensor, tensor)
+    #use xm instead of dist to avoid bug
+    g_tensor = xm.all_gather(tensor, dim=dim)
     g_tensor = torch.cat(g_tensor, dim=dim)
     return g_tensor

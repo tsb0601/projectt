@@ -124,21 +124,11 @@ class Trainer(TrainerTemplate):
             logits_avg['logits_fake'] = logits_fake.detach().mean()
 
         return loss_gen, loss_disc, logits_avg
-    def wrap_loader(self, loader:torch.utils.data.DataLoader):
-        if self.distenv.TPU:
-            if self.distenv.master:
-                print(f"[!] TPU: using per_device_loader for validation")
-            loader = loader.per_device_loader(self.device) # pl loader for TPU
-        else:
-            if self.distenv.master:
-                print(f"[!] NO TPU: using normal loader for validation")
-        return loader
     @torch.no_grad()
     def eval(self, valid=True, ema=False, verbose=False, epoch=0):
         model = self.model_ema if ema else self.model
         discriminator = self.discriminator
-        loader = self.loader_val if valid else self.loader_trn
-        loader = self.wrap_loader(loader)
+        loader = self.wrap_loader('valid' if valid else 'train')
         n_inst = len(self.dataset_val) if valid else len(self.dataset_trn)
 
         use_discriminator = True if epoch >= self.gan_start_epoch else False
@@ -220,11 +210,11 @@ class Trainer(TrainerTemplate):
         use_discriminator = True if epoch >= self.gan_start_epoch else False
 
         accm = self.get_accm()
-
+        loader = self.wrap_loader('train')
         if self.distenv.master:
-            pbar = tqdm(enumerate(self.loader_trn), total=len(self.loader_trn))
+            pbar = tqdm(enumerate(loader), total=len(loader))
         else:
-            pbar = enumerate(self.loader_trn)
+            pbar = enumerate(loader)
         if DEBUG:
             xm.mark_step()
             it_st_time = time.time()
