@@ -136,3 +136,4 @@ test/
 ckpt
 *.npz
 *.pb 
+*.npy

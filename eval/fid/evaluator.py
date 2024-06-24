@@ -45,8 +45,21 @@ def main():
     # than after the next print(), to help prevent confusion.
     evaluator.warmup()
 
-    print("computing reference batch activations...")
-    ref_acts = evaluator.read_activations(args.ref_batch)
+    
+    if os.path.exists('./ref_acts.npy'):
+        print("using precomputed reference batch activations...")
+        with open('./ref_acts.npy', 'rb') as f:
+            dict_acts = np.load(f, allow_pickle=True).item()
+            ref_acts = (dict_acts['pred'], dict_acts['spatial'])
+    else:
+        print("computing reference batch activations...")
+        ref_acts = evaluator.read_activations(args.ref_batch)
+        with open('./ref_acts.npy', 'wb') as f:
+            np.save(f, {
+                'pred': ref_acts[0],
+                'spatial': ref_acts[1]
+            }
+            )
     print("computing/reading reference batch statistics...")
     ref_stats, ref_stats_spatial = evaluator.read_statistics(args.ref_batch, ref_acts)
 
