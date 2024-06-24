@@ -134,3 +134,5 @@ ckpt/
 data/imagenet
 test/
 ckpt
+*.npz
+*.pb 

@@ -1,3 +1,7 @@
+"""
+modified from https://github.com/facebookresearch/DiT/blob/main/sample_ddp.py
+"""
+
 from tqdm import tqdm
 import numpy as np
 from PIL import Image
@@ -7,13 +11,22 @@ def create_npz_from_sample_folder(sample_dir, num=50_000):
     """
     Builds a single .npz file from a folder of .png samples.
     """
+    if sample_dir[-1] == '/':
+        sample_dir = sample_dir[:-1] # remove trailing slash
     samples = []
-    imgs = os.listdir(sample_dir)
-    #filter out non-image files
+    # get all imgs under sample_dir (recursively)
+    imgs = []
     img_suffix = ('.png', '.jpg', '.jpeg')
-    imgs = [img for img in imgs if img.lower().endswith(img_suffix)]
+    for root, dir , files in os.walk(sample_dir):
+        for file in files:
+            if file.lower().endswith(img_suffix):
+                # append absolute path
+                imgs.append(os.path.join(root, file))
+    #filter out non-image files
+    print(f"Found {len(imgs)} valid images in {sample_dir}.")
+    num = min(num, len(imgs))
     for i in tqdm(range(num), desc="Building .npz file from samples"):
-        img_path = os.path.join(sample_dir, imgs[i])
+        img_path = imgs[i]
         sample_pil = Image.open(img_path).convert("RGB").resize((IM_SIZE, IM_SIZE), Image.BICUBIC)
         sample_np = np.asarray(sample_pil).astype(np.uint8)
         samples.append(sample_np)
@@ -32,3 +45,6 @@ def main():
     sample_dir = sys.argv[1]
     assert os.path.isdir(sample_dir), f"Invalid directory: {sample_dir}"
     create_npz_from_sample_folder(sample_dir)
+    
+if __name__ == "__main__":
+    main()
