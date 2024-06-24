@@ -9,7 +9,7 @@ arch:
   params:
     ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
   checkpointing: false
-  ema: -1.0
+  ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw

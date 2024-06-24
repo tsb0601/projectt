@@ -33,17 +33,18 @@ def xm_step_every_layer(model:nn.Module):
 def create_model(config:DictConfig, ema:bool=False)->Tuple[Stage1Model, Optional[ExponentialMovingAverage]]:
     # config: OmegaConf.DictConfig
     # config to dict for model init
+    use_ema = (ema != 0.114514)
     model = instantiate_from_config(config)
-    model_ema = instantiate_from_config(config) if ema else None
+    model_ema = instantiate_from_config(config) if use_ema else None
     if DEBUGING: # add xm_step for faster compilation and more reusable compilation cache
         if dist.is_initialized() and dist.get_rank() == 0:
             print('[!]DEBUGGING: Adding xm_step to every layer. This will slow down the training.')
         xm_step_every_layer(model)
-        if ema:
+        if use_ema:
             xm_step_every_layer(model_ema)
-    if ema:
+    if use_ema:
         raise NotImplementedError('Exponential Moving Average is not implemented yet.')
-        model_ema = ExponentialMovingAverage(model_ema, config.ema.mu)
+        model_ema = ExponentialMovingAverage(model_ema, config.ema)
         model_ema.eval()
         model_ema.update(model, step=-1)
     return model, model_ema
