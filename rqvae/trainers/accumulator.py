@@ -18,7 +18,7 @@ import torch
 
 import rqvae.utils.dist as dist_utils
 from rqvae.optimizer.loss import torch_compute_entropy
-
+import torch_xla.core.xla_model as xm
 
 def assign_code(codebook, code):
 
@@ -214,7 +214,6 @@ class AccmStage1WithGAN:
                 gathered_value = dist_utils.all_gather_cat(distenv, value.unsqueeze(0))
                 gathered_value = gathered_value.sum().detach()
                 metrics_to_add[name] = gathered_value
-
         for name, value in metrics_to_add.items():
             if name not in self.metrics_sum:
                 raise KeyError(f"unexpected metric name: {name}")
@@ -226,7 +225,6 @@ class AccmStage1WithGAN:
         n_samples = n_samples if n_samples else self.counter
 
         metrics_avg = {k: v / n_samples for k, v in self.metrics_sum.items()}
-
         summary = SummaryStage1WithGAN(**metrics_avg)
 
         return summary

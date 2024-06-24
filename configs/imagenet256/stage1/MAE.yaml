@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet
   transforms:
     type: imagenet256x256
 
@@ -9,7 +9,7 @@ arch:
   params:
     ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
   checkpointing: false
-  ema: false
+  ema: -1.0
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -18,10 +18,10 @@ optimizer:
   betas: [0.9, 0.95]
   max_gn: None
   warmup:
-    epoch: 0.5  # 5% of total epochs
+    epoch: 1.4  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 2.0e-4
+    min_lr: 0.
     mode: fix
     start_from_zero: true
 

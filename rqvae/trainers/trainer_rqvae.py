@@ -135,17 +135,12 @@ class Trainer(TrainerTemplate):
 
         accm = self.get_accm()
 
-        if self.distenv.master:
-            pbar = tqdm(enumerate(loader), total=len(loader))
-        else:
-            pbar = enumerate(loader)
-
+        pbar = tqdm(enumerate(loader), total=len(loader),disable= not self.distenv.master)
         model.eval()
         discriminator.eval()
         for it, inputs in pbar:
             model.zero_grad()
             xs = inputs[0].to(self.device)
-
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
@@ -163,7 +158,7 @@ class Trainer(TrainerTemplate):
                 loss_gen = torch.zeros((), device=self.device)
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
-
+    
             loss_pcpt *= xs.size(0)  # need to be scaled with batch size
             loss_gen *= xs.size(0)
             loss_disc *= xs.size(0)
@@ -172,24 +167,21 @@ class Trainer(TrainerTemplate):
             # logging
             loss_total = loss_rec_lat + p_weight * loss_pcpt  # rec + lat + pcpt
             metrics = dict(loss_total=loss_total,
-                           loss_recon=loss_recon,
-                           loss_latent=loss_latent,
-                           loss_pcpt=loss_pcpt,
-                           loss_gen=loss_gen,
-                           loss_disc=loss_disc,
-                           **logits,
-                           )
+                            loss_recon=loss_recon,
+                            loss_latent=loss_latent,
+                            loss_pcpt=loss_pcpt,
+                            loss_gen=loss_gen,
+                            loss_disc=loss_disc,
+                            **logits,
+                            )
             accm.update(metrics,
                         count=xs.shape[0],
                         sync=True,
                         distenv=self.distenv)
-
+            line = accm.get_summary().print_line() # moving this into the below if block would cause forever hanging... don't know why
             if self.distenv.master:
-                line = accm.get_summary().print_line()
                 pbar.set_description(line)
-
-        line = accm.get_summary(n_inst).print_line()
-
+        line = accm.get_summary(n_inst).print_line() 
         if self.distenv.master and verbose:
             mode = "valid" if valid else "train"
             mode = "%s_ema" % mode if ema else mode
@@ -284,7 +276,6 @@ class Trainer(TrainerTemplate):
                 line += accm.get_summary().print_line()
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
                 pbar.set_description(line)
-
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
                 if (global_iter+1) % 50 == 0:
