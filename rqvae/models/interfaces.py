@@ -72,7 +72,7 @@ class Stage2Model(XLA_Model):
     """A template for the Stage2 model."""
     
     @abc.abstractmethod
-    def compute_loss(self, *args, **kwargs):
+    def compute_loss(self, zs_pred, zs ,*args, **kwargs):
         """Compute the losses necessary for training.
         Typically, it would be the cross-entropy of the AR prediction w.r.t. the ground truth.
         """
@@ -98,10 +98,10 @@ class Stage2ModelWrapper(XLA_Model):
 
     def forward(self, *args, **kwargs):
         with torch.no_grad():
-            stage_1_output = self.stage_1_model(*args, **kwargs)
+            stage_1_output = self.stage_1_model.encode(*args, **kwargs)
         stage_2_output = self.stage_2_model(*stage_1_output, *args, **kwargs)
-        return stage_2_output
-    def compute_loss(self, *args, **kwargs):
-        return self.stage_2_model.compute_loss(*args, **kwargs)
+        return stage_1_output, stage_2_output
+    def compute_loss(self, zs_pred, zs , *args, **kwargs):
+        return self.stage_2_model.compute_loss(zs_pred, zs, *args, **kwargs)
     def get_recon_imgs(self, *args, **kwargs):
         return self.stage_2_model.get_recon_imgs(*args, **kwargs)

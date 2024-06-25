@@ -76,10 +76,13 @@ class Stage1MAE(Stage1Model):
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
-        self.noise = torch.arange(256).to(xm.xla_device())
+        noise = torch.arange(256).to(xm.xla_device())
+        default_id_restore = torch.arange(256).to(xm.xla_device())
         image_mean, image_std = processor.image_mean, processor.image_std
         self.register_buffer('image_mean', torch.tensor(image_mean).view(1, 3, 1, 1))
         self.register_buffer('image_std', torch.tensor(image_std).view(1, 3, 1, 1))
+        self.register_buffer('noise', noise)
+        self.register_buffer('default_id_restore', default_id_restore)
         xm.master_print(f'Stage1MAE model loaded with mean {image_mean} and std {image_std}')
         self.image_mean = self.image_mean.to(xm.xla_device())
         self.image_std = self.image_std.to(xm.xla_device())
@@ -94,6 +97,22 @@ class Stage1MAE(Stage1Model):
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
         return (xs_recon ,)
+    def encode(self, xs:torch.Tensor)->tuple:
+        image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
+        image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        xs = (xs - image_mean) / image_std
+        noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
+        outputs = self.model.vit(xs,noise=noise)
+        return (outputs.last_hidden_state,)
+    def decode(self, zs:torch.Tensor)->tuple:
+        ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
+        image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
+        image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
+        outputs = self.model.decoder(zs,ids_restore)
+        logits = outputs.logits
+        xs_recon = self.model.unpatchify(logits)
+        xs_recon = xs_recon * image_std + image_mean
+        return (xs_recon,)
     def compute_loss(self, xs_recon, xs , valid:bool = True) -> dict:
         loss_recon = (xs_recon - xs).abs().mean()
         loss_latent = torch.Tensor([0.]).to(xs.device)

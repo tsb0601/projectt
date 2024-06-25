@@ -58,17 +58,14 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad()
             xs = inputs[0].to(self.device)
-            outputs = model(xs)
-            xs_gen = outputs[0]
-            outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
+            stage_1_output, stage_2_output = model(xs)
+            zs = stage_1_output[0]
+            zs_pred = stage_2_output[0]
+            outputs = model.module.compute_loss(zs_pred, zs, *stage_1_output[1:], *stage_2_output[1:], xs=xs)
             xm.mark_step()
-            loss_gen = outputs['loss_total']
-            logits = {k: v * xs.size(0) for k, v in logits.items()}
-            # logging
+            loss_gen = outputs['loss_total']            # logging
             loss_total = loss_gen
-            metrics = dict(loss_total=loss_total,
-                            **logits,
-                        )
+            metrics = dict(loss_total=loss_total)
             accm.update(metrics,
                         count=xs.shape[0],
                         sync=True,
@@ -81,10 +78,10 @@ class Trainer(TrainerTemplate):
             mode = "valid" if valid else "train"
             mode = "%s_ema" % mode if ema else mode
             logger.info(f"""{mode:10s}, """ + line)
-            self.reconstruct(xs, epoch=0, mode=mode)
+            self.reconstruct(zs, epoch=0, mode=mode)
 
         summary = accm.get_summary(n_inst)
-        summary['xs'] = xs
+        summary['zs'] = zs
 
         return summary
 
@@ -105,9 +102,10 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
-            outputs = model(xs)
-            xs_recon = outputs[0]
-            outputs = model.module.compute_loss(*outputs, xs=xs)
+            stage_1_output, stage_2_output = model(xs)
+            zs = stage_1_output[0]
+            zs_pred = stage_2_output[0]
+            outputs = model.module.compute_loss(zs_pred, zs, *stage_1_output[1:], *stage_2_output[1:], xs=xs)
             xm.mark_step()
             loss_gen = outputs['loss_total']
             loss_gen_total = loss_gen 
@@ -115,12 +113,10 @@ class Trainer(TrainerTemplate):
             optimizer.step() # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
             scheduler.step()
             xm.mark_step()
-            xm.mark_step()
             # logging
             loss_total = loss_gen_total.detach() 
             metrics = {
                 'loss_total': loss_total,
-                'loss_gen': loss_gen.detach(),
             }
             accm.update(metrics, count=1)
             if it == 2 and DEBUG:
@@ -143,18 +139,23 @@ class Trainer(TrainerTemplate):
                         self.writer.add_scalar(f'loss_step/{key}', value, 'train', global_iter)
                     self.writer.add_scalar('lr_step', scheduler.get_last_lr()[0], 'train', global_iter)
                 if (global_iter+1) % 250 == 0:
-                    xs_real, xs_recon = model.module.get_recon_imgs(xs[:16], xs_recon[:16])
-                    grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=8)
+                    bsz = xs.size(0)
+                    if bsz == 1: # need to be handle properly
+                        continue
+                    max_shard_size = min(bsz,16)
+                    zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size])
+                    print(zs.shape, zs_pred.shape)
+                    grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0)
+                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2)
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
         summary = accm.get_summary()
-        summary['xs'] = xs
+        summary['zs'] = zs
 
         return summary
 
     def logging(self, summary, scheduler=None, epoch=0, mode='train'):
         if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
-            self.reconstruct(summary['xs'], epoch, mode)
+            self.reconstruct(summary['zs'], epoch, mode)
         for key, value in summary.metrics.items():
             self.writer.add_scalar(f'loss/{key}', summary[key], mode, epoch)
 
@@ -170,15 +171,18 @@ class Trainer(TrainerTemplate):
         logger.info(line)
 
     @torch.no_grad()
-    def reconstruct(self, xs, epoch, mode='valid'):
+    def reconstruct(self, zs, epoch, mode='valid'):
+        # do not write image when bs is 1
+        if zs.size(0) == 1:
+            return
+        bsz = zs.size(0)
+        max_shard_size = min((bsz//2)*2, 16)
         model = self.model_ema if 'ema' in mode else self.model
         model.eval()
-
-        xs_real = xs[:16]
-        xs_recon = model(xs_real)[0]
-        xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
-
-        grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
+        zs_real = zs[:max_shard_size]
+        zs_recon = model.module.stage_2_model(zs_real)[0]
+        zs_real, zs_recon = model.module.get_recon_imgs(zs_real, zs_recon)
+        grid = torch.cat([zs_real[:max_shard_size//2], zs_recon[:max_shard_size//2], zs_real[max_shard_size//2:], zs_recon[max_shard_size//2:]], dim=0)
         grid = torchvision.utils.make_grid(grid, nrow=8)
         self.writer.add_image('reconstruction', grid, mode, epoch)
 

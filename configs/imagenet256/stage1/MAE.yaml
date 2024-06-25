@@ -1,10 +1,9 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
 arch:
-  stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
     ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
