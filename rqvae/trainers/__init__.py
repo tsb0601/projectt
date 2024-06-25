@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .trainer_rqvae import Trainer as TrainerRQVAE
+from .trainer_stage1 import Trainer as TrainerStage1
+from .trainer_stage2 import Trainer as TrainerStage2
 
 STAGE1_ARCH_TYPE = [
     'rq-vae','dummy'
@@ -21,7 +22,7 @@ STAGE1_ARCH_TYPE = [
 
 def create_trainer(config):
     if config.arch.stage == 1:
-        return TrainerRQVAE
+        return TrainerStage1
 
     else: 
-        raise ValueError('stage 2 not supported')
+        return TrainerStage2

@@ -55,14 +55,21 @@ class Stage1Model(nn.Module, metaclass=abc.ABCMeta):
         pass
 
 class Stage2Model(nn.Module, metaclass=abc.ABCMeta):
-
+    """A template for the Stage2 model."""
+    
     @abc.abstractmethod
     def compute_loss(self, *args, **kwargs):
         """Compute the losses necessary for training.
         Typically, it would be the cross-entropy of the AR prediction w.r.t. the ground truth.
         """
         pass
-
+    @property
+    @abc.abstractmethod
+    def stage_1_forward(self, *args, **kwargs):
+        """
+        The forward pass of the stage 1 model. This is to remind you you should always have a stage1 model here.
+        """
+        pass
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             module.weight.data.normal_(mean=0.0, std=0.02)
@@ -71,6 +78,11 @@ class Stage2Model(nn.Module, metaclass=abc.ABCMeta):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
+    @abc.abstractmethod
+    def get_recon_imgs(self, *args, **kwargs):
+        """
+        don't actually need this, but for the sake of consistency
+        """
+        pass
     def get_block_size(self):
         return self.block_size

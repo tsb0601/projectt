@@ -13,6 +13,8 @@ tokenizers>=0.10.2
 ftfy
 regex
 datadings
+diffusers
+timm
 transformers
 pycocotools
 git+https://github.com/openai/CLIP.git

@@ -158,6 +158,9 @@ class TrainerTemplate:
             )  # make sure we save the model properly without stuck
 
     def save_ckpt(self, optimizer, scheduler, epoch):
+        """
+        should be overrided, but this is a working default
+        """
         ckpt_path = os.path.join(self.config.result_path, "epoch%d_model.pt" % epoch)
         logger.info("epoch: %d, saving %s", epoch, ckpt_path)
         ckpt = {
