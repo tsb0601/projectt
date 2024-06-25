@@ -69,7 +69,6 @@ def master_only(func):
 def print_master(*args, **kwargs):
     print(*args, **kwargs)
 if __name__ == '__main__':
-
     config, logger, writer = setup(args, extra_args)
     distenv = config.runtime.distenv
     device = xm.xla_device()
@@ -79,8 +78,7 @@ if __name__ == '__main__':
     print_master(f'loaded dataset of {config.dataset.type}...')
     print_master(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
     print_master(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
-    
-    model, model_ema = create_model(config.arch, ema=config.arch.ema ,stage = 2)
+    model, model_ema = create_model(config.arch, ema=config.arch.ema, stage = 2)
     model = model.to(device)
     if model_ema:
         model_ema = model_ema.to(device)

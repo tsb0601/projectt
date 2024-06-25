@@ -15,9 +15,14 @@
 import abc
 
 from torch import nn
+import torch
 
+class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
+    """
+    an abstract class for STage1 and Stage2 models
+    """
 
-class Stage1Model(nn.Module, metaclass=abc.ABCMeta):
+class Stage1Model(XLA_Model):
 
     #@abc.abstractmethod
     #def get_codes(self, *args, **kwargs):
@@ -34,7 +39,16 @@ class Stage1Model(nn.Module, metaclass=abc.ABCMeta):
         """Scales the real and recon images properly.
         """
         pass
-
+    @abc.abstractmethod
+    def encode(self, *args, **kwargs):
+        """Encode the input image to the latent space.
+        """
+        pass
+    @abc.abstractmethod
+    def decode(self, *args, **kwargs):
+        """Decode the latent code to the image space.
+        """
+        pass
     @abc.abstractmethod
     def compute_loss(self, *args, **kwargs):
         """Compute the losses necessary for training.
@@ -54,7 +68,7 @@ class Stage1Model(nn.Module, metaclass=abc.ABCMeta):
         """
         pass
 
-class Stage2Model(nn.Module, metaclass=abc.ABCMeta):
+class Stage2Model(XLA_Model):
     """A template for the Stage2 model."""
     
     @abc.abstractmethod
@@ -62,27 +76,32 @@ class Stage2Model(nn.Module, metaclass=abc.ABCMeta):
         """Compute the losses necessary for training.
         Typically, it would be the cross-entropy of the AR prediction w.r.t. the ground truth.
         """
-        pass
-    @property
-    @abc.abstractmethod
-    def stage_1_forward(self, *args, **kwargs):
-        """
-        The forward pass of the stage 1 model. This is to remind you you should always have a stage1 model here.
-        """
-        pass
-    def _init_weights(self, module):
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            module.weight.data.normal_(mean=0.0, std=0.02)
-            if isinstance(module, nn.Linear) and module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
+        raise NotImplementedError
     @abc.abstractmethod
     def get_recon_imgs(self, *args, **kwargs):
         """
         don't actually need this, but for the sake of consistency
         """
-        pass
+        raise NotImplementedError
     def get_block_size(self):
-        return self.block_size
+        raise NotImplementedError
+
+class Stage2ModelWrapper(XLA_Model):
+    """
+    Wrap a Stage2 model with a Stage1 model.
+    """
+    def __init__(self, stage_1_model: Stage1Model, stage_2_model: Stage2Model):
+        super().__init__()
+        self.stage_1_model = stage_1_model
+        self.stage_2_model = stage_2_model
+        self.stage_1_model.requires_grad_(False) # freeze the stage 1 model
+
+    def forward(self, *args, **kwargs):
+        with torch.no_grad():
+            stage_1_output = self.stage_1_model(*args, **kwargs)
+        stage_2_output = self.stage_2_model(*stage_1_output, *args, **kwargs)
+        return stage_2_output
+    def compute_loss(self, *args, **kwargs):
+        return self.stage_2_model.compute_loss(*args, **kwargs)
+    def get_recon_imgs(self, *args, **kwargs):
+        return self.stage_2_model.get_recon_imgs(*args, **kwargs)
