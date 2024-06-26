@@ -153,8 +153,10 @@ class TrainerTemplate:
         scaler = GradScaler() if self.config.experiment.amp else None
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
+            if i % self.config.experiment.save_ckpt_freq == 0:
+                self.save_ckpt(optimizer, scheduler, i + 1)
             summary_trn = self.train(optimizer, scheduler, scaler, epoch=i)
-            if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
+            if (i + 1) % self.config.experiment.test_freq == 0:
                 summary_val = self.eval(epoch=i)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i)
@@ -174,8 +176,6 @@ class TrainerTemplate:
                             epoch=i + 1,
                             mode="valid_ema",
                         )
-                if (i + 1) % self.config.experiment.save_ckpt_freq == 0:
-                    self.save_ckpt(optimizer, scheduler, i + 1)
             xm.rendezvous(
                 "epoch_sync"
             )  # make sure we save the model properly without stuck
@@ -194,4 +194,4 @@ class TrainerTemplate:
         }
         if self.model_ema is not None:
             ckpt.update(state_dict_ema=self.model_ema.module.module.state_dict())
-        torch.save(ckpt, ckpt_path)
+        xm.save(ckpt, ckpt_path)

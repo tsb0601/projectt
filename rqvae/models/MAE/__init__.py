@@ -76,16 +76,16 @@ class Stage1MAE(Stage1Model):
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
-        noise = torch.arange(256).to(xm.xla_device())
-        default_id_restore = torch.arange(256).to(xm.xla_device())
+        noise = torch.arange(256)
+        default_id_restore = torch.arange(256)
         image_mean, image_std = processor.image_mean, processor.image_std
         self.register_buffer('image_mean', torch.tensor(image_mean).view(1, 3, 1, 1))
         self.register_buffer('image_std', torch.tensor(image_std).view(1, 3, 1, 1))
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
-        xm.master_print(f'Stage1MAE model loaded with mean {image_mean} and std {image_std}')
-        self.image_mean = self.image_mean.to(xm.xla_device())
-        self.image_std = self.image_std.to(xm.xla_device())
+        print(f'Stage1MAE model loaded with mean {image_mean} and std {image_std}')
+        self.image_mean = self.image_mean
+        self.image_std = self.image_std
         #take out mean and std from processor
     def forward(self, xs:torch.Tensor)-> tuple:
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)

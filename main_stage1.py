@@ -94,13 +94,11 @@ if __name__ == '__main__':
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
 
     if not args.eval:
-        logger.info(f'train for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}, creating optimizer and scheduler...')
         optimizer = create_optimizer(model, config)
         scheduler = create_scheduler(
             optimizer, config.optimizer.warmup, steps_per_epoch,
             config.experiment.epochs, distenv
         )
-        logger.info(f'optimizer and scheduler created')
 
     disc_state_dict = None
     if not args.load_path == '' and os.path.exists(args.load_path):

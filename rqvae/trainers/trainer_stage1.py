@@ -331,14 +331,17 @@ class Trainer(TrainerTemplate):
 
     def save_ckpt(self, optimizer, scheduler, epoch):
         ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)
-        logger.info("epoch: %d, saving %s", epoch, ckpt_path)
+        self.model.eval()
+        xm.rendezvous("save_ckpt")
         ckpt = {
             'epoch': epoch,
-            'state_dict': self.model.module.state_dict(),
-            'discriminator': self.discriminator.module.state_dict(),
+            'state_dict': xm._maybe_convert_to_cpu(self.model.module.state_dict()),
+            'discriminator':xm._maybe_convert_to_cpu(self.discriminator.module.state_dict()),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict()
         }
         if self.model_ema is not None:
-            ckpt.update(state_dict_ema=self.model_ema.module.module.state_dict())
-        torch.save(ckpt, ckpt_path)
+            ckpt.update(state_dict_ema=xm._maybe_convert_to_cpu(self.model_ema.module.module.state_dict()))
+        if self.distenv.master:
+            torch.save(ckpt, ckpt_path)
+            logger.info("epoch: %d, saving %s", epoch, ckpt_path)
