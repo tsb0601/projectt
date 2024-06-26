@@ -125,6 +125,25 @@ class Trainer(TrainerTemplate):
 
         return loss_gen, loss_disc, logits_avg
     @torch.no_grad()
+    def batch_recon(self, ):
+        model = self.model
+        model.eval()
+        loader = self.wrap_loader('train')
+        for it, inputs in enumerate(loader):
+            model.zero_grad()
+            xs = inputs[0].to(self.device)
+            outputs = model(xs)
+            xs_recon = outputs[0]
+            outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
+            xm.mark_step()
+            loss_rec_lat = outputs['loss_total']
+            loss_recon = outputs['loss_recon']
+            loss_latent = outputs['loss_latent']
+            loss_pcpt = self.perceptual_loss(xs, xs_recon)
+            p_weight = self.perceptual_weight
+            loss_gen, loss_disc, logits = self.gan_loss(xs, xs_recon, mode='eval')
+            loss_pcpt *= xs.size(0)
+    @torch.no_grad()
     def eval(self, valid=True, ema=False, verbose=False, epoch=0):
         model = self.model_ema if ema else self.model
         discriminator = self.discriminator
