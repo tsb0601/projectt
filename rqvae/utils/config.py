@@ -74,7 +74,7 @@ def augment_dist_defaults(config, distenv):
 
 
 def config_setup(args, distenv, config_path, extra_args=()):
-
+    extra_config = OmegaConf.from_dotlist(extra_args)
     if args.eval:
         config = load_config(config_path)
         if hasattr(args, 'test_batch_size'):
@@ -87,16 +87,12 @@ def config_setup(args, distenv, config_path, extra_args=()):
         if distenv.world_size != config.runtime.distenv.world_size:
             raise ValueError("world_size not identical to the resuming config")
         config.runtime = {'args': vars(args), 'distenv': distenv}
-
     else:  # training
         config_path = args.model_config
         config = load_config(config_path)
-
-        extra_config = OmegaConf.from_dotlist(extra_args)
         config = OmegaConf.merge(config, extra_config)
         config = augment_dist_defaults(config, distenv)
 
         config.seed = args.seed
-        config.runtime = {'args': vars(args), 'extra_config': extra_config, 'distenv': distenv}
-
+    config.runtime = {'args': vars(args), 'extra_config': extra_config, 'distenv': distenv}
     return config

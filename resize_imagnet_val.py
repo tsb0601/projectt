@@ -23,9 +23,11 @@ def main():
     img_list = get_all_image_under_dir(target_img_dir)
     print(f'Found {len(img_list)} images in {target_img_dir}')
     for img_path in tqdm(img_list):
-        img = Image.open(img_path)
+        img = Image.open(img_path).convert('RGB')
         img = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.BILINEAR)
         img_name = os.path.basename(img_path)
+        #change suffix to png
+        img_name = img_name.split('.')[0] + '.png'
         save_path = os.path.join(save_dir, img_name)
         img.save(save_path)
         

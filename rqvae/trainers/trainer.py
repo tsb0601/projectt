@@ -16,13 +16,13 @@ import os
 import logging
 
 import torch
-
+from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader
 from torch.cuda.amp import GradScaler
 from torch_xla.distributed.parallel_loader import ParallelLoader
 import torch.distributed as dist
 import torch_xla.core.xla_model as xm
-
+from PIL import Image
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
@@ -78,7 +78,8 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
-            drop_last=True # very important for xla
+            drop_last=True, # very important for xla to avoid dynamic shape
+            collate_fn=self.dataset_trn.collate_fn if hasattr(self.dataset_trn, 'collate_fn') else None
         )
 
         self.sampler_val = torch.utils.data.distributed.DistributedSampler(
@@ -94,7 +95,8 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
-            drop_last=True # very important for xla
+            drop_last=True, # very important for xla to avoid dynamic shape
+            collate_fn=self.dataset_val.collate_fn if hasattr(self.dataset_val, 'collate_fn') else None
         )
         if self.distenv.master:
             logger.info(
@@ -126,6 +128,27 @@ class TrainerTemplate:
             if self.distenv.master:
                 print(f"[!] NO TPU: using normal loader for validation")
         return loader
+    @torch.no_grad()
+    def batch_infer(self, valid:bool = True , save_root:str=None):
+        assert os.path.exists(save_root), f"save_root {save_root} does not exist"
+        model = self.model
+        model.eval()
+        loader = self.wrap_loader('valid' if valid else 'train')
+        pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
+        for it, inputs in pbar:
+            model.zero_grad()
+            xs = inputs[0].to(self.device)
+            img_paths = inputs[1]
+            outputs = model(xs)
+            xs_recon_or_gen = outputs[0]
+            xm.mark_step()
+            for i, img_path in enumerate(img_paths):
+                img_name = os.path.basename(img_path)
+                save_path = os.path.join(save_root, img_name)
+                img = xs_recon_or_gen[i].to(torch.float32).cpu().clamp(0, 1).numpy() 
+                img = (img * 255).astype('uint8').transpose(1, 2, 0)
+                img = Image.fromarray(img)
+                img.save(save_path)
     def run_epoch(self, optimizer=None, scheduler=None, epoch_st=0):
         scaler = GradScaler() if self.config.experiment.amp else None
         for i in range(epoch_st, self.config.experiment.epochs):

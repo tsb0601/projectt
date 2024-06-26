@@ -26,8 +26,8 @@ def create_transforms(config, split='train', is_eval=False):
             ]
         else:
             transforms_ = [
-                transforms.Resize(256),
-                transforms.CenterCrop(256),
+                #transforms.Resize(256),
+                #transforms.CenterCrop(256),
                 transforms.Resize((256, 256)),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])

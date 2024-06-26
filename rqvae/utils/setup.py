@@ -55,8 +55,8 @@ def setup(args, extra_args=()):
     now = datetime.now().strftime('%d%m%Y_%H%M%S')
 
     if args.eval:
-        config_path = Path(args.result_path).joinpath('config.yaml')
-        log_path = Path(args.result_path).joinpath('val', now)
+        config_path = Path(args.model_config).absolute()
+        log_path = Path('./logs/tmp').joinpath(now)
 
     elif args.resume:
         load_path = Path(args.load_path)

@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet_recon
   transforms:
     type: imagenet256x256
 
@@ -7,28 +7,15 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
+    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256_ft_lpips_gan'
   checkpointing: false
   ema: 0.114514
 optimizer:
-  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
-  type: adamw
-  init_lr: 2.0e-4
-  weight_decay: 0.0
-  betas: [0.9, 0.95]
-  max_gn: None
-  warmup:
-    epoch: 0.5  # 5% of total epochs
-    multiplier: 1
-    buffer_epoch: 0
-    min_lr: 0.
-    mode: fix
-    start_from_zero: true
 
 experiment:
-  batch_size: 128
-  epochs: 10
-  save_ckpt_freq: 2
+  batch_size: 1
+  epochs: 1
+  save_ckpt_freq: 5
   test_freq: 1
   amp: false
 

@@ -39,7 +39,7 @@ xr.initialize_cache(cache_path, readonly=False)
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-m', '--model-config', type=str, default='./configs/c10-igpt.yaml')
-parser.add_argument('-r', '--result-path', type=str, default='./results.tmp')
+parser.add_argument('-r', '--result-path', type=str, default='./ckpt/tmp')
 parser.add_argument('-l', '--load-path', type=str, default='')
 parser.add_argument('-t', '--test-batch-size', type=int, default=200)
 parser.add_argument('-e', '--test-epoch', type=int, default=-1)
@@ -79,7 +79,6 @@ if __name__ == '__main__':
     print_master(f'loaded dataset of {config.dataset.type}...')
     print_master(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
     print_master(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
-    
     model, model_ema = create_model(config.arch, ema=config.arch.ema)
     model = model.to(device)
     if model_ema:
@@ -95,14 +94,16 @@ if __name__ == '__main__':
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
 
     if not args.eval:
+        logger.info(f'train for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}, creating optimizer and scheduler...')
         optimizer = create_optimizer(model, config)
         scheduler = create_scheduler(
             optimizer, config.optimizer.warmup, steps_per_epoch,
             config.experiment.epochs, distenv
         )
+        logger.info(f'optimizer and scheduler created')
 
     disc_state_dict = None
-    if not args.load_path == '':
+    if not args.load_path == '' and os.path.exists(args.load_path):
         ckpt = torch.load(args.load_path, map_location='cpu')
         model.load_state_dict(ckpt['state_dict'])
         disc_state_dict = ckpt.get('discriminator', None)
@@ -134,8 +135,8 @@ if __name__ == '__main__':
     print_master(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
     with torch.autocast('xla',torch.bfloat16):
         if args.eval:
-            trainer.eval(valid=False, verbose=True)
-            trainer.eval(valid=True, verbose=True)
+            #trainer.eval(valid=False, verbose=True)
+            trainer.batch_infer(valid=True, save_root=args.result_path)
             if model_ema:
                 trainer.eval(valid=True, ema=True, verbose=True)
         else:

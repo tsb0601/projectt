@@ -18,14 +18,12 @@ import torch
 from torch.utils.data import Subset
 import torchvision
 from torchvision.datasets import ImageNet,ImageFolder
-
+from .dummy import Dummy_Dataset
 from .lsun import LSUNClass
 from .ffhq import FFHQ
 from .transforms import create_transforms
 
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
-
-
 def create_dataset(config, is_eval=False, logger=None):
     transforms_trn = create_transforms(config.dataset, split='train', is_eval=is_eval)
     transforms_val = create_transforms(config.dataset, split='val', is_eval=is_eval)
@@ -37,8 +35,9 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_trn = ImageNet(root, split='train', transform=transforms_trn)
         dataset_val = ImageNet(root, split='val', transform=transforms_val)
     elif config.dataset.type == 'imagenet_recon':
-        root = root if root else 'data/imagenet'
-        dataset_val = ImageFolder(root, split='val_256', transform=transforms_val)
+        root = root if root else 'data/imagenet/val_256' # special judge
+        dataset_trn = Dummy_Dataset(root, transform=transforms_val)
+        dataset_val = Dummy_Dataset(root, transform=transforms_val)
     elif config.dataset.type == 'imagenet_test':
         root = root if root else 'data/imagenet'
         dataset_trn = ImageNet(root, split='val', transform=transforms_trn)
