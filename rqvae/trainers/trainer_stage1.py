@@ -24,6 +24,7 @@ import rqvae.utils.dist as dist_utils
 
 from .accumulator import AccmStage1WithGAN
 from .trainer import TrainerTemplate
+from header import *
 import torch_xla.core.xla_model as xm
 logger = logging.getLogger(__name__)
 import os
@@ -342,18 +343,7 @@ class Trainer(TrainerTemplate):
             k: convert_fn(v) for k,v in state_dict.items() if key_match is None or k in key_match
         }
         return state_dict
+    def _load_ckpt(self, optimizer, scheduler, epoch: int = -1):
+        return super()._load_ckpt(optimizer, scheduler, epoch, additional_attr_to_load=('discriminator',))
     def save_ckpt(self, optimizer, scheduler, epoch):
-        if self.distenv.master:
-            ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)
-            ckpt = {
-                'epoch': epoch,
-                'state_dict': self.sync_and_to_cpu(self.model.module.state_dict()),
-                'discriminator':self.sync_and_to_cpu(self.discriminator.module.state_dict()),
-                'optimizer': self.sync_and_to_cpu(optimizer.state_dict()),
-                'scheduler': self.sync_and_to_cpu(scheduler.state_dict())
-            }
-            if self.model_ema is not None:
-                ckpt.update(state_dict_ema=self.sync_and_to_cpu(self.model_ema.module.module.state_dict()))
-            torch.save(ckpt, ckpt_path)
-            logger.info("epoch: %d, saving %s", epoch, ckpt_path)
-            
+        return super().save_ckpt(optimizer, scheduler, epoch, additional_attr_to_save=('discriminator',))

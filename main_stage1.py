@@ -101,23 +101,6 @@ if __name__ == '__main__':
         )
 
     disc_state_dict = None
-    if not args.load_path == '' and os.path.exists(args.load_path):
-        ckpt = torch.load(args.load_path, map_location='cpu')
-        keys = model.load_state_dict(ckpt['state_dict'], strict=False) # allow loading partial model
-        print_master(f'keys that are not loaded: {keys}')
-        disc_state_dict = ckpt.get('discriminator', None)
-        if model_ema:
-            model_ema.load_state_dict(ckpt['state_dict_ema'], strict=False) # allow loading partial model
-        
-        if args.resume:
-            optimizer.load_state_dict(ckpt['optimizer'])
-            scheduler.load_state_dict(ckpt['scheduler'])
-            epoch_st = ckpt['epoch']
-            
-        if distenv.master:
-            logger.info(f'{args.load_path} model is loaded')
-            if args.resume:
-                logger.info(f'Optimizer, scheduelr, and epoch is resumed')
     print_master(f'[!]model loaded')
     if distenv.master:
         print(model)
@@ -130,6 +113,13 @@ if __name__ == '__main__':
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
                       device, distenv, disc_state_dict=disc_state_dict)
     print_master(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
+    if not args.load_path == '' and os.path.exists(args.load_path):
+        if args.resume:
+            trainer._load_ckpt(args.load_path, optimizer, scheduler)
+        else:
+            trainer._load_model_only(args.load_path)
+        xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
+        xm.mark_step()
     with torch.autocast('xla',torch.bfloat16):
         if args.eval:
             #trainer.eval(valid=False, verbose=True)
