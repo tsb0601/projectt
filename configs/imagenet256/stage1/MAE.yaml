@@ -29,7 +29,7 @@ experiment:
   batch_size: 128
   epochs: 10
   save_ckpt_freq: 1
-  test_freq: 100
+  test_freq: 1
   amp: false
 
 gan:
@@ -60,6 +60,6 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: 0.75
+    disc_weight: 1.0
     perceptual_weight: 1.0
-    disc_start: 0
+    disc_start: 1000

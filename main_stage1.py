@@ -103,10 +103,11 @@ if __name__ == '__main__':
     disc_state_dict = None
     if not args.load_path == '' and os.path.exists(args.load_path):
         ckpt = torch.load(args.load_path, map_location='cpu')
-        model.load_state_dict(ckpt['state_dict'])
+        keys = model.load_state_dict(ckpt['state_dict'], strict=False) # allow loading partial model
+        print_master(f'keys that are not loaded: {keys}')
         disc_state_dict = ckpt.get('discriminator', None)
         if model_ema:
-            model_ema.load_state_dict(ckpt['state_dict_ema'])
+            model_ema.load_state_dict(ckpt['state_dict_ema'], strict=False) # allow loading partial model
         
         if args.resume:
             optimizer.load_state_dict(ckpt['optimizer'])
@@ -121,10 +122,8 @@ if __name__ == '__main__':
     if distenv.master:
         print(model)
         compute_model_size(model, logger)
-
     if distenv.master and not args.eval:
         logger.info(optimizer.__repr__())
-
     model = dist_utils.dataparallel_and_sync(distenv, model)
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)

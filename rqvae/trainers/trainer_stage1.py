@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 import os
 DEBUG = bool(os.environ.get("DEBUG", 0))
 import time # for debugging
-
+from typing import *
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
     g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
@@ -144,6 +144,7 @@ class Trainer(TrainerTemplate):
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
+            xm.master_print(f"[!]outputs: {outputs}")
             xm.mark_step()
             loss_rec_lat = outputs['loss_total']
             loss_recon = outputs['loss_recon']
@@ -178,9 +179,8 @@ class Trainer(TrainerTemplate):
                         count=xs.shape[0],
                         sync=True,
                         distenv=self.distenv)
-            line = accm.get_summary().print_line() # moving this into the below if block would cause forever hanging... don't know why
-            if self.distenv.master:
-                pbar.set_description(line)
+            line = accm.get_summary().print_line() # moving this into master only would cause forever hanging... don't know why
+            pbar.set_description(line)
         line = accm.get_summary(n_inst).print_line() 
         if self.distenv.master and verbose:
             mode = "valid" if valid else "train"
@@ -306,42 +306,54 @@ class Trainer(TrainerTemplate):
 
         if mode == 'train':
             self.writer.add_scalar('lr', scheduler.get_last_lr()[0], mode, epoch)
-
         line = f"""ep:{epoch}, {mode:10s}, """
         line += summary.print_line()
         line += f""", """
         if scheduler:
             line += f"""lr: {scheduler.get_last_lr()[0]:e}"""
-
         logger.info(line)
 
     @torch.no_grad()
     def reconstruct(self, xs, epoch, mode='valid'):
         model = self.model_ema if 'ema' in mode else self.model
         model.eval()
-
         xs_real = xs[:16]
         xs_recon = model(xs_real)[0]
         xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
-
         grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
         grid = torchvision.utils.make_grid(grid, nrow=8)
         self.writer.add_image('reconstruction', grid, mode, epoch)
-
-
-    def save_ckpt(self, optimizer, scheduler, epoch):
-        ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)
-        self.model.eval()
-        xm.rendezvous("save_ckpt")
-        ckpt = {
-            'epoch': epoch,
-            'state_dict': xm._maybe_convert_to_cpu(self.model.module.state_dict()),
-            'discriminator':xm._maybe_convert_to_cpu(self.discriminator.module.state_dict()),
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict()
+    def sync_and_to_cpu(self, state_dict, key_match:Optional[dict] = None):
+        """
+        """
+        def convert_fn(item):
+            if isinstance(item, torch.Tensor):
+                item = xm._maybe_convert_to_cpu(item)
+                return item
+            elif isinstance(item, dict):
+                return {k: convert_fn(v) for k,v in item.items()}
+            elif isinstance(item, list):
+                return [convert_fn(v) for v in item]
+            elif isinstance(item, tuple):
+                return tuple(convert_fn(v) for v in item)
+            else:
+                return item
+        state_dict = {
+            k: convert_fn(v) for k,v in state_dict.items() if key_match is None or k in key_match
         }
-        if self.model_ema is not None:
-            ckpt.update(state_dict_ema=xm._maybe_convert_to_cpu(self.model_ema.module.module.state_dict()))
+        return state_dict
+    def save_ckpt(self, optimizer, scheduler, epoch):
         if self.distenv.master:
+            ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)
+            ckpt = {
+                'epoch': epoch,
+                'state_dict': self.sync_and_to_cpu(self.model.module.state_dict()),
+                'discriminator':self.sync_and_to_cpu(self.discriminator.module.state_dict()),
+                'optimizer': self.sync_and_to_cpu(optimizer.state_dict()),
+                'scheduler': self.sync_and_to_cpu(scheduler.state_dict())
+            }
+            if self.model_ema is not None:
+                ckpt.update(state_dict_ema=self.sync_and_to_cpu(self.model_ema.module.module.state_dict()))
             torch.save(ckpt, ckpt_path)
             logger.info("epoch: %d, saving %s", epoch, ckpt_path)
+            

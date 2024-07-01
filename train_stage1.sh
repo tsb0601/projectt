@@ -16,4 +16,5 @@ env | grep PJRT
 env | grep DEBUG
 torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 main_stage1.py \
     -m=configs/imagenet256/stage1/MAE.yaml \
-    -r=$SAVE_DIR
+    -r=$SAVE_DIR \
+    -l=/home/bytetriper/VAE-enhanced/ckpt/MAE_256_ft/MAE/24062024_045030/epoch25_model.pt 

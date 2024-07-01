@@ -156,16 +156,21 @@ class TrainerTemplate:
             if i % self.config.experiment.save_ckpt_freq == 0:
                 self.save_ckpt(optimizer, scheduler, i + 1)
             summary_trn = self.train(optimizer, scheduler, scaler, epoch=i)
-            if (i + 1) % self.config.experiment.test_freq == 0:
+            xm.mark_step()
+            xm.master_print("epoch: %d, training done" % (i + 1))
+            if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
+                xm.master_print("epoch: %d, start validation" % (i + 1))
                 summary_val = self.eval(epoch=i)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i)
-
+            xm.master_print("epoch: %d, validation done" % (i + 1))
             if self.distenv.master:
+                xm.master_print("epoch: %d, logging" % (i + 1))
                 self.logging(
                     summary_trn, scheduler=scheduler, epoch=i + 1, mode="train"
                 )
                 if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
+                    xm.master_print("epoch: %d, logging validation" % (i + 1))
                     self.logging(
                         summary_val, scheduler=scheduler, epoch=i + 1, mode="valid"
                     )
@@ -176,6 +181,7 @@ class TrainerTemplate:
                             epoch=i + 1,
                             mode="valid_ema",
                         )
+            xm.master_print("epoch: %d, logging done" % (i + 1))
             xm.rendezvous(
                 "epoch_sync"
             )  # make sure we save the model properly without stuck
