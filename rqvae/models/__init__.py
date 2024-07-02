@@ -20,6 +20,7 @@ import torch.distributed as dist
 from rqvae.models.interfaces import XLA_Model, Stage2ModelWrapper
 from omegaconf import DictConfig
 from typing import Optional, Tuple
+import torch
 DEBUGING = os.environ.get('DEBUG', False)
 from .utils import *
 def xm_step_every_layer(model:nn.Module):
@@ -55,4 +56,7 @@ def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XL
         model_ema.update(model, step=-1)
     model: XLA_Model
     model_ema: Optional[ExponentialMovingAverage]
+    model = model.to(torch.bfloat16)
+    if use_ema:
+        model_ema = model_ema.to(torch.bfloat16)
     return model, model_ema

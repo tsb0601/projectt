@@ -141,7 +141,7 @@ class Trainer(TrainerTemplate):
         discriminator.eval()
         for it, inputs in pbar:
             model.zero_grad()
-            xs = inputs[0].to(self.device)
+            xs = inputs[0].to(self.device).to(self.dtype)
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
@@ -214,7 +214,7 @@ class Trainer(TrainerTemplate):
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
             model.zero_grad(set_to_none=True)
-            xs = inputs[0].to(self.device, non_blocking=True)
+            xs = inputs[0].to(self.device).to(self.dtype)
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs)
@@ -291,7 +291,7 @@ class Trainer(TrainerTemplate):
                 if (global_iter+1) % 250 == 0:
                     xs_real, xs_recon = model.module.get_recon_imgs(xs[:16], xs_recon[:16])
                     grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=8)
+                    grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float() # prep to numpy
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
 
         summary = accm.get_summary()
@@ -304,7 +304,6 @@ class Trainer(TrainerTemplate):
             self.reconstruct(summary['xs'], epoch, mode)
         for key, value in summary.metrics.items():
             self.writer.add_scalar(f'loss/{key}', summary[key], mode, epoch)
-
         if mode == 'train':
             self.writer.add_scalar('lr', scheduler.get_last_lr()[0], mode, epoch)
         line = f"""ep:{epoch}, {mode:10s}, """
@@ -322,28 +321,11 @@ class Trainer(TrainerTemplate):
         xs_recon = model(xs_real)[0]
         xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
         grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
-        grid = torchvision.utils.make_grid(grid, nrow=8)
+        grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float() # prep to numpy
         self.writer.add_image('reconstruction', grid, mode, epoch)
-    def sync_and_to_cpu(self, state_dict, key_match:Optional[dict] = None):
-        """
-        """
-        def convert_fn(item):
-            if isinstance(item, torch.Tensor):
-                item = xm._maybe_convert_to_cpu(item)
-                return item
-            elif isinstance(item, dict):
-                return {k: convert_fn(v) for k,v in item.items()}
-            elif isinstance(item, list):
-                return [convert_fn(v) for v in item]
-            elif isinstance(item, tuple):
-                return tuple(convert_fn(v) for v in item)
-            else:
-                return item
-        state_dict = {
-            k: convert_fn(v) for k,v in state_dict.items() if key_match is None or k in key_match
-        }
-        return state_dict
     def _load_ckpt(self, optimizer, scheduler, epoch: int = -1):
         return super()._load_ckpt(optimizer, scheduler, epoch, additional_attr_to_load=('discriminator',))
+    def _load_model_only(self, load_path, additional_attr_to_load=('discriminator',), load_from_master=True):
+        return super()._load_model_only(load_path, additional_attr_to_load, load_from_master)
     def save_ckpt(self, optimizer, scheduler, epoch):
         return super().save_ckpt(optimizer, scheduler, epoch, additional_attr_to_save=('discriminator',))

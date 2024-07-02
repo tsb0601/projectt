@@ -60,9 +60,6 @@ def setup(args, extra_args=()):
 
     elif args.resume:
         load_path = Path(args.load_path)
-        if not load_path.is_file():
-            raise ValueError("load_path must be a valid filename")
-
         config_path = load_path.parent.joinpath('config.yaml').absolute()
         log_path = load_path.parent.parent.joinpath(now)
 
@@ -75,7 +72,7 @@ def setup(args, extra_args=()):
 
     config = config_setup(args, distenv, config_path, extra_args=extra_args)
     config.result_path = log_path.absolute().resolve().as_posix()
-
+    config.load_path = args.load_path
     if distenv.master:
         if not log_path.exists():
             os.makedirs(log_path)

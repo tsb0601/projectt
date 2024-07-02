@@ -56,7 +56,7 @@ class TrainerTemplate:
         self.model = model
         self.model_ema = model_ema
         self.model_aux = model_aux
-
+        self.dtype = self.model.module.get_last_layer().dtype
         self.config = config
         self.writer = writer
         self.device = device
@@ -158,20 +158,15 @@ class TrainerTemplate:
                 self.save_ckpt(optimizer, scheduler, i + 1)
             summary_trn = self.train(optimizer, scheduler, scaler, epoch=i)
             xm.mark_step()
-            xm.master_print("epoch: %d, training done" % (i + 1))
             if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
-                xm.master_print("epoch: %d, start validation" % (i + 1))
                 summary_val = self.eval(epoch=i)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i)
-            xm.master_print("epoch: %d, validation done" % (i + 1))
             if self.distenv.master:
-                xm.master_print("epoch: %d, logging" % (i + 1))
                 self.logging(
                     summary_trn, scheduler=scheduler, epoch=i + 1, mode="train"
                 )
                 if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
-                    xm.master_print("epoch: %d, logging validation" % (i + 1))
                     self.logging(
                         summary_val, scheduler=scheduler, epoch=i + 1, mode="valid"
                     )
@@ -182,28 +177,32 @@ class TrainerTemplate:
                             epoch=i + 1,
                             mode="valid_ema",
                         )
-            xm.master_print("epoch: %d, logging done" % (i + 1))
             xm.rendezvous(
                 "epoch_sync"
             )  # make sure we save the model properly without stuck
-    def _load_model_only(self):
-        global CKPT_FOLDER, MODEL_NAME, EMA_MODEL_NAME
-        rank = self.distenv.local_rank
-        load_path = self.config.load_path
+        self.save_ckpt(optimizer, scheduler, -1 )# last ckpt
+    def _load_model_only(self, load_path, additional_attr_to_load:tuple = (), load_from_master:bool = True):
+        global CKPT_FOLDER, MODEL_NAME, EMA_MODEL_NAME, ADDIONTIONAL_NAME
+        rank = self.distenv.local_rank if not load_from_master else 0 # load from master (rank:0)
         model_path = os.path.join(load_path, MODEL_NAME.format(rank))
         model_weight = torch.load(model_path) # to xla directly
-        self.model.load_state_dict(model_weight)
+        self.model.module.load_state_dict(model_weight)
         if self.model_ema:
             ema_model_path = os.path.join(load_path, EMA_MODEL_NAME.format(rank))
             if os.path.exists(ema_model_path):
                 ema_model_weight = torch.load(ema_model_path)
-                self.model_ema.load_state_dict(ema_model_weight)
+                self.model_ema.module.load_state_dict(ema_model_weight)
             else:
                 xm.master_print(f"[!] EMA model path {ema_model_path} does not exist, skip loading EMA model")
-    def _load_ckpt(self, optimizer, scheduler, additional_attr_to_load:tuple = ()):
+        additional_path = os.path.join(load_path, ADDIONTIONAL_NAME.format(rank))
+        additional_attr_ckpt = torch.load(additional_path)
+        for attr in additional_attr_to_load:
+            assert attr in additional_attr_ckpt, f"additional_attr_to_load {attr} not in additional_attr_ckpt"
+            assert hasattr(self, attr), f"self does not have attribute {attr}"
+            getattr(self, attr).module.load_state_dict(additional_attr_ckpt[attr])
+    def _load_ckpt(self,load_path, optimizer, scheduler, additional_attr_to_load:tuple = (), load_from_master:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME
-        rank = self.distenv.local_rank
-        load_path = self.config.load_path
+        rank = self.distenv.local_rank if not load_from_master else 0
         ckpt_folder = load_path
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
@@ -212,23 +211,44 @@ class TrainerTemplate:
         model_weight = torch.load(model_path)
         optimizer_weight = torch.load(opt_path)
         scheduler_weight = torch.load(sch_path)
-        additional_attr_ckpt = torch.load(additional_path) if len(additional_attr_to_load) > 0 else {}
-        self.model.load_state_dict(model_weight)
+        additional_attr_ckpt = torch.load(additional_path)
+        self.model.module.load_state_dict(model_weight)
         optimizer.load_state_dict(optimizer_weight)
         scheduler.load_state_dict(scheduler_weight)
-        assert additional_attr_to_load.keys() == additional_attr_ckpt.keys(), f"additional_attr_to_load keys {additional_attr_to_load.keys()} != additional_attr_ckpt keys {additional_attr_ckpt.keys()}"
         for attr in additional_attr_to_load:
-            getattr(self, attr).load_state_dict(additional_attr_ckpt[attr])
+            assert attr in additional_attr_ckpt, f"additional_attr_to_load {attr} not in additional_attr_ckpt"
+            assert hasattr(self, attr), f"self does not have attribute {attr}"
+            getattr(self, attr).module.load_state_dict(additional_attr_ckpt[attr])
         if self.model_ema:
             ema_model_path = os.path.join(ckpt_folder, EMA_MODEL_NAME.format(rank))
             if os.path.exists(ema_model_path):
                 ema_model_weight = torch.load(ema_model_path)
-                self.model_ema.load_state_dict(ema_model_weight)
+                self.model_ema.module.load_state_dict(ema_model_weight)
             else:
                 xm.master_print(f"[!] EMA model path {ema_model_path} does not exist, skip loading EMA model")
-            
-    def save_ckpt(self, optimizer, scheduler, epoch, additional_attr_to_save:tuple = ()):
+    def sync_and_to_cpu(self, state_dict, key_match:Optional[dict] = None):
+        """
+        """
+        def convert_fn(item):
+            if isinstance(item, torch.Tensor):
+                item = xm._maybe_convert_to_cpu(item).to(torch.float32) # to cpu and float32
+                return item
+            elif isinstance(item, dict):
+                return {k: convert_fn(v) for k,v in item.items()}
+            elif isinstance(item, list):
+                return [convert_fn(v) for v in item]
+            elif isinstance(item, tuple):
+                return tuple(convert_fn(v) for v in item)
+            else:
+                return item
+        state_dict = {
+            k: convert_fn(v) for k,v in state_dict.items() if key_match is None or k in key_match
+        }
+        return state_dict
+    def save_ckpt(self, optimizer, scheduler, epoch, additional_attr_to_save:tuple = (), master_only:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME
+        if master_only and not self.distenv.master:
+            return
         epoch = 'last' if epoch == -1 else epoch
         rank = self.distenv.local_rank
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
@@ -237,23 +257,18 @@ class TrainerTemplate:
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
         additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
         os.makedirs(ckpt_folder, exist_ok=True)
-        model_weight = self.model.state_dict()
-        optimizer_weight = optimizer.state_dict()
-        scheduler_weight = scheduler.state_dict()
+        model_weight = self.sync_and_to_cpu(self.model.module.state_dict())
+        optimizer_weight = self.sync_and_to_cpu(optimizer.state_dict())
+        scheduler_weight = self.sync_and_to_cpu(scheduler.state_dict())
         additional_attr_ckpt = {}
         for attr in additional_attr_to_save:
-            additional_attr_ckpt[attr] = getattr(self, attr).state_dict()
-        #xm.save(model_weight, model_path,master_only=False)
-        #xm.save(optimizer_weight, opt_path,master_only=False)
-        #xm.save(scheduler_weight, sch_path,master_only=False)
+            additional_attr_ckpt[attr] = self.sync_and_to_cpu(getattr(self, attr).module.state_dict())
         torch.save(model_weight, model_path)
         torch.save(optimizer_weight, opt_path)
         torch.save(scheduler_weight, sch_path)
         if len(additional_attr_ckpt) > 0:
             torch.save(additional_attr_ckpt, additional_path)
-            #xm.save(additional_attr_ckpt, additional_path,master_only=False)
         if self.model_ema:
             ema_model_path = os.path.join(ckpt_folder, EMA_MODEL_NAME.format(rank))
             ema_model_weight = self.model_ema.state_dict()
-            #xm.save(ema_model_weight, ema_model_path,master_only=False)
             torch.save(ema_model_weight, ema_model_path)

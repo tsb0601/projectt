@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 import torch_xla as xla
 import torch_xla.core.xla_model as xm
-
+from typing import *
 
 ## For saving and loading checkpoints ##
 CKPT_FOLDER = 'ep_{}-checkpoint/' # epoch

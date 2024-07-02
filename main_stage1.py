@@ -116,18 +116,24 @@ if __name__ == '__main__':
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
+            #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
+            epoch_st = args.load_path.split('/')[-2].split('-')[0].split('_')[-1]
+            if epoch_st == 'last':
+                xm.master_print(f'[!]model already trained complete, exit')
+                exit()
+            epoch_st = int(epoch_st) - 1 # actual epoch to start
+
         else:
             trainer._load_model_only(args.load_path)
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
-    with torch.autocast('xla',torch.bfloat16):
-        if args.eval:
-            #trainer.eval(valid=False, verbose=True)
-            trainer.batch_infer(valid=True, save_root=args.result_path)
-            if model_ema:
-                trainer.eval(valid=True, ema=True, verbose=True)
-        else:
-            trainer.run_epoch(optimizer, scheduler, epoch_st)
+    if args.eval:
+        #trainer.eval(valid=False, verbose=True)
+        trainer.batch_infer(valid=True, save_root=args.result_path)
+        if model_ema:
+            trainer.eval(valid=True, ema=True, verbose=True)
+    else:
+        trainer.run_epoch(optimizer, scheduler, epoch_st)
 
     dist.barrier()
 
