@@ -61,18 +61,17 @@ class Trainer(TrainerTemplate):
             stage_1_output, stage_2_output = model(xs)
             zs = stage_1_output[0]
             zs_pred = stage_2_output[0]
-            outputs = model.module.compute_loss(zs_pred, zs, *stage_1_output[1:], *stage_2_output[1:], xs=xs)
+            outputs = model.module.compute_loss(zs_pred, zs, *stage_1_output[1:], *stage_2_output[1:], xs=xs, valid=True)
             xm.mark_step()
-            loss_gen = outputs['loss_total']            # logging
+            loss_gen = outputs['loss_total'] # logging
             loss_total = loss_gen
             metrics = dict(loss_total=loss_total)
             accm.update(metrics,
-                        count=xs.shape[0],
+                        count=1,
                         sync=True,
                         distenv=self.distenv)
-            line = accm.get_summary().print_line() # moving this into the below if block would cause forever hanging... don't know why
-            if self.distenv.master:
-                pbar.set_description(line)
+            line = accm.get_summary().print_line()
+            pbar.set_description(line)
         line = accm.get_summary(n_inst).print_line() 
         if self.distenv.master and verbose:
             mode = "valid" if valid else "train"
@@ -146,7 +145,7 @@ class Trainer(TrainerTemplate):
                     zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size])
                     print(zs.shape, zs_pred.shape)
                     grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2)
+                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2).detach().cpu().float()
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
         summary = accm.get_summary()
         summary['zs'] = zs
@@ -183,19 +182,11 @@ class Trainer(TrainerTemplate):
         zs_recon = model.module.stage_2_model(zs_real)[0]
         zs_real, zs_recon = model.module.get_recon_imgs(zs_real, zs_recon)
         grid = torch.cat([zs_real[:max_shard_size//2], zs_recon[:max_shard_size//2], zs_real[max_shard_size//2:], zs_recon[max_shard_size//2:]], dim=0)
-        grid = torchvision.utils.make_grid(grid, nrow=8)
+        grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float()
         self.writer.add_image('reconstruction', grid, mode, epoch)
-
-
+    def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
+        return super()._load_ckpt(optimizer, scheduler, epoch,load_from_master=load_from_master)
+    def _load_model_only(self, load_path, load_from_master=False):
+        return super()._load_model_only(load_path, load_from_master=load_from_master)
     def save_ckpt(self, optimizer, scheduler, epoch):
-        ckpt_path = os.path.join(self.config.result_path, 'epoch%d_model.pt' % epoch)
-        logger.info("epoch: %d, saving %s", epoch, ckpt_path)
-        ckpt = {
-            'epoch': epoch,
-            'state_dict': self.model.module.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict()
-        }
-        if self.model_ema is not None:
-            ckpt.update(state_dict_ema=self.model_ema.module.module.state_dict())
-        torch.save(ckpt, ckpt_path)
+        return super().save_ckpt(optimizer, scheduler, epoch)

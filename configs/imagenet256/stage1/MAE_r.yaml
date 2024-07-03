@@ -7,18 +7,18 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256_ft_lpips_gan'
+    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256_ft'
   checkpointing: false
   ema: 0.114514
 optimizer:
 
 experiment:
-  batch_size: 1
+  batch_size: 128
   epochs: 1
-  save_ckpt_freq: 5
-  test_freq: 1
+  save_ckpt_freq: 1000
+  test_freq: 1000
   amp: false
-
+  
 gan:
   disc:
     arch:
@@ -47,6 +47,6 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: 0.75
+    disc_weight: 1.0
     perceptual_weight: 1.0
-    disc_start: 0
+    disc_start: 1000

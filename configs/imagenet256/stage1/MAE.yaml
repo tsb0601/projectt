@@ -38,7 +38,7 @@ gan:
       in_channels: 3
       num_layers: 2
       use_actnorm: false
-      ndf: 4
+      ndf: 64
       spectral_norm: false
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
@@ -55,11 +55,11 @@ gan:
         mode: fix
         start_from_zero: true
     experiment:
-      test_freq: 10
+      test_freq: 1
       amp: false
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: 1.0
+    disc_weight: .75
     perceptual_weight: 1.0
-    disc_start: 1000
+    disc_start: 0

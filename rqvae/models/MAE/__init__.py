@@ -128,3 +128,6 @@ class Stage1MAE(Stage1Model):
         return xs , xs_recon
     def get_last_layer(self):
         return self.model.decoder.decoder_pred.weight
+    @torch.no_grad()
+    def infer(self, xs):
+        return self(xs)

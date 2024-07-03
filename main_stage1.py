@@ -57,35 +57,24 @@ parser.add_argument('--resume', action='store_true')
 args, extra_args = parser.parse_known_args()
 
 set_seed(args.seed)
-
-# def a func wrapper that only exec the func when the rank is 0
-def master_only(func):
-    def wrapper(*args, **kwargs):
-        if dist.get_rank() == 0:
-            func(*args, **kwargs)
-    return wrapper
-#use this to wrap a print
-@master_only
-def print_master(*args, **kwargs):
-    print(*args, **kwargs)
 if __name__ == '__main__':
 
     config, logger, writer = setup(args, extra_args)
     distenv = config.runtime.distenv
     device = xm.xla_device()
     print(f'Using device: {device}')
-    print_master(f'loading dataset of {config.dataset.type}...')
+    xm.master_print(f'loading dataset of {config.dataset.type}...')
     dataset_trn, dataset_val = create_dataset(config, is_eval=args.eval, logger=logger)
-    print_master(f'loaded dataset of {config.dataset.type}...')
-    print_master(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
-    print_master(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
+    xm.master_print(f'loaded dataset of {config.dataset.type}...')
+    xm.master_print(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
+    xm.master_print(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
     model, model_ema = create_model(config.arch, ema=config.arch.ema)
     model = model.to(device)
     if model_ema:
         model_ema = model_ema.to(device)
-    print_master(f'[!]model created')
+    xm.master_print(f'[!]model created')
     trainer = create_trainer(config)
-    print_master(f'[!]trainer created')
+    xm.master_print(f'[!]trainer created')
     train_epochs = config.experiment.epochs
     steps_per_epoch = math.ceil(len(dataset_trn) / (config.experiment.batch_size * distenv.world_size))
     epoch_st = 0
@@ -99,9 +88,8 @@ if __name__ == '__main__':
             optimizer, config.optimizer.warmup, steps_per_epoch,
             config.experiment.epochs, distenv
         )
-
     disc_state_dict = None
-    print_master(f'[!]model loaded')
+    xm.master_print(f'[!]model loaded')
     if distenv.master:
         print(model)
         compute_model_size(model, logger)
@@ -112,9 +100,8 @@ if __name__ == '__main__':
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
                       device, distenv, disc_state_dict=disc_state_dict)
-    print_master(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
     if not args.load_path == '' and os.path.exists(args.load_path):
-        if args.resume:
+        if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
             #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
             epoch_st = args.load_path.split('/')[-2].split('-')[0].split('_')[-1]
@@ -127,11 +114,10 @@ if __name__ == '__main__':
             trainer._load_model_only(args.load_path)
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
+    xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
     if args.eval:
         #trainer.eval(valid=False, verbose=True)
         trainer.batch_infer(valid=True, save_root=args.result_path)
-        if model_ema:
-            trainer.eval(valid=True, ema=True, verbose=True)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
 
@@ -139,3 +125,4 @@ if __name__ == '__main__':
 
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
+    dist.destroy_process_group()

@@ -21,6 +21,11 @@ class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
     """
     an abstract class for STage1 and Stage2 models
     """
+    @abc.abstractmethod
+    def infer(self, *args, **kwargs):
+        """Inference the model.
+        """
+        pass
 
 class Stage1Model(XLA_Model):
 
@@ -67,7 +72,6 @@ class Stage1Model(XLA_Model):
         """Get the last layer of the model.
         """
         pass
-
 class Stage2Model(XLA_Model):
     """A template for the Stage2 model."""
     
@@ -95,7 +99,7 @@ class Stage2ModelWrapper(XLA_Model):
         self.stage_1_model = stage_1_model
         self.stage_2_model = stage_2_model
         self.stage_1_model.requires_grad_(False) # freeze the stage 1 model
-
+        self.stage_2_model.requires_grad_(True) # train the stage 2 model
     def forward(self, *args, **kwargs):
         with torch.no_grad():
             stage_1_output = self.stage_1_model.encode(*args, **kwargs)
@@ -105,3 +109,9 @@ class Stage2ModelWrapper(XLA_Model):
         return self.stage_2_model.compute_loss(zs_pred, zs, *args, **kwargs)
     def get_recon_imgs(self, *args, **kwargs):
         return self.stage_2_model.get_recon_imgs(*args, **kwargs)
+    @torch.no_grad()
+    def infer(self, *args, **kwargs):
+        stage_2_gen = self.stage_2_model.infer(*args, **kwargs)
+        zs_gen = stage_2_gen[0]
+        stage_1_gen = self.stage_1_model.decode(zs_gen)
+        return stage_1_gen[0]

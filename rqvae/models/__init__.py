@@ -33,7 +33,7 @@ def xm_step_every_layer(model:nn.Module):
 def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
     # config: OmegaConf.DictConfig
     # config to dict for model init    
-    assert stage in [1, 2], f'[!]ERROR: Stage should be 1 or 2, but got {stage}'
+    assert stage in (1, 2), f'[!]ERROR: Stage should be 1 or 2, but got {stage}'
     use_ema = (ema != 0.114514)
     if stage == 2:
         stage_1_model,stage_1_ema = create_model(config.stage_1, ema=ema, stage=1) 

@@ -138,9 +138,9 @@ class TrainerTemplate:
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
         for it, inputs in pbar:
             model.zero_grad()
-            xs = inputs[0].to(self.device)
+            xs = inputs[0].to(self.device).to(self.dtype)
             img_paths = inputs[1]
-            outputs = model(xs)
+            outputs = model.module.infer(xs)
             xs_recon_or_gen = outputs[0]
             xm.mark_step()
             for i, img_path in enumerate(img_paths):

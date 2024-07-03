@@ -62,7 +62,7 @@ class Trainer(TrainerTemplate):
         if disc_state_dict is not None:
             disc_model.load_state_dict(disc_state_dict)
             logger.info('[state] discriminator loaded')
-        disc_model = disc_model.to(self.device)
+        disc_model = disc_model.to(self.device).to(self.dtype)
 
         self.discriminator = dist_utils.dataparallel_and_sync(self.distenv, disc_model)
         self.disc_optimizer = disc_optim
@@ -80,7 +80,6 @@ class Trainer(TrainerTemplate):
             self.get_last_layer = self.model.module.get_last_layer
         else:
             self.get_last_layer = self.model.get_last_layer
-
     def get_accm(self):
         config = self.config
 
@@ -160,11 +159,6 @@ class Trainer(TrainerTemplate):
                 loss_gen = torch.zeros((), device=self.device)
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
-    
-            loss_pcpt *= xs.size(0)  # need to be scaled with batch size
-            loss_gen *= xs.size(0)
-            loss_disc *= xs.size(0)
-            logits = {k: v * xs.size(0) for k, v in logits.items()}
 
             # logging
             loss_total = loss_rec_lat + p_weight * loss_pcpt  # rec + lat + pcpt
@@ -177,7 +171,7 @@ class Trainer(TrainerTemplate):
                             **logits,
                             )
             accm.update(metrics,
-                        count=xs.shape[0],
+                        count=1,
                         sync=True,
                         distenv=self.distenv)
             line = accm.get_summary().print_line() # moving this into master only would cause forever hanging... don't know why
@@ -323,7 +317,7 @@ class Trainer(TrainerTemplate):
         grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
         grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float() # prep to numpy
         self.writer.add_image('reconstruction', grid, mode, epoch)
-    def _load_ckpt(self, optimizer, scheduler, epoch: int = -1):
+    def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
         return super()._load_ckpt(optimizer, scheduler, epoch, additional_attr_to_load=('discriminator',))
     def _load_model_only(self, load_path, additional_attr_to_load=('discriminator',), load_from_master=True):
         return super()._load_model_only(load_path, additional_attr_to_load, load_from_master)

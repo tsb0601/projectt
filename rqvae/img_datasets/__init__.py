@@ -38,12 +38,14 @@ def create_dataset(config, is_eval=False, logger=None):
         root = root if root else 'data/imagenet/val_256' # special judge
         dataset_trn = Dummy_Dataset(root, transform=transforms_val)
         dataset_val = Dummy_Dataset(root, transform=transforms_val)
+        dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:4096])
+        dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:1024])
     elif config.dataset.type == 'imagenet_test':
         root = root if root else 'data/imagenet'
         dataset_trn = ImageNet(root, split='val', transform=transforms_trn)
         dataset_val = ImageNet(root, split='val', transform=transforms_val)
         dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:4096])
-        dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:512])
+        dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:1024])
     elif config.dataset.type == 'imagenet_u':
         root = root if root else 'data/imagenet'
         def target_transform(_):
