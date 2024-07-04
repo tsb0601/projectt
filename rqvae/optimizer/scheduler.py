@@ -14,7 +14,7 @@
 
 import math
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR
 
 
 def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None):
@@ -27,10 +27,12 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
     mode = config.mode
     start_from_zero = config.start_from_zero
 
-    scheduler = CosineAnnealingLR(
-        optimizer, T_max=final_steps - warmup_steps - buffer_steps, eta_min=min_lr
-    )
-
+    #scheduler = CosineAnnealingLR(
+    #    optimizer, T_max=final_steps - warmup_steps - buffer_steps, eta_min=min_lr
+    #)
+    decay_steps = final_steps - warmup_steps - buffer_steps
+    end_factor = 0.
+    
     if warmup_steps > 0.0:
         if mode == 'linear':
             multiplier = max(1.0, multiplier * distenv.world_size)
@@ -51,7 +53,8 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
         )
     else:
         warmup = None
-
+    start_factor = multiplier
+    scheduler = LinearLR(optimizer, start_factor, end_factor, final_steps, last_epoch=warmup_steps + buffer_steps - 1)
     scheduler = Scheduler(warmup_scheduler=warmup, after_scheduler=scheduler)
 
     return scheduler

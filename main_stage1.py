@@ -75,10 +75,12 @@ if __name__ == '__main__':
     xm.master_print(f'[!]model created')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
+    actual_batch_size = config.experiment.batch_size * distenv.world_size * config.experiment.accu_step
+    config.experiment.actual_batch_size = actual_batch_size
     train_epochs = config.experiment.epochs
-    steps_per_epoch = math.ceil(len(dataset_trn) / (config.experiment.batch_size * distenv.world_size))
+    steps_per_epoch = math.ceil(len(dataset_trn) / actual_batch_size)
     epoch_st = 0
-
+    xm.master_print(f'[!] micro_batch_size_per_core: {config.experiment.batch_size}, accu_step: {config.experiment.accu_step}, actual_batch_size: {actual_batch_size}, steps_per_epoch: {steps_per_epoch}')
     if distenv.master:
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
 

@@ -61,7 +61,8 @@ class TrainerTemplate:
         self.writer = writer
         self.device = device
         self.distenv = distenv
-
+        self.accu_step = config.experiment.accu_step
+        self.actual_batch_size = config.experiment.actual_batch_size
         self.dataset_trn = dataset_trn
         self.dataset_val = dataset_val
 
@@ -79,7 +80,7 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
-            drop_last=True, # very important for xla to avoid dynamic shape
+            drop_last=True, # very important for xla to avoid dynamic shape (sometimes)
             collate_fn=self.dataset_trn.collate_fn if hasattr(self.dataset_trn, 'collate_fn') else None
         )
 
@@ -96,7 +97,7 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
-            drop_last=True, # very important for xla to avoid dynamic shape
+            drop_last=False, # in validation, we need to make sure all data is used
             collate_fn=self.dataset_val.collate_fn if hasattr(self.dataset_val, 'collate_fn') else None
         )
         if self.distenv.master:

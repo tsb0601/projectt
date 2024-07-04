@@ -1,11 +1,48 @@
 from PIL import Image,ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 import numpy as np
-from color_util import rgb2ycbcr, bgr2ycbcr
+from color_util import rgb2ycbcr, bgr2ycbcr, rgb2ycbcr_pt
 import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch_xla.core.xla_model as xm
+def calculate_ssim_pt(img, img2, crop_border, test_y_channel=False, **kwargs):
+    """Calculate SSIM (structural similarity) (PyTorch version).
+
+    ``Paper: Image quality assessment: From error visibility to structural similarity``
+
+    The results are the same as that of the official released MATLAB code in
+    https://ece.uwaterloo.ca/~z70wang/research/ssim/.
+
+    For three-channel images, SSIM is calculated for each channel and then
+    averaged.
+
+    Args:
+        img (Tensor): Images with range [0, 1], shape (n, 3/1, h, w).
+        img2 (Tensor): Images with range [0, 1], shape (n, 3/1, h, w).
+        crop_border (int): Cropped pixels in each edge of an image. These pixels are not involved in the calculation.
+        test_y_channel (bool): Test on Y channel of YCbCr. Default: False.
+
+    Returns:
+        float: SSIM result.
+    """
+    USE_TPU = kwargs.get('USE_TPU', False)
+    assert img.shape == img2.shape, (f'Image shapes are different: {img.shape}, {img2.shape}.')
+
+    if crop_border != 0:
+        img = img[:, :, crop_border:-crop_border, crop_border:-crop_border]
+        img2 = img2[:, :, crop_border:-crop_border, crop_border:-crop_border]
+
+    if test_y_channel:
+        img = rgb2ycbcr_pt(img, y_only=True)
+        img2 = rgb2ycbcr_pt(img2, y_only=True)
+
+    img = img.to(torch.float64).to(xm.xla_device()) if USE_TPU else img.to(torch.float64)
+    img2 = img2.to(torch.float64).to(xm.xla_device()) if USE_TPU else img2.to(torch.float64)
+
+    ssim = _ssim_pth(img, img2)
+    return ssim.item()
 def reorder_image(img, input_order='HWC'):
     """Reorder images to 'HWC' order.
 
@@ -127,8 +164,6 @@ def calculate_ssim(img, img2, crop_border, input_order='HWC', test_y_channel=Fal
     for i in range(img.shape[2]):
         ssims.append(_ssim(img[..., i], img2[..., i]))
     return np.array(ssims).mean()
-
-
 def _ssim(img, img2):
     """Calculate SSIM (structural similarity) for one channel images.
 

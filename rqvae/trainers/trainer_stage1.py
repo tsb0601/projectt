@@ -31,6 +31,7 @@ import os
 DEBUG = bool(os.environ.get("DEBUG", 0))
 import time # for debugging
 from typing import *
+
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
     g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
@@ -144,7 +145,6 @@ class Trainer(TrainerTemplate):
             outputs = model(xs)
             xs_recon = outputs[0]
             outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
-            xm.master_print(f"[!]outputs: {outputs}")
             xm.mark_step()
             loss_rec_lat = outputs['loss_total']
             loss_recon = outputs['loss_recon']
@@ -191,9 +191,10 @@ class Trainer(TrainerTemplate):
     def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
         model = self.model
         model.train()
-
+        model.zero_grad(set_to_none=True)
         discriminator = self.discriminator
         discriminator.train()
+        discriminator.zero_grad(set_to_none=True)
         use_discriminator = True if epoch >= self.gan_start_epoch else False
 
         accm = self.get_accm()
@@ -207,7 +208,6 @@ class Trainer(TrainerTemplate):
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
-            model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device).to(self.dtype)
             outputs = model(xs)
             xs_recon = outputs[0]
@@ -232,17 +232,23 @@ class Trainer(TrainerTemplate):
 
             loss_gen_total = loss_rec_lat + p_weight * loss_pcpt + g_weight * self.disc_weight * loss_gen
             loss_gen_total.backward()
-            optimizer.step() # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
-            scheduler.step()
+            if (it + 1) % self.accu_step == 0:
+                optimizer.step() # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
+                scheduler.step()
+                model.zero_grad(set_to_none=True)
             xm.mark_step()
             # discriminator loss
-            discriminator.zero_grad(set_to_none=True)
 
             if use_discriminator:
                 _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode='disc')
+                dict_loss = loss_disc * self.disc_weight
                 (self.disc_weight * loss_disc).backward()
-                self.disc_optimizer.step()
-                self.disc_scheduler.step()
+                #torch.autograd.backward(dict_loss, grad_tensors=[xs], retain_graph=False)
+                if (it + 1) % self.accu_step == 0:
+                    self.disc_optimizer.step()
+                    self.disc_scheduler.step()
+                    #discriminator.zero_grad(set_to_none=True)
+                    model.zero_grad(set_to_none=True)
             else:
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
@@ -270,6 +276,7 @@ class Trainer(TrainerTemplate):
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
+                line += f""", d_lr: {self.disc_scheduler.get_last_lr()[0]:e}"""
                 pbar.set_description(line)
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it

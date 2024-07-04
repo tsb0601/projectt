@@ -11,42 +11,55 @@ arch:
   checkpointing: false
   ema: 0.114514
 optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+  type: adamw
+  init_lr: 2.0e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.95]
+  max_gn: None
+  warmup:
+    epoch: 1  # 5% of total epochs
+    multiplier: 1
+    buffer_epoch: 0
+    min_lr: 0.
+    mode: fix
+    start_from_zero: true
 
 experiment:
-  batch_size: 128
+  batch_size: 125 # so it can divide 50000
   epochs: 1
   save_ckpt_freq: 1000
-  test_freq: 1000
+  test_freq: 1
   amp: false
-  
+
 gan:
   disc:
     arch:
       in_channels: 3
       num_layers: 2
       use_actnorm: false
-      ndf: 4
+      ndf: 64
       spectral_norm: false
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adamw
-      init_lr: 2.3e-3
+      init_lr: 4.0e-5
       weight_decay: 0.0
       betas: [0.5, 0.9]
       max_gn: None
       warmup:
-        epoch: 0.5  # 5% of total epochs
+        epoch: 1  # 5% of total epochs
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 2.3e-3
-        mode: fix
+        min_lr: 0.
+        mode: linear
         start_from_zero: true
     experiment:
-      test_freq: 10
+      test_freq: 1
       amp: false
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: 1.0
+    disc_weight: .75
     perceptual_weight: 1.0
-    disc_start: 1000
+    disc_start: 0

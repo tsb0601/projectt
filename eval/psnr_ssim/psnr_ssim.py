@@ -4,9 +4,15 @@ from PIL import Image,ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 import numpy as np
 from tqdm import tqdm
-from utils import calculate_psnr, calculate_ssim
-IM_SIZE = 224
-
+from utils import calculate_psnr, calculate_ssim, calculate_ssim_pt
+import sys
+USE_TPU = True if len(sys.argv) > 4 else False
+if USE_TPU:
+    import torch_xla.runtime as xr
+    CACHE_DIR = '/home/bytetriper/.cache/xla_compile/tmp'
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    xr.initialize_cache(CACHE_DIR, readonly=False)
+import torch
 class BaseMetric(abc.ABC):
     """
     Base Class for evaluation metric
@@ -109,8 +115,11 @@ class SSIM(BaseMetric):
     def evaluate(self, std_img, cmp_img):
         std_img = np.array(std_img)
         cmp_img = np.array(cmp_img)
+        if USE_TPU:
+            std_img = torch.tensor(std_img).permute(2, 0, 1).unsqueeze(0).to(torch.float64)
+            cmp_img = torch.tensor(cmp_img).permute(2, 0, 1).unsqueeze(0).to(torch.float64)
         assert std_img.shape == cmp_img.shape, (f'Image shapes are differnet: {std_img.shape}, {cmp_img.shape}.')
-        return calculate_ssim(std_img, cmp_img, crop_border=4, input_order='HWC')
+        return calculate_ssim_pt(std_img, cmp_img, crop_border=4, USE_TPU=True) if USE_TPU else calculate_ssim(std_img, cmp_img, crop_border=4, input_order='HWC')
 import sys
 def main():
     std_path = sys.argv[1]

@@ -21,7 +21,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-
+from transformers import ViTMAEPreTrainedModel
 import timm
 
 assert timm.__version__ == "0.3.2" # version check
@@ -30,14 +30,13 @@ from timm.models.layers import trunc_normal_
 import util.misc as misc
 from util.pos_embed import interpolate_pos_embed
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from util.misc import instantiate_from_config
 from util.lars import LARS
 from util.crop import RandomResizedCrop
-
-import models_vit
-
+from omegaconf import OmegaConf
 from engine_finetune import train_one_epoch, evaluate
 import torch_xla.core.xla_model as xm
-
+from torch import nn
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE linear probing for image classification', add_help=False)
     parser.add_argument('--batch_size', default=512, type=int,
@@ -45,10 +44,6 @@ def get_args_parser():
     parser.add_argument('--epochs', default=90, type=int)
     parser.add_argument('--accum_iter', default=1, type=int,
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
-
-    # Model parameters
-    parser.add_argument('--model', default='vit_large_patch16', type=str, metavar='MODEL',
-                        help='Name of model to train')
 
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0,
@@ -68,11 +63,14 @@ def get_args_parser():
     # * Finetuning params
     parser.add_argument('--finetune', default='',
                         help='finetune from checkpoint')
+    parser.add_argument('--hidden_size', default=768, type=int, help='hidden size')
     parser.add_argument('--global_pool', action='store_true')
     parser.set_defaults(global_pool=False)
     parser.add_argument('--cls_token', action='store_false', dest='global_pool',
                         help='Use class token instead of global pool for classification')
-
+    parser.add_argument('--image_size', default=224, type=int, help='image size')
+    parser.add_argument('--model_config', default='', type=str,
+                        help='model configuration')
     # Dataset parameters
     parser.add_argument('--data_path', default='/datasets01/imagenet_full_size/061417/', type=str,
                         help='dataset path')
@@ -86,11 +84,6 @@ def get_args_parser():
     parser.add_argument('--device', default='xla:0',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--resume', default='',
-                        help='resume from checkpoint')
-
-    parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
-                        help='start epoch')
     parser.add_argument('--eval', action='store_true',
                         help='Perform evaluation only')
     parser.add_argument('--dist_eval', action='store_true', default=False,
@@ -98,16 +91,12 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=10, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
-    parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
     parser.set_defaults(pin_mem=True)
 
     # distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
     parser.add_argument('--local_rank', default=-1, type=int)
-    parser.add_argument('--dist_on_itp', action='store_true')
-    parser.add_argument('--dist_url', default='env://',
-                        help='url used to set up distributed training')
 
     return parser
 
@@ -124,16 +113,16 @@ def main(args):
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
-
+    image_size = args.image_size
     # linear probe: weak augmentation
     transform_train = transforms.Compose([
-            RandomResizedCrop(224, interpolation=3),
+            RandomResizedCrop(image_size, interpolation=3),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     transform_val = transforms.Compose([
-            transforms.Resize(256, interpolation=3),
-            transforms.CenterCrop(224),
+            transforms.Resize(image_size*1.1, interpolation=3),
+            transforms.CenterCrop(image_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
@@ -183,47 +172,63 @@ def main(args):
         drop_last=False
     )
 
-    model = models_vit.__dict__[args.model](
-        num_classes=args.nb_classes,
-        global_pool=args.global_pool,
-    )
+    model_config = OmegaConf.load(args.model_config)
+    # to dict
+    model_dict = OmegaConf.to_container(model_config)
+    model = instantiate_from_config(model_dict)
 
     if args.finetune and not args.eval:
-        checkpoint = torch.load(args.finetune, map_location='cpu')
-
-        print("Load pre-trained checkpoint from: %s" % args.finetune)
-        checkpoint_model = checkpoint['model']
-        state_dict = model.state_dict()
-        for k in ['head.weight', 'head.bias']:
-            if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-                print(f"Removing key {k} from pretrained checkpoint")
-                del checkpoint_model[k]
+        # add head to the model
+        linear_probe_head = torch.nn.Linear(args.hidden_size, args.nb_classes)
+        bn = torch.nn.BatchNorm1d(args.hidden_size, affine=False, eps=1e-6) # use this could boost the performance
+        model.head = torch.nn.Sequential(bn, linear_probe_head)
+        if args.global_pool:
+            model.fc_norm = nn.LayerNorm(args.hidden_size, eps=1e-6, elementwise_affine=False) # a frozen layernorm
+            model.norm = nn.Identity() # special judge for MAE model
+            def forward_hook(module, input, output):
+                #use global pooling of non-cls tokens
+                latent = output[0] # the output is a tuple, latent: [batch_size, seq_len, hidden_size]
+                x = output[:, 1:, :].mean(dim=1) # [batch_size, hidden_size]
+                x = model.fc_norm(x)
+                return x
+        else:
+            def forward_hook(module, input, output):
+                x = output[0][:, 0]
+                return x
+        model.register_forward_hook(forward_hook)
+        #checkpoint = torch.load(args.finetune, map_location='cpu')
+        #print("Load pre-trained checkpoint from: %s" % args.finetune)
+        #checkpoint_model = checkpoint['model']
+        #state_dict = model.state_dict()
+        #for k in ['head.weight', 'head.bias']:
+        #    if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+        #        print(f"Removing key {k} from pretrained checkpoint")
+        #        del checkpoint_model[k]
 
         # interpolate position embedding
-        interpolate_pos_embed(model, checkpoint_model)
+        #interpolate_pos_embed(model, checkpoint_model)
 
         # load pre-trained model
-        msg = model.load_state_dict(checkpoint_model, strict=False)
-        print(msg)
+        #msg = model.load_state_dict(checkpoint_model, strict=False)
+        #print(msg)
 
-        if args.global_pool:
-            assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
-        else:
-            assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
+        #if args.global_pool:
+        #    assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
+        #else:
+        #    assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
 
         # manually initialize fc layer: following MoCo v3
-        trunc_normal_(model.head.weight, std=0.01)
+        #trunc_normal_(model.head.weight, std=0.01)
 
     # for linear prob only
     # hack: revise model's head with BN
-    model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, eps=1e-6), model.head)
+    #model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, #eps=1e-6), model.head)
+    model = model.to(xm.xla_device())
     # freeze all but the head
     for _, p in model.named_parameters():
         p.requires_grad = False
     for _, p in model.head.named_parameters():
         p.requires_grad = True
-
-    model.to(device)
 
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)

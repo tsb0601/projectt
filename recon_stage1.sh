@@ -18,5 +18,4 @@ load_path=$2
 torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 main_stage1.py \
     --eval \
     -m=configs/imagenet256/stage1/MAE_r.yaml \
-    -r=$SAVE_DIR \
-    -l=$load_path
+    -r=$SAVE_DIR 
