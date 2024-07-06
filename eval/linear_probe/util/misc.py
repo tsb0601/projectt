@@ -44,8 +44,8 @@ class SmoothedValue(object):
         """
         if not is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64)
-        dist.barrier()
+        t = torch.tensor([self.count, self.total], dtype=torch.float64).to(xm.xla_device()) # dist only works with tensors on TPU
+        xm.mark_step()
         dist.all_reduce(t)
         t = t.tolist()
         self.count = int(t[0])
@@ -203,34 +203,28 @@ def save_on_master(*args, **kwargs):
 
 
 def init_distributed_mode(args):
-    if args.dist_on_itp:
-        raise NotImplementedError("dist_on_itp is not supported yet.")
-        args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
-        args.world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
-        args.gpu = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
-        args.dist_url = "tcp://%s:%s" % (os.environ['MASTER_ADDR'], os.environ['MASTER_PORT'])
-        os.environ['LOCAL_RANK'] = str(args.gpu)
-        os.environ['RANK'] = str(args.rank)
-        os.environ['WORLD_SIZE'] = str(args.world_size)
-        # ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
-    elif 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
-        args.gpu = int(os.environ['LOCAL_RANK'])
+        args.local_rank = int(os.environ['LOCAL_RANK'])
     else:
         print('Not using distributed mode')
         setup_for_distributed(is_master=True)  # hack
         args.distributed = False
+        args.local_rank = 0
         return
-
+    print(f'[dist] Distributed: wait dist process group:{args.local_rank}')
     args.distributed = True
-    
     args.dist_backend = 'xla'
     args.dist_url = 'xla://'  # 'env://'
     print('| distributed init (rank {}): {}'.format(
         args.rank, args.dist_url), flush=True)
-    dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url)
-    dist.barrier()
+    dist.init_process_group(backend='xla', init_method='xla://')
+    xm.rendezvous('init')
+    print(
+            f"""[dist] Distributed: success device:{args.local_rank}, """,
+            f"""{dist.get_rank()}/{dist.get_world_size()}"""
+    )
     setup_for_distributed(args.rank == 0)
 
 import importlib
@@ -318,6 +312,7 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
 
 
 def load_model(args, model_without_ddp, optimizer, loss_scaler):
+    return # linear probing does not need this, it's super fast and we don't need to save checkpoints
     if args.resume:
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
@@ -337,9 +332,12 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
 def all_reduce_mean(x):
     world_size = get_world_size()
     if world_size > 1:
-        x_reduce = torch.tensor(x)
-        g_tensor = xm.all_reduce(reduce_type=xm.REDUCE_SUM, inputs=x_reduce)
-        g_tensor/=world_size
+        if not torch.is_tensor(x):
+            x = torch.tensor(x).to(xm.xla_device())   
+        else:
+            x = x.clone().detach().to(xm.xla_device()) # avoid modifying the original tensor
+        dist.all_reduce(x, op=dist.ReduceOp.SUM)
+        return x / world_size
         return g_tensor.item()
     else:
         return x

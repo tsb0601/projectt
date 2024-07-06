@@ -1,9 +1,9 @@
-from transformers import ViTMAEForPreTraining, ViTImageProcessor
+from transformers import ViTMAEForPreTraining, ViTImageProcessor, ViTMAEModel
 import torch
 from rqvae.models.interfaces import Stage1Model
 import torch_xla.core.xla_model as xm
 from transformers.models.vit_mae.modeling_vit_mae import ViTMAEDecoderOutput
-
+from torch import nn
 def custom_forward(
     self,
     hidden_states,
@@ -131,3 +131,16 @@ class Stage1MAE(Stage1Model):
     @torch.no_grad()
     def infer(self, xs):
         return self(xs)
+    
+class MAEEncoder_ForProbing(nn.Module):
+    def __init__(self, ckpt_path:str):
+        super().__init__()
+        self.model = ViTMAEModel.from_pretrained(ckpt_path)
+        self.model.requires_grad_(False)
+        self.model.config.mask_ratio = 0.
+        patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
+        self.register_buffer('noise', torch.arange(patch_num))
+    def forward(self, xs:torch.Tensor)->tuple:
+        noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1).to(xs.device).to(xs.dtype)
+        outputs = self.model(xs, noise)
+        return outputs.last_hidden_state

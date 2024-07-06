@@ -58,7 +58,6 @@ args, extra_args = parser.parse_known_args()
 
 set_seed(args.seed)
 if __name__ == '__main__':
-
     config, logger, writer = setup(args, extra_args)
     distenv = config.runtime.distenv
     device = xm.xla_device()
