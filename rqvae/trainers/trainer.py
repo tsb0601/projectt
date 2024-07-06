@@ -42,6 +42,7 @@ class TrainerTemplate:
         model_aux=None,
         *,
         disc_state_dict=None,  # only used in VQGAN trainer
+        eval:bool = False,
     ):
         super().__init__()
 
@@ -60,6 +61,7 @@ class TrainerTemplate:
         self.config = config
         self.writer = writer
         self.device = device
+        self.is_eval = eval
         self.distenv = distenv
         self.accu_step = config.experiment.accu_step
         self.actual_batch_size = config.experiment.actual_batch_size

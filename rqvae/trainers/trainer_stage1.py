@@ -58,6 +58,7 @@ class Trainer(TrainerTemplate):
                                                           steps_per_epoch=len(self.loader_trn),
                                                           max_epoch=num_epochs_for_gan,
                                                           distenv=self.distenv,
+                                                          is_eval = self.is_eval
                                                           )
         disc_state_dict = kwargs.get('disc_state_dict', None)
         if disc_state_dict is not None:
@@ -83,7 +84,6 @@ class Trainer(TrainerTemplate):
             self.get_last_layer = self.model.get_last_layer
     def get_accm(self):
         config = self.config
-
         metric_names = [
             'loss_total', 'loss_recon', 'loss_latent',
             'loss_pcpt', 'loss_gen', 'loss_disc', 'g_weight',

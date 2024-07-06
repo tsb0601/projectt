@@ -7,7 +7,7 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
+    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256_ft'
   checkpointing: false
   ema: 0.114514
 optimizer:

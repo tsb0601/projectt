@@ -130,10 +130,9 @@ dmypy.json
 
 
 # self-defined 
-ckpt/
 data/imagenet
 test/
-ckpt
+#ckpt
 *.npz
 *.pb 
 *.npy

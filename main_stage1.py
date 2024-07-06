@@ -101,7 +101,7 @@ if __name__ == '__main__':
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval)
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)

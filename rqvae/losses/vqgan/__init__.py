@@ -31,7 +31,7 @@ def create_vqgan_loss(loss_config):
         raise ValueError(f"Unknown GAN loss '{disc_loss_type}'.")
 
     gen_loss_type = loss_config.gen_loss
-    if gen_loss_type == 'vanilla':
+    if gen_loss_type == "vanilla":
         gen_loss = vanilla_g_loss
     else:
         raise ValueError(f"Unknown GAN loss '{gen_loss_type}'.")
@@ -41,18 +41,26 @@ def create_vqgan_loss(loss_config):
     return disc_loss, gen_loss, perceptual_loss
 
 
-def create_discriminator_with_optimizer_scheduler(disc_config, steps_per_epoch, max_epoch, distenv=None):
-    model = NLayerDiscriminator(input_nc=disc_config.arch.in_channels,
-                                n_layers=disc_config.arch.num_layers,
-                                use_actnorm=disc_config.arch.use_actnorm,
-                                ndf=disc_config.arch.ndf,
-                                ).apply(weights_init)
-
-    optimizer = create_resnet_optimizer(model, disc_config.optimizer)
-    scheduler = create_scheduler(optimizer,
-                                 config=disc_config.optimizer.warmup,
-                                 steps_per_epoch=steps_per_epoch,
-                                 max_epoch=max_epoch,
-                                 distenv=distenv)
+def create_discriminator_with_optimizer_scheduler(
+    disc_config, steps_per_epoch, max_epoch, distenv=None, is_eval:bool = False
+):
+    model = NLayerDiscriminator(
+        input_nc=disc_config.arch.in_channels,
+        n_layers=disc_config.arch.num_layers,
+        use_actnorm=disc_config.arch.use_actnorm,
+        ndf=disc_config.arch.ndf,
+    ).apply(weights_init)
+    if not is_eval:
+        optimizer = create_resnet_optimizer(model, disc_config.optimizer)
+        scheduler = create_scheduler(
+            optimizer,
+            config=disc_config.optimizer.warmup,
+            steps_per_epoch=steps_per_epoch,
+            max_epoch=max_epoch,
+            distenv=distenv,
+        )
+    else:
+        optimizer = None
+        scheduler = None
 
     return model, optimizer, scheduler
