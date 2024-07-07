@@ -66,7 +66,7 @@ class head_model(nn.Module):
             x = x.view(x.shape[0], -1, x.shape[-1]) # [batch_size, seq_len, hidden_size]
             # use global pooling on all tokens
             x = x.mean(dim=1) # [batch_size, hidden_size]
-        x = x.to(torch.float32) # use float32 for the head
+        #x = x.to(torch.float32) # use float32 for the head
         x = self.head(x)
         return x
 
@@ -163,7 +163,12 @@ def get_args_parser():
         type=int,
         help="number of the classification types",
     )
-
+    parser.add_argument(
+        "--save_freq",
+        default=10,
+        type=int,
+        help="save frequency of the model in epochs",
+    )
     parser.add_argument(
         "--output_dir",
         default="./output",
@@ -198,8 +203,8 @@ def get_args_parser():
 def main(args):
     misc.init_distributed_mode(args)
     device = xm.xla_device()
-    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    torch.set_default_dtype(dtype) # set default dtype 
+    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32    
+    #torch.set_default_dtype(dtype) # set default dtype 
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(", ", ",\n"))
 
@@ -306,7 +311,7 @@ def main(args):
     bn = torch.nn.BatchNorm1d(
         args.hidden_size, affine=False, eps=1e-6
     )  # use this could boost the performance
-    head = torch.nn.Sequential(bn, linear_probe_head).to(device).to(torch.float32) # use float32 for the head
+    head = torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype) # use float32 for the head
     model = head_model(model, head, not args.global_pool)
     if args.finetune and not args.eval:
         # model = head_model(model, head, args.cls_token)
@@ -393,6 +398,7 @@ def main(args):
         model_without_ddp = model.module
     optimizer = torch.optim.AdamW(
         model_without_ddp.head.parameters(),
+        betas = (0.9, 0.95),
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
@@ -439,7 +445,7 @@ def main(args):
             log_writer=log_writer,
             args=args,
         )
-        if args.output_dir:
+        if args.output_dir and epoch % args.save_freq == 0:
             misc.save_model(
                 args=args,
                 model=model,

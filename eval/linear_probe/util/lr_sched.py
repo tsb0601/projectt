@@ -15,6 +15,7 @@ def adjust_learning_rate(optimizer, epoch, args):
             (1. + math.cos(math.pi * (epoch - args.warmup_epochs) / (args.epochs - args.warmup_epochs)))
     for param_group in optimizer.param_groups:
         if "lr_scale" in param_group:
+            raise ValueError("lr_scale is now banned")
             param_group["lr"] = lr * param_group["lr_scale"]
         else:
             param_group["lr"] = lr
