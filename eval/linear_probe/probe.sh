@@ -7,12 +7,12 @@ save_path=${ckpt_path}/${save_path}/${time}
 log_path=${ckpt_path}/${save_path}/${time}/log/
 mkdir -p $log_path
 torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 linear_probe.py \
-    --accum_iter 4 \
+    --accum_iter 8 \
     --batch_size 128 \
     --model_config $1 \
     --epochs 90 \
     --warmup_epochs 10 \
-    --blr 1e-2 \
+    --blr 1e-4 \
     --weight_decay 0.0 \
     --cls_token \
     --dtype float32 \
