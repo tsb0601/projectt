@@ -1,5 +1,6 @@
 easydict==1.9
 ipdb==0.13.3
+google-cloud-storage
 lmdb==1.0.0
 pyflakes==2.2.0
 PyYAML==5.3.1

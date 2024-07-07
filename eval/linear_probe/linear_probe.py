@@ -42,7 +42,7 @@ import sys
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla.runtime as xr
 
-XLA_CACHE_PATH = os.environ.get("XLA_CACHE_PATH", "~/xla_compile/tmp")
+XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
 os.makedirs(XLA_CACHE_PATH, exist_ok=True)
 xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
 
@@ -58,15 +58,15 @@ class head_model(nn.Module):
         self.cls_token = cls_token
 
     def forward(self, x):
-        dtype = x.dtype
         with torch.no_grad():
             x = self.model_to_wrap(x)
         if self.cls_token: # in this case x should be of shape [batch_size, seq_len, hidden_size]
-            x = x[:, 0].to(dtype)  # assure the dtype is the same as the input
+            x = x[:, 0] # assure the dtype is the same as the input
         else: # do global pooling , x can be arbitrary shape but the first dim should be batch_size and the last dim should be hidden_size
             x = x.view(x.shape[0], -1, x.shape[-1]) # [batch_size, seq_len, hidden_size]
             # use global pooling on all tokens
             x = x.mean(dim=1) # [batch_size, hidden_size]
+        x = x.to(torch.float32) # use float32 for the head
         x = self.head(x)
         return x
 
@@ -199,7 +199,7 @@ def main(args):
     misc.init_distributed_mode(args)
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    torch.set_default_dtype(dtype) # set default dtype 
+    #torch.set_default_dtype(dtype) # set default dtype 
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(", ", ",\n"))
 
@@ -233,7 +233,7 @@ def main(args):
     )
     transform_val = transforms.Compose(
         [
-            transforms.Resize(round(image_size * 1.1), interpolation=3),
+            transforms.Resize(round(image_size * 256 / 224), interpolation=3),
             transforms.CenterCrop(image_size),
             #transforms.ToTensor(),
             custom_pil_to_tensor,
@@ -299,14 +299,14 @@ def main(args):
     model_config = OmegaConf.load(args.model_config)
     # to dict
     model_dict = OmegaConf.to_container(model_config)
-    model = instantiate_from_config(model_dict).to(device).to(dtype)
+    model = instantiate_from_config(model_dict).to(device).to(dtype)# fix bfloat16
     # add head to the model
     linear_probe_head = torch.nn.Linear(args.hidden_size, args.nb_classes)
     trunc_normal_(linear_probe_head.weight, std=0.01)
     bn = torch.nn.BatchNorm1d(
         args.hidden_size, affine=False, eps=1e-6
     )  # use this could boost the performance
-    head = torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype)
+    head = torch.nn.Sequential(bn, linear_probe_head).to(device).to(torch.float32) # use float32 for the head
     model = head_model(model, head, not args.global_pool)
     if args.finetune and not args.eval:
         # model = head_model(model, head, args.cls_token)
@@ -362,7 +362,7 @@ def main(args):
     # for linear prob only
     # hack: revise model's head with BN
     # model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, #eps=1e-6), model.head)
-    model = model.to(device).to(dtype)
+    #model = model.to(device).to(dtype)
     model.device = device
     model.dtype = dtype
     # freeze all but the head
