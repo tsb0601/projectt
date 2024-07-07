@@ -9,7 +9,7 @@ torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 linear_probe.py \
     --blr .1 \
     --weight_decay 0.0 \
     --cls_token \
-    --dtype bfloat16 \
+    --dtype float32 \
     --image_size 224 \
     --num_workers 16 \
     --dist_eval --data_path /home/bytetriper/VAE-enhanced/data/imagenet

@@ -199,7 +199,7 @@ def main(args):
     misc.init_distributed_mode(args)
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    #torch.set_default_dtype(dtype) # set default dtype 
+    torch.set_default_dtype(dtype) # set default dtype 
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(", ", ",\n"))
 
@@ -391,10 +391,14 @@ def main(args):
     if args.distributed:
         model = DDP(model, gradient_as_bucket_view=True)
         model_without_ddp = model.module
-
-    optimizer = LARS(
-        model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    optimizer = torch.optim.AdamW(
+        model_without_ddp.head.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
     )
+    #optimizer = LARS(
+    #    model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    #)
     print(optimizer)
     loss_scaler = NativeScaler()
 

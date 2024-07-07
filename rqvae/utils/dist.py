@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla as xla
-import torch_xla.distributed.xla_backend # must be imported as init
+import torch_xla.distributed.xla_backend # must be imported for xla init_process_group
 import torch_xla.core.xla_model as xm
 
 
@@ -48,11 +48,10 @@ def initialize(args, logger=None):
             f"""[dist] Distributed: success device:{local_rank}, """,
             f"""{dist.get_rank()}/{dist.get_world_size()}"""
         )
-        distenv = DistEnv(world_size=dist.get_world_size(),
-                          world_rank=dist.get_rank(),
+        distenv = DistEnv(world_size=dist.get_world_size(), # or xm.xrt_world_size()
+                          world_rank=dist.get_rank(), # or xm.get_ordinal()
                           local_rank=local_rank,
-                          num_gpus=1,
-                          master=(dist.get_rank() == 0),
+                          master=(dist.get_rank() == 0), # or xm.is_master_ordinal()
                           device_name=str(xm.xla_real_devices([str(xm.xla_device())])[0]),
                           TPU=True
                           )
