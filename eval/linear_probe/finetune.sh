@@ -7,12 +7,12 @@ save_path=${ckpt_path}/${save_path}/${time}
 log_path=${save_path}/log/
 mkdir -p $log_path
 python finetune.py \
-    --accum_iter 16 \
-    --batch_size 16 \
+    --accum_iter 64 \
+    --batch_size 4 \
     --model_config $1 \
     --epochs 100 \
     --global_pool \
-    --dtype float32 \
+    --dtype bfloat16 \
     --image_size 224 \
     --output_dir $save_path \
     --num_workers 16 \

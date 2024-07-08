@@ -56,6 +56,7 @@ class head_model(nn.Module):
         self.head.requires_grad_(True)
 
     def forward(self, x):
+        dtype = x.dtype
         x = self.model_to_wrap(x)
         x = self.head(x)
         return x
@@ -318,7 +319,7 @@ def main(rank, args):
     xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    # torch.set_default_dtype(dtype) # set default dtype
+    torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
 
     device = torch.device(args.device)
