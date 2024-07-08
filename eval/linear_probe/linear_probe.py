@@ -47,23 +47,17 @@ import torch_xla.distributed.xla_multiprocessing as xmp
 # add ../.. to the sys path
 class head_model(nn.Module):
     def __init__(
-        self, model_to_wrap: nn.Module, head: nn.Module, cls_token: bool = True
+        self, model_to_wrap: nn.Module, head: nn.Module
     ):
         super(head_model, self).__init__()
         self.model_to_wrap = model_to_wrap
         self.head = head
-        self.cls_token = cls_token
+        self.model_to_wrap.requires_grad_(False)
+        self.head.requires_grad_(True)
 
     def forward(self, x):
         with torch.no_grad():
             x = self.model_to_wrap(x)
-        if self.cls_token: # in this case x should be of shape [batch_size, seq_len, hidden_size]
-            x = x[:, 0] # assure the dtype is the same as the input
-        else: # do global pooling , x can be arbitrary shape but the first dim should be batch_size and the last dim should be hidden_size
-            x = x.view(x.shape[0], -1, x.shape[-1]) # [batch_size, seq_len, hidden_size]
-            # use global pooling on all tokens
-            x = x.mean(dim=1) # [batch_size, hidden_size]
-        #x = x.to(torch.float32) # use float32 for the head
         x = self.head(x)
         return x
 
@@ -199,31 +193,35 @@ def get_args_parser():
     )
     parser.set_defaults(pin_mem=True)
     parser.add_argument("--dtype", default="bfloat16", type=str, help="data type")
-
+    parser.add_argument(
+        "--dist_url", default="xla://", help="url used to set up distributed training"
+    )
     return parser
 
+
 def custom_pil_to_tensor(pic):
-    #first to numpy
+    # first to numpy
     img = np.array(pic)
-    #then to tensor
+    # then to tensor
     img = torch.from_numpy(img)
     img = img.permute(2, 0, 1).contiguous() / 255.0
     mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
     img = (img - mean) / std
-    return img  
+    return img
+
+
 def main(rank, args):
     args.rank = rank
     misc.init_distributed_mode(args)
-    #xm.master_print("args = %s" % args)
-    if xm.is_master_ordinal():
-        XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
-        os.makedirs(XLA_CACHE_PATH, exist_ok=True)
-        xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
+    # xm.master_print("args = %s" % args)
+    XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
+    os.makedirs(XLA_CACHE_PATH, exist_ok=True)
+    xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
     xm.rendezvous("init_cache")
     device = xm.xla_device()
-    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32    
-    #torch.set_default_dtype(dtype) # set default dtype 
+    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
+    # torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
 
     device = torch.device(args.device)
@@ -234,23 +232,23 @@ def main(rank, args):
     np.random.seed(seed)
     image_size = args.image_size
     # linear probe: weak augmentation
-    #import numpy as np 
+    # import numpy as np
     transform_train = transforms.Compose(
         [
             RandomResizedCrop(image_size, interpolation=3),
             transforms.RandomHorizontalFlip(),
-            #transforms.ToTensor(),
+            # transforms.ToTensor(),
             custom_pil_to_tensor,
-            #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
     transform_val = transforms.Compose(
         [
             transforms.Resize(round(image_size * 256 / 224), interpolation=3),
             transforms.CenterCrop(image_size),
-            #transforms.ToTensor(),
+            # transforms.ToTensor(),
             custom_pil_to_tensor,
-            #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
     dataset_train = datasets.ImageFolder(
@@ -259,8 +257,8 @@ def main(rank, args):
     dataset_val = datasets.ImageFolder(
         os.path.join(args.data_path, "val"), transform=transform_val
     )
-    xm.master_print('trainset size: {}'.format(len(dataset_train)))
-    xm.master_print('valset size: {}'.format(len(dataset_val)))
+    xm.master_print("trainset size: {}".format(len(dataset_train)))
+    xm.master_print("valset size: {}".format(len(dataset_val)))
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -310,17 +308,21 @@ def main(rank, args):
     )
 
     model_config = OmegaConf.load(args.model_config)
+    # add global_pool to model config
+    model_config.params.global_pool = args.global_pool
     # to dict
     model_dict = OmegaConf.to_container(model_config)
-    model = instantiate_from_config(model_dict).to(device).to(dtype)# fix bfloat16
+    model = instantiate_from_config(model_dict).to(device).to(dtype)  # fix bfloat16
     # add head to the model
     linear_probe_head = torch.nn.Linear(args.hidden_size, args.nb_classes)
     trunc_normal_(linear_probe_head.weight, std=0.01)
     bn = torch.nn.BatchNorm1d(
         args.hidden_size, affine=False, eps=1e-6
     )  # use this could boost the performance
-    head = torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype) # use float32 for the head
-    model = head_model(model, head, not args.global_pool)
+    head = (
+        torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype)
+    )  # use float32 for the head
+    model = head_model(model, head)
     if args.finetune and not args.eval:
         # model = head_model(model, head, args.cls_token)
         # if args.global_pool:
@@ -375,7 +377,7 @@ def main(rank, args):
     # for linear prob only
     # hack: revise model's head with BN
     # model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, #eps=1e-6), model.head)
-    #model = model.to(device).to(dtype)
+    # model = model.to(device).to(dtype)
     model.device = device
     model.dtype = dtype
     # freeze all but the head
@@ -406,13 +408,13 @@ def main(rank, args):
         model_without_ddp = model.module
     optimizer = torch.optim.AdamW(
         model_without_ddp.head.parameters(),
-        betas = (0.9, 0.95),
+        betas=(0.9, 0.95),
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
-    #optimizer = LARS(
+    # optimizer = LARS(
     #    model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    #)
+    # )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
 
@@ -495,5 +497,5 @@ if __name__ == "__main__":
     args = args.parse_args()
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    #main(args)
+    # main(args)
     xmp.spawn(main, args=(args,))

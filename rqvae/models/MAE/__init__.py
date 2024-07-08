@@ -133,14 +133,30 @@ class Stage1MAE(Stage1Model):
         return self(xs)
     
 class MAEEncoder_ForProbing(nn.Module):
-    def __init__(self, ckpt_path:str):
+    def __init__(self, ckpt_path:str, global_pool:bool = False):
         super().__init__()
         self.model = ViTMAEModel.from_pretrained(ckpt_path)
         self.model.requires_grad_(False)
         self.model.config.mask_ratio = 0.
         patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
         self.register_buffer('noise', torch.arange(patch_num))
+        self.global_pool = global_pool
+        if global_pool:
+            self.model.layernorm = nn.Identity() # remove layernorm
+            self.model.fc_norm = nn.LayerNorm(self.model.config.hidden_size)
     def forward(self, xs:torch.Tensor)->tuple:
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1).to(xs.device).to(xs.dtype)
         outputs = self.model(xs, noise)
-        return outputs.last_hidden_state
+        latent = outputs.last_hidden_state
+        if self.global_pool:
+            latent = latent[:, 1: , :]
+            latent = self.model.fc_norm(latent)
+            latent = latent.mean(dim=1)
+        else: # take the cls token
+            latent = latent[:, 0, :]
+        return latent
+    def requires_grad_(self, requires_grad:bool = True):
+        self.model.requires_grad_(requires_grad)
+        self.model: ViTMAEModel
+        self.model.embeddings.position_embeddings.requires_grad_(False)
+        

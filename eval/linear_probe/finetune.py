@@ -19,7 +19,6 @@ from pathlib import Path
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
-
 import timm
 
 from timm.models.layers import trunc_normal_
@@ -48,33 +47,18 @@ import torch_xla.distributed.xla_multiprocessing as xmp
 # add ../.. to the sys path
 class head_model(nn.Module):
     def __init__(
-        self, model_to_wrap: nn.Module, head: nn.Module, cls_token: bool = True
+        self, model_to_wrap: nn.Module, head: nn.Module
     ):
         super(head_model, self).__init__()
         self.model_to_wrap = model_to_wrap
         self.head = head
-        self.cls_token = cls_token
         self.model_to_wrap.requires_grad_(True)
         self.head.requires_grad_(True)
 
     def forward(self, x):
-        with torch.no_grad():
-            x = self.model_to_wrap(x)
-        if (
-            self.cls_token
-        ):  # in this case x should be of shape [batch_size, seq_len, hidden_size]
-            x = x[:, 0]  # assure the dtype is the same as the input
-        else:  # do global pooling , x can be arbitrary shape but the first dim should be batch_size and the last dim should be hidden_size
-            x = x.view(
-                x.shape[0], -1, x.shape[-1]
-            )  # [batch_size, seq_len, hidden_size]
-            x = x[:, 1:]  # remove the cls token [batch_size, seq_len-1, hidden_size]
-            # use global pooling on all tokens
-            x = x.mean(dim=1)  # [batch_size, hidden_size]
-        # x = x.to(torch.float32) # use float32 for the head
+        x = self.model_to_wrap(x)
         x = self.head(x)
         return x
-
 
 sys.path.append(
     "../.."
@@ -302,18 +286,13 @@ def get_args_parser():
     )
     parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem")
     parser.set_defaults(pin_mem=True)
-
     # distributed training parameters
     parser.add_argument("--dtype", default="bfloat16", type=str, help="data type")
-    parser.add_argument(
-        "--world_size", default=1, type=int, help="number of distributed processes"
-    )
     parser.add_argument("--local_rank", default=-1, type=int)
     parser.add_argument("--dist_on_itp", action="store_true")
     parser.add_argument(
-        "--dist_url", default="env://", help="url used to set up distributed training"
+        "--dist_url", default="xla://", help="url used to set up distributed training"
     )
-
     return parser
 
 
@@ -330,11 +309,12 @@ def custom_pil_to_tensor(pic):
 
 
 def main(rank, args):
+    args.rank = rank
     misc.init_distributed_mode(args)
-    if xm.is_master_ordinal():
-        XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
-        os.makedirs(XLA_CACHE_PATH, exist_ok=True)
-        xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
+    # xm.master_print("args = %s" % args)
+    XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
+    os.makedirs(XLA_CACHE_PATH, exist_ok=True)
+    xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
     xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
@@ -349,6 +329,8 @@ def main(rank, args):
     np.random.seed(seed)
     dataset_train = build_dataset(is_train=True, args=args)
     dataset_val = build_dataset(is_train=False, args=args)
+    xm.master_print("trainset size: {}".format(len(dataset_train)))
+    xm.master_print("valset size: {}".format(len(dataset_val)))
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -412,9 +394,11 @@ def main(rank, args):
             num_classes=args.nb_classes,
         )
     model_config = OmegaConf.load(args.model_config)
+    # add global_pool to model config
+    model_config.params.global_pool = args.global_pool
     # to dict
     model_dict = OmegaConf.to_container(model_config)
-    model = instantiate_from_config(model_dict).to(device).to(dtype)  # fix bfloat16
+    model = instantiate_from_config(model_dict)
     # add head to the model
     linear_probe_head = torch.nn.Linear(args.hidden_size, args.nb_classes)
     trunc_normal_(linear_probe_head.weight, std=2e-5)
@@ -422,9 +406,9 @@ def main(rank, args):
         args.hidden_size, affine=False, eps=1e-6
     )  # use this could boost the performance
     head = (
-        torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype)
+        torch.nn.Sequential(bn, linear_probe_head)
     )  # use float32 for the head
-    model = head_model(model, head, not args.global_pool)
+    model = head_model(model, head).to(device).to(dtype)
     if args.finetune and not args.eval:
         # model = head_model(model, head, args.cls_token)
         # if args.global_pool:
@@ -482,11 +466,6 @@ def main(rank, args):
     # model = model.to(device).to(dtype)
     model.device = device
     model.dtype = dtype
-    # freeze all but the head
-    for _, p in model.named_parameters():
-        p.requires_grad = False
-    for _, p in model.head.named_parameters():
-        p.requires_grad = True
 
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -510,13 +489,18 @@ def main(rank, args):
         model_without_ddp = model.module
 
     # build optimizer with layer-wise lr decay (lrd)
-    param_groups = lrd.param_groups_lrd(
-        model_without_ddp,
-        args.weight_decay,
-        no_weight_decay_list=model_without_ddp.no_weight_decay(),
-        layer_decay=args.layer_decay,
+    #param_groups = lrd.param_groups_lrd(
+    #    model_without_ddp,
+    #    args.weight_decay,
+    #    #no_weight_decay_list=model_without_ddp.no_weight_decay(),
+    #    layer_decay=args.layer_decay,
+    #)
+    trainable_params = list(filter(lambda p: p.requires_grad, model_without_ddp.parameters()))
+    trainable_param_count = sum([p.numel() for p in trainable_params])
+    xm.master_print(
+        "trainable parameters: %fM" % (trainable_param_count / 1.0e6)
     )
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+    optimizer = torch.optim.AdamW(trainable_params, lr=args.lr)
     loss_scaler = NativeScaler()
 
     if mixup_fn is not None:
@@ -605,5 +589,5 @@ if __name__ == "__main__":
     args = args.parse_args()
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    #main(args)
+    # main(args)
     xmp.spawn(main, args=(args,))

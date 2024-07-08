@@ -26,7 +26,6 @@ class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
         """Inference the model.
         """
         pass
-
 class Stage1Model(XLA_Model):
 
     #@abc.abstractmethod
@@ -115,3 +114,4 @@ class Stage2ModelWrapper(XLA_Model):
         zs_gen = stage_2_gen[0]
         stage_1_gen = self.stage_1_model.decode(zs_gen)
         return stage_1_gen[0]
+    
