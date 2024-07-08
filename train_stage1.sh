@@ -17,7 +17,8 @@ env | grep DEBUG
 #torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 main_stage1.py \
 #    -m=configs/imagenet256/stage1/MAE.yaml \
 #    -r=$SAVE_DIR
+world_size=$2
 python main_stage1.py \
     -m=configs/imagenet256/stage1/MAE.yaml \
     -r=$SAVE_DIR \
-    --world_size=4 
+    --world_size=$world_size
