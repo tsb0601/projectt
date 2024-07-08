@@ -12,7 +12,6 @@ from .writer import Writer
 from .config import config_setup
 from .dist import initialize as dist_init
 
-
 def logger_setup(log_path, eval=False):
 
     log_fname = os.path.join(log_path, 'val.log' if eval else 'train.log')

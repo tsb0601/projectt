@@ -8,7 +8,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla as xla
 import torch_xla.distributed.xla_backend # must be imported for xla init_process_group
 import torch_xla.core.xla_model as xm
-
+import argparse
+from rqvae.utils.utils import set_seed
 
 def update_argument_parser(parser):
     parser.add_argument('--dist-backend', default='xla', type=str, help='distributed backend')
@@ -24,28 +25,35 @@ class DistEnv:
     world_size: int
     world_rank: int
     local_rank: int
-    num_gpus: int
     master: bool
     device_name: str
     TPU: bool
 
 
-def initialize(args, logger=None):
-
-    args.rank = int(os.environ.get("RANK", 0))
-    args.world_size = int(os.environ.get('WORLD_SIZE', 1))
-    args.local_rank = int(os.environ.get('LOCAL_RANK', 0))
-
+def initialize(args: argparse.Namespace , logger =None):
+    # see if args have rank or world_size, if not, try to get from env
+    rank = args.rank if hasattr(args, 'rank') else int(os.environ.get("RANK", 0))
+    world_size = args.world_size if hasattr(args, 'world_size') else int(os.environ.get('WORLD_SIZE', 1))
+    local_rank = args.local_rank if hasattr(args, 'local_rank') else int(os.environ.get('LOCAL_RANK', 0))
+    args.rank = rank
+    args.world_size = world_size
+    args.local_rank = local_rank
+    os.environ["RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
+    os.environ["LOCAL_RANK"] = str(local_rank)
     if args.world_size > 1:
         #os.environ["RANK"] = str(args.rank)
         #os.environ["WORLD_SIZE"] = str(args.world_size)
         #os.environ["LOCAL_RANK"] = str(args.local_rank)
-        local_rank = os.environ["LOCAL_RANK"]
-        print(f'[dist] Distributed: wait dist process group:{local_rank}')
-        dist.init_process_group(backend=args.dist_backend, init_method='xla://',
+        #local_rank = os.environ["LOCAL_RANK"]
+        # recaculate rank and world_size
+        local_rank = rank % 4 # we have 4 cores per TPU
+        args.local_rank = local_rank
+        print(f'[dist] Distributed: wait dist process group:{rank}')
+        dist.init_process_group(backend=args.dist_backend, init_method='xla://', world_size=world_size, rank=rank,
         timeout=datetime.timedelta(0, args.timeout))
         print(
-            f"""[dist] Distributed: success device:{local_rank}, """,
+            f"""[dist] Distributed: success device:{rank}, """,
             f"""{dist.get_rank()}/{dist.get_world_size()}"""
         )
         distenv = DistEnv(world_size=dist.get_world_size(), # or xm.xrt_world_size()
@@ -55,6 +63,15 @@ def initialize(args, logger=None):
                           device_name=str(xm.xla_real_devices([str(xm.xla_device())])[0]),
                           TPU=True
                           )
+        # set seed for each process to avoid same seed
+        # the seed would be a function of (args.seed, dist.get_rank()) and should be random enough
+        # for example, generate random seed from args.seed for (rank + 1) times
+        seed = args.seed
+        for _ in range(rank + 1):
+            seed = hash((seed, rank)) 
+            # convert seed to [0, 2^32 - 1]
+            seed = seed % (2**32 - 1)
+        set_seed(seed) # set seed for each process
     else:
         print('[dist] Single processed')
         raise ValueError('Single processed is currently not supported')

@@ -144,7 +144,7 @@ class MetricLogger(object):
             if i % print_freq == 0 or i == len(iterable) - 1:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                print(log_msg.format(
+                xm.master_print(log_msg.format(
                     i, len(iterable), eta=eta_string,
                     meters=str(self),
                     time=str(iter_time), data=str(data_time)))
@@ -152,7 +152,7 @@ class MetricLogger(object):
             end = time.time()
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print('{} Total time: {} ({:.4f} s / it)'.format(
+        xm.master_print('{} Total time: {} ({:.4f} s / it)'.format(
             header, total_time_str, total_time / len(iterable)))
 
 
@@ -162,15 +162,15 @@ def setup_for_distributed(is_master):
     """
     builtin_print = builtins.print
 
-    def print(*args, **kwargs):
-        force = kwargs.pop('force', False)
-        force = force or (get_world_size() > 8)
-        if is_master or force:
-            now = datetime.datetime.now().time()
-            builtin_print('[{}] '.format(now), end='')  # print with time stamp
-            builtin_print(*args, **kwargs)
+    #def print(*args, **kwargs):
+    #    force = kwargs.pop('force', False)
+    #    force = force or (get_world_size() > 8)
+    #    if is_master or force:
+    #        now = datetime.datetime.now().time()
+    #        builtin_print('[{}] '.format(now), end='')  # print with time stamp
+    #        builtin_print(*args, **kwargs)
 
-    builtins.print = print
+    builtins.print = xm.master_print 
 
 
 def is_dist_avail_and_initialized():
@@ -203,10 +203,12 @@ def save_on_master(*args, **kwargs):
 
 
 def init_distributed_mode(args):
-    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ: # use torchrun
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
         args.local_rank = int(os.environ['LOCAL_RANK'])
+    elif hasattr(args, 'rank') and hasattr(args, 'world_size'):  # use xmp.spawn
+        args.local_rank = args.rank % 4 # 4 cores per TPU
     else:
         print('Not using distributed mode')
         setup_for_distributed(is_master=True)  # hack
@@ -219,14 +221,12 @@ def init_distributed_mode(args):
     args.dist_url = 'xla://'  # 'env://'
     print('| distributed init (rank {}): {}'.format(
         args.rank, args.dist_url), flush=True)
-    dist.init_process_group(backend='xla', init_method='xla://')
-    xm.rendezvous('init')
+    dist.init_process_group(backend='xla', init_method='xla://', world_size=args.world_size, rank=args.rank)
     print(
             f"""[dist] Distributed: success device:{args.local_rank}, """,
             f"""{dist.get_rank()}/{dist.get_world_size()}"""
     )
-    setup_for_distributed(args.rank == 0)
-
+    #setup_for_distributed(args.rank == 0) # this will give a hang in xmp.spawn
 import importlib
 """partially modified from https://github.com/CompVis/latent-diffusion/blob/main/ldm/util.py"""
 def count_params(model, verbose=False):

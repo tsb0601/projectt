@@ -87,6 +87,8 @@ class Trainer(TrainerTemplate):
     def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
         model = self.model
         model.train()
+        model.zero_grad(set_to_none=True)
+
 
         accm = self.get_accm()
         loader = self.wrap_loader('train')
@@ -98,8 +100,8 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
+            
         for it, inputs in pbar:
-            model.zero_grad(set_to_none=True)
             xs = inputs[0].to(self.device, non_blocking=True)
             stage_1_output, stage_2_output = model(xs)
             zs = stage_1_output[0]
@@ -109,8 +111,10 @@ class Trainer(TrainerTemplate):
             loss_gen = outputs['loss_total']
             loss_gen_total = loss_gen 
             loss_gen_total.backward()
-            optimizer.step() # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
-            scheduler.step()
+            if (it + 1) % self.accu_step == 0:
+                optimizer.step() # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
+                scheduler.step()
+                model.zero_grad(set_to_none=True)
             xm.mark_step()
             # logging
             loss_total = loss_gen_total.detach() 
@@ -157,16 +161,13 @@ class Trainer(TrainerTemplate):
             self.reconstruct(summary['zs'], epoch, mode)
         for key, value in summary.metrics.items():
             self.writer.add_scalar(f'loss/{key}', summary[key], mode, epoch)
-
         if mode == 'train':
             self.writer.add_scalar('lr', scheduler.get_last_lr()[0], mode, epoch)
-
         line = f"""ep:{epoch}, {mode:10s}, """
         line += summary.print_line()
         line += f""", """
         if scheduler:
             line += f"""lr: {scheduler.get_last_lr()[0]:e}"""
-
         logger.info(line)
 
     @torch.no_grad()
@@ -186,7 +187,7 @@ class Trainer(TrainerTemplate):
         self.writer.add_image('reconstruction', grid, mode, epoch)
     def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
         return super()._load_ckpt(optimizer, scheduler, epoch,load_from_master=load_from_master)
-    def _load_model_only(self, load_path, load_from_master=False):
+    def _load_model_only(self, load_path, load_from_master=True):
         return super()._load_model_only(load_path, load_from_master=load_from_master)
     def save_ckpt(self, optimizer, scheduler, epoch):
         return super().save_ckpt(optimizer, scheduler, epoch)

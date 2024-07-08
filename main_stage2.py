@@ -25,17 +25,14 @@ from rqvae.models import create_model
 from rqvae.trainers import create_trainer
 from rqvae.img_datasets import create_dataset
 from rqvae.optimizer import create_optimizer, create_scheduler
-from rqvae.utils.utils import set_seed, compute_model_size, get_num_conv_linear_layers
+from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup
 import torch_xla.runtime as xr
+import torch_xla.distributed.xla_multiprocessing as xmp
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)
 cache_path = os.environ.get('XLACACHE_PATH', cache_path)
-print(f'[!]XLACACHE_PATH: {cache_path}')
-os.makedirs(cache_path, exist_ok=True)
-xr.initialize_cache(cache_path, readonly=False)
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-m', '--model-config', type=str, default='./configs/c10-igpt.yaml')
@@ -54,12 +51,13 @@ parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to 
 parser.add_argument('--eval', action='store_true')
 parser.add_argument('--resume', action='store_true')
 
-args, extra_args = parser.parse_known_args()
-
-set_seed(args.seed)
-if __name__ == '__main__':
-
+def main(rank, args, extra_args):
+    global cache_path
+    args.rank = rank
     config, logger, writer = setup(args, extra_args)
+    xm.master_print(f'[!]XLACACHE_PATH: {cache_path}')
+    os.makedirs(cache_path, exist_ok=True)
+    xr.initialize_cache(cache_path, readonly=False)
     distenv = config.runtime.distenv
     device = xm.xla_device()
     print(f'Using device: {device}')
@@ -75,10 +73,12 @@ if __name__ == '__main__':
     xm.master_print(f'[!]model created')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
+    actual_batch_size = config.experiment.batch_size * distenv.world_size * config.experiment.accu_step
+    config.experiment.actual_batch_size = actual_batch_size
     train_epochs = config.experiment.epochs
-    steps_per_epoch = math.ceil(len(dataset_trn) / (config.experiment.batch_size * distenv.world_size))
+    steps_per_epoch = math.ceil(len(dataset_trn) / actual_batch_size)
     epoch_st = 0
-
+    xm.master_print(f'[!] micro_batch_size_per_core: {config.experiment.batch_size}, accu_step: {config.experiment.accu_step}, actual_batch_size: {actual_batch_size}, steps_per_epoch: {steps_per_epoch}')
     if distenv.master:
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
 
@@ -88,6 +88,7 @@ if __name__ == '__main__':
             optimizer, config.optimizer.warmup, steps_per_epoch,
             config.experiment.epochs, distenv
         )
+    disc_state_dict = None
     xm.master_print(f'[!]model loaded')
     if distenv.master:
         print(model)
@@ -98,9 +99,9 @@ if __name__ == '__main__':
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval)
     if not args.load_path == '' and os.path.exists(args.load_path):
-        if args.resume:
+        if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
             #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
             epoch_st = args.load_path.split('/')[-2].split('-')[0].split('_')[-1]
@@ -125,3 +126,7 @@ if __name__ == '__main__':
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
     dist.destroy_process_group()
+    
+if __name__ == '__main__':
+    args, extra_args = parser.parse_known_args()
+    xmp.spawn(main, args=(args, extra_args))

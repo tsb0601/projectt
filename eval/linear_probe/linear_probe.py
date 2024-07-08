@@ -41,10 +41,7 @@ import torch_xla.distributed.xla_backend  # must be imported as init
 import sys
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla.runtime as xr
-
-XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
-os.makedirs(XLA_CACHE_PATH, exist_ok=True)
-xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
+import torch_xla.distributed.xla_multiprocessing as xmp
 
 
 # add ../.. to the sys path
@@ -158,6 +155,12 @@ def get_args_parser():
         help="dataset path",
     )
     parser.add_argument(
+        "--world_size",
+        default=1,
+        type=int,
+        help="number of distributed processes",
+    )
+    parser.add_argument(
         "--nb_classes",
         default=1000,
         type=int,
@@ -199,14 +202,29 @@ def get_args_parser():
 
     return parser
 
-
-def main(args):
+def custom_pil_to_tensor(pic):
+    #first to numpy
+    img = np.array(pic)
+    #then to tensor
+    img = torch.from_numpy(img)
+    img = img.permute(2, 0, 1).contiguous() / 255.0
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+    img = (img - mean) / std
+    return img  
+def main(rank, args):
+    args.rank = rank
     misc.init_distributed_mode(args)
+    #xm.master_print("args = %s" % args)
+    if xm.is_master_ordinal():
+        XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
+        os.makedirs(XLA_CACHE_PATH, exist_ok=True)
+        xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
+    xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32    
     #torch.set_default_dtype(dtype) # set default dtype 
-    print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
-    print("{}".format(args).replace(", ", ",\n"))
+    xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
 
     device = torch.device(args.device)
 
@@ -216,17 +234,7 @@ def main(args):
     np.random.seed(seed)
     image_size = args.image_size
     # linear probe: weak augmentation
-    #import numpy as np
-    def custom_pil_to_tensor(pic):
-        #first to numpy
-        img = np.array(pic)
-        #then to tensor
-        img = torch.from_numpy(img)
-        img = img.permute(2, 0, 1).contiguous() / 255.0
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-        img = (img - mean) / std
-        return img   
+    #import numpy as np 
     transform_train = transforms.Compose(
         [
             RandomResizedCrop(image_size, interpolation=3),
@@ -251,8 +259,8 @@ def main(args):
     dataset_val = datasets.ImageFolder(
         os.path.join(args.data_path, "val"), transform=transform_val
     )
-    print(dataset_train)
-    print(dataset_val)
+    xm.master_print('trainset size: {}'.format(len(dataset_train)))
+    xm.master_print('valset size: {}'.format(len(dataset_val)))
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -263,7 +271,7 @@ def main(args):
         print("Sampler_train = %s" % str(sampler_train))
         if args.dist_eval:
             if len(dataset_val) % num_tasks != 0:
-                print(
+                xm.master_print(
                     "Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. "
                     "This will slightly alter validation results as extra duplicate entries are added to achieve "
                     "equal num of samples per-process."
@@ -379,19 +387,19 @@ def main(args):
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print("Model = %s" % str(model_without_ddp))
-    print("number of params (M): %.2f" % (n_parameters / 1.0e6))
+    xm.master_print("Model = %s" % str(model_without_ddp))
+    xm.master_print("number of params (M): %.2f" % (n_parameters / 1.0e6))
 
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
 
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
 
-    print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
-    print("actual lr: %.2e" % args.lr)
+    xm.master_print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
+    xm.master_print("actual lr: %.2e" % args.lr)
 
-    print("accumulate grad iterations: %d" % args.accum_iter)
-    print("effective batch size: %d" % eff_batch_size)
+    xm.master_print("accumulate grad iterations: %d" % args.accum_iter)
+    xm.master_print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
         model = DDP(model, gradient_as_bucket_view=True)
@@ -405,12 +413,12 @@ def main(args):
     #optimizer = LARS(
     #    model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
     #)
-    print(optimizer)
+    xm.master_print(optimizer)
     loss_scaler = NativeScaler()
 
     criterion = torch.nn.CrossEntropyLoss()
 
-    print("criterion = %s" % str(criterion))
+    xm.master_print("criterion = %s" % str(criterion))
 
     misc.load_model(
         args=args,
@@ -421,12 +429,12 @@ def main(args):
 
     if args.eval:
         test_stats = evaluate(data_loader_val, model, device)
-        print(
+        xm.master_print(
             f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
         )
         exit(0)
 
-    print(f"Start training for {args.epochs} epochs")
+    xm.master_print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
     for epoch in range(args.start_epoch, args.epochs):
@@ -487,4 +495,5 @@ if __name__ == "__main__":
     args = args.parse_args()
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    main(args)
+    #main(args)
+    xmp.spawn(main, args=(args,))

@@ -25,17 +25,14 @@ from rqvae.models import create_model
 from rqvae.trainers import create_trainer
 from rqvae.img_datasets import create_dataset
 from rqvae.optimizer import create_optimizer, create_scheduler
-from rqvae.utils.utils import set_seed, compute_model_size, get_num_conv_linear_layers
+from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup
 import torch_xla.runtime as xr
+import torch_xla.distributed.xla_multiprocessing as xmp
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)
 cache_path = os.environ.get('XLACACHE_PATH', cache_path)
-print(f'[!]XLACACHE_PATH: {cache_path}')
-os.makedirs(cache_path, exist_ok=True)
-xr.initialize_cache(cache_path, readonly=False)
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-m', '--model-config', type=str, default='./configs/c10-igpt.yaml')
@@ -54,11 +51,13 @@ parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to 
 parser.add_argument('--eval', action='store_true')
 parser.add_argument('--resume', action='store_true')
 
-args, extra_args = parser.parse_known_args()
-
-set_seed(args.seed)
-if __name__ == '__main__':
+def main(rank, args, extra_args):
+    global cache_path
+    args.rank = rank
     config, logger, writer = setup(args, extra_args)
+    xm.master_print(f'[!]XLACACHE_PATH: {cache_path}')
+    os.makedirs(cache_path, exist_ok=True)
+    xr.initialize_cache(cache_path, readonly=False)
     distenv = config.runtime.distenv
     device = xm.xla_device()
     print(f'Using device: {device}')
@@ -127,3 +126,7 @@ if __name__ == '__main__':
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
     dist.destroy_process_group()
+    
+if __name__ == '__main__':
+    args, extra_args = parser.parse_known_args()
+    xmp.spawn(main, args=(args, extra_args))

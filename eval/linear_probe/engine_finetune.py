@@ -79,7 +79,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(lr=max_lr)
 
         loss_value_reduce = misc.all_reduce_mean(loss)
-        if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
+        if log_writer is not None and (data_iter_step + 1) % accum_iter == 0 and xm.is_master_ordinal():
             """ We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
@@ -89,7 +89,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         xm.mark_step()
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
+    xm.master_print("Averaged stats:", metric_logger)
     xm.rendezvous('train_one_epoch')
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 

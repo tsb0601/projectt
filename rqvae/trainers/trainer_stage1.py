@@ -290,9 +290,14 @@ class Trainer(TrainerTemplate):
                         self.writer.add_scalar('d_lr_step', self.disc_scheduler.get_last_lr()[0], 'train', global_iter)
 
                 if (global_iter+1) % 250 == 0:
-                    xs_real, xs_recon = model.module.get_recon_imgs(xs[:16], xs_recon[:16])
-                    grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float() # prep to numpy
+                    bsz = xs.size(0)
+                    if bsz == 1: # need to be handle properly
+                        continue
+                    max_shard_size = min(bsz,16)
+                    zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size])
+                    print(zs.shape, zs_pred.shape)
+                    grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0)
+                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2).detach().cpu().float()
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
 
         summary = accm.get_summary()
@@ -315,14 +320,19 @@ class Trainer(TrainerTemplate):
         logger.info(line)
 
     @torch.no_grad()
-    def reconstruct(self, xs, epoch, mode='valid'):
+    def reconstruct(self, zs, epoch, mode='valid'):
+        # do not write image when bs is 1
+        if zs.size(0) == 1:
+            return
+        bsz = zs.size(0)
+        max_shard_size = min((bsz//2)*2, 16)
         model = self.model_ema if 'ema' in mode else self.model
         model.eval()
-        xs_real = xs[:16]
-        xs_recon = model(xs_real)[0]
-        xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
-        grid = torch.cat([xs_real[:8], xs_recon[:8], xs_real[8:], xs_recon[8:]], dim=0)
-        grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float() # prep to numpy
+        zs_real = zs[:max_shard_size]
+        zs_recon = model.module.stage_2_model(zs_real)[0]
+        zs_real, zs_recon = model.module.get_recon_imgs(zs_real, zs_recon)
+        grid = torch.cat([zs_real[:max_shard_size//2], zs_recon[:max_shard_size//2], zs_real[max_shard_size//2:], zs_recon[max_shard_size//2:]], dim=0)
+        grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float()
         self.writer.add_image('reconstruction', grid, mode, epoch)
     def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
         return super()._load_ckpt(optimizer, scheduler, epoch, additional_attr_to_load=('discriminator',))
