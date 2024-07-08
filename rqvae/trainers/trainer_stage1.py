@@ -294,10 +294,9 @@ class Trainer(TrainerTemplate):
                     if bsz == 1: # need to be handle properly
                         continue
                     max_shard_size = min(bsz,16)
-                    zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size])
-                    print(zs.shape, zs_pred.shape)
+                    zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size]).detach().cpu().float()
                     grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2).detach().cpu().float()
+                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2)
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
 
         summary = accm.get_summary()
