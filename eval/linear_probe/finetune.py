@@ -6,7 +6,7 @@
 # --------------------------------------------------------
 # References:
 # DeiT: https://github.com/facebookresearch/deit
-# MoCo v3: https://github.com/facebookresearch/moco-v3
+# BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
 
 import argparse
@@ -19,18 +19,19 @@ from pathlib import Path
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-from transformers import ViTMAEPreTrainedModel
+
 import timm
 
 from timm.models.layers import trunc_normal_
+from timm.data.mixup import Mixup
+from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
+import util.lr_decay as lrd
 import util.misc as misc
+from util.datasets import build_dataset
 from util.pos_embed import interpolate_pos_embed
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.misc import instantiate_from_config
-from util.lars import LARS
 from util.crop import RandomResizedCrop
 from omegaconf import OmegaConf
 from engine_finetune import train_one_epoch, evaluate
@@ -53,17 +54,24 @@ class head_model(nn.Module):
         self.model_to_wrap = model_to_wrap
         self.head = head
         self.cls_token = cls_token
+        self.model_to_wrap.requires_grad_(True)
+        self.head.requires_grad_(True)
 
     def forward(self, x):
         with torch.no_grad():
             x = self.model_to_wrap(x)
-        if self.cls_token: # in this case x should be of shape [batch_size, seq_len, hidden_size]
-            x = x[:, 0] # assure the dtype is the same as the input
-        else: # do global pooling , x can be arbitrary shape but the first dim should be batch_size and the last dim should be hidden_size
-            x = x.view(x.shape[0], -1, x.shape[-1]) # [batch_size, seq_len, hidden_size]
+        if (
+            self.cls_token
+        ):  # in this case x should be of shape [batch_size, seq_len, hidden_size]
+            x = x[:, 0]  # assure the dtype is the same as the input
+        else:  # do global pooling , x can be arbitrary shape but the first dim should be batch_size and the last dim should be hidden_size
+            x = x.view(
+                x.shape[0], -1, x.shape[-1]
+            )  # [batch_size, seq_len, hidden_size]
+            x = x[:, 1:]  # remove the cls token [batch_size, seq_len-1, hidden_size]
             # use global pooling on all tokens
-            x = x.mean(dim=1) # [batch_size, hidden_size]
-        #x = x.to(torch.float32) # use float32 for the head
+            x = x.mean(dim=1)  # [batch_size, hidden_size]
+        # x = x.to(torch.float32) # use float32 for the head
         x = self.head(x)
         return x
 
@@ -75,7 +83,7 @@ sys.path.append(
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
-        "MAE linear probing for image classification", add_help=False
+        "MAE fine-tuning for image classification", add_help=False
     )
     parser.add_argument(
         "--batch_size",
@@ -90,13 +98,25 @@ def get_args_parser():
         type=int,
         help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",
     )
+    # Model parameters
+    parser.add_argument(
+        "--drop_path",
+        type=float,
+        default=0.1,
+        metavar="PCT",
+        help="Drop path rate (default: 0.1)",
+    )
 
     # Optimizer parameters
     parser.add_argument(
-        "--weight_decay",
+        "--clip_grad",
         type=float,
-        default=0,
-        help="weight decay (default: 0 for linear probe following MoCo v1)",
+        default=None,
+        metavar="NORM",
+        help="Clip gradient norm (default: None, no clipping)",
+    )
+    parser.add_argument(
+        "--weight_decay", type=float, default=0.05, help="weight decay (default: 0.05)"
     )
 
     parser.add_argument(
@@ -109,21 +129,27 @@ def get_args_parser():
     parser.add_argument(
         "--blr",
         type=float,
-        default=0.1,
+        default=1e-3,
         metavar="LR",
         help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
+    )
+    parser.add_argument(
+        "--layer_decay",
+        type=float,
+        default=0.75,
+        help="layer-wise lr decay from ELECTRA/BEiT",
     )
 
     parser.add_argument(
         "--min_lr",
         type=float,
-        default=0.0,
+        default=1e-6,
         metavar="LR",
         help="lower lr bound for cyclic schedulers that hit 0",
     )
 
     parser.add_argument(
-        "--warmup_epochs", type=int, default=10, metavar="N", help="epochs to warmup LR"
+        "--warmup_epochs", type=int, default=5, metavar="N", help="epochs to warmup LR"
     )
     parser.add_argument(
         "--start_epoch",
@@ -132,6 +158,83 @@ def get_args_parser():
         metavar="N",
         help="start epoch for training",
     )
+
+    # Augmentation parameters
+    parser.add_argument(
+        "--color_jitter",
+        type=float,
+        default=None,
+        metavar="PCT",
+        help="Color jitter factor (enabled only when not using Auto/RandAug)",
+    )
+    parser.add_argument(
+        "--aa",
+        type=str,
+        default="rand-m9-mstd0.5-inc1",
+        metavar="NAME",
+        help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m9-mstd0.5-inc1)',
+    ),
+    parser.add_argument(
+        "--smoothing", type=float, default=0.1, help="Label smoothing (default: 0.1)"
+    )
+
+    # * Random Erase params
+    parser.add_argument(
+        "--reprob",
+        type=float,
+        default=0.25,
+        metavar="PCT",
+        help="Random erase prob (default: 0.25)",
+    )
+    parser.add_argument(
+        "--remode",
+        type=str,
+        default="pixel",
+        help='Random erase mode (default: "pixel")',
+    )
+    parser.add_argument(
+        "--recount", type=int, default=1, help="Random erase count (default: 1)"
+    )
+    parser.add_argument(
+        "--resplit",
+        action="store_true",
+        default=False,
+        help="Do not random erase first (clean) augmentation split",
+    )
+
+    # * Mixup params
+    parser.add_argument(
+        "--mixup", type=float, default=0, help="mixup alpha, mixup enabled if > 0."
+    )
+    parser.add_argument(
+        "--cutmix", type=float, default=0, help="cutmix alpha, cutmix enabled if > 0."
+    )
+    parser.add_argument(
+        "--cutmix_minmax",
+        type=float,
+        nargs="+",
+        default=None,
+        help="cutmix min/max ratio, overrides alpha and enables cutmix if set (default: None)",
+    )
+    parser.add_argument(
+        "--mixup_prob",
+        type=float,
+        default=1.0,
+        help="Probability of performing mixup or cutmix when either/both is enabled",
+    )
+    parser.add_argument(
+        "--mixup_switch_prob",
+        type=float,
+        default=0.5,
+        help="Probability of switching to cutmix when both mixup and cutmix enabled",
+    )
+    parser.add_argument(
+        "--mixup_mode",
+        type=str,
+        default="batch",
+        help='How to apply mixup/cutmix params. Per "batch", "pair", or "elem"',
+    )
+
     # * Finetuning params
     parser.add_argument("--finetune", default="", help="finetune from checkpoint")
     parser.add_argument("--hidden_size", default=768, type=int, help="hidden size")
@@ -197,33 +300,45 @@ def get_args_parser():
         action="store_true",
         help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",
     )
+    parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem")
     parser.set_defaults(pin_mem=True)
+
+    # distributed training parameters
     parser.add_argument("--dtype", default="bfloat16", type=str, help="data type")
+    parser.add_argument(
+        "--world_size", default=1, type=int, help="number of distributed processes"
+    )
+    parser.add_argument("--local_rank", default=-1, type=int)
+    parser.add_argument("--dist_on_itp", action="store_true")
+    parser.add_argument(
+        "--dist_url", default="env://", help="url used to set up distributed training"
+    )
 
     return parser
 
+
 def custom_pil_to_tensor(pic):
-    #first to numpy
+    # first to numpy
     img = np.array(pic)
-    #then to tensor
+    # then to tensor
     img = torch.from_numpy(img)
     img = img.permute(2, 0, 1).contiguous() / 255.0
     mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
     img = (img - mean) / std
-    return img  
+    return img
+
+
 def main(rank, args):
-    args.rank = rank
     misc.init_distributed_mode(args)
-    #xm.master_print("args = %s" % args)
     if xm.is_master_ordinal():
         XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
         os.makedirs(XLA_CACHE_PATH, exist_ok=True)
         xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
     xm.rendezvous("init_cache")
     device = xm.xla_device()
-    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32    
-    #torch.set_default_dtype(dtype) # set default dtype 
+    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
+    # torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
 
     device = torch.device(args.device)
@@ -232,35 +347,8 @@ def main(rank, args):
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
-    image_size = args.image_size
-    # linear probe: weak augmentation
-    #import numpy as np 
-    transform_train = transforms.Compose(
-        [
-            RandomResizedCrop(image_size, interpolation=3),
-            transforms.RandomHorizontalFlip(),
-            #transforms.ToTensor(),
-            custom_pil_to_tensor,
-            #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    transform_val = transforms.Compose(
-        [
-            transforms.Resize(round(image_size * 256 / 224), interpolation=3),
-            transforms.CenterCrop(image_size),
-            #transforms.ToTensor(),
-            custom_pil_to_tensor,
-            #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    dataset_train = datasets.ImageFolder(
-        os.path.join(args.data_path, "train"), transform=transform_train
-    )
-    dataset_val = datasets.ImageFolder(
-        os.path.join(args.data_path, "val"), transform=transform_val
-    )
-    xm.master_print('trainset size: {}'.format(len(dataset_train)))
-    xm.master_print('valset size: {}'.format(len(dataset_val)))
+    dataset_train = build_dataset(is_train=True, args=args)
+    dataset_val = build_dataset(is_train=False, args=args)
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -309,17 +397,33 @@ def main(rank, args):
         drop_last=False,
     )
 
+    mixup_fn = None
+    mixup_active = args.mixup > 0 or args.cutmix > 0.0 or args.cutmix_minmax is not None
+    if mixup_active:
+        print("Mixup is activated!")
+        mixup_fn = Mixup(
+            mixup_alpha=args.mixup,
+            cutmix_alpha=args.cutmix,
+            cutmix_minmax=args.cutmix_minmax,
+            prob=args.mixup_prob,
+            switch_prob=args.mixup_switch_prob,
+            mode=args.mixup_mode,
+            label_smoothing=args.smoothing,
+            num_classes=args.nb_classes,
+        )
     model_config = OmegaConf.load(args.model_config)
     # to dict
     model_dict = OmegaConf.to_container(model_config)
-    model = instantiate_from_config(model_dict).to(device).to(dtype)# fix bfloat16
+    model = instantiate_from_config(model_dict).to(device).to(dtype)  # fix bfloat16
     # add head to the model
     linear_probe_head = torch.nn.Linear(args.hidden_size, args.nb_classes)
-    trunc_normal_(linear_probe_head.weight, std=0.01)
+    trunc_normal_(linear_probe_head.weight, std=2e-5)
     bn = torch.nn.BatchNorm1d(
         args.hidden_size, affine=False, eps=1e-6
     )  # use this could boost the performance
-    head = torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype) # use float32 for the head
+    head = (
+        torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype)
+    )  # use float32 for the head
     model = head_model(model, head, not args.global_pool)
     if args.finetune and not args.eval:
         # model = head_model(model, head, args.cls_token)
@@ -375,7 +479,7 @@ def main(rank, args):
     # for linear prob only
     # hack: revise model's head with BN
     # model.head = torch.nn.Sequential(torch.nn.BatchNorm1d(model.head.in_features, affine=False, #eps=1e-6), model.head)
-    #model = model.to(device).to(dtype)
+    # model = model.to(device).to(dtype)
     model.device = device
     model.dtype = dtype
     # freeze all but the head
@@ -404,19 +508,24 @@ def main(rank, args):
     if args.distributed:
         model = DDP(model, gradient_as_bucket_view=True)
         model_without_ddp = model.module
-    optimizer = torch.optim.AdamW(
-        model_without_ddp.head.parameters(),
-        betas = (0.9, 0.95),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
+
+    # build optimizer with layer-wise lr decay (lrd)
+    param_groups = lrd.param_groups_lrd(
+        model_without_ddp,
+        args.weight_decay,
+        no_weight_decay_list=model_without_ddp.no_weight_decay(),
+        layer_decay=args.layer_decay,
     )
-    #optimizer = LARS(
-    #    model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    #)
-    xm.master_print(optimizer)
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
     loss_scaler = NativeScaler()
 
-    criterion = torch.nn.CrossEntropyLoss()
+    if mixup_fn is not None:
+        # smoothing is handled with mixup label transform
+        criterion = SoftTargetCrossEntropy()
+    elif args.smoothing > 0.0:
+        criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+    else:
+        criterion = torch.nn.CrossEntropyLoss()
 
     xm.master_print("criterion = %s" % str(criterion))
 
@@ -449,7 +558,8 @@ def main(rank, args):
             dtype,
             epoch,
             loss_scaler,
-            max_norm=None,
+            args.clip_grad,
+            mixup_fn,
             log_writer=log_writer,
             args=args,
         )
