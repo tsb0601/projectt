@@ -5,7 +5,8 @@ save_path=$2
 time=$(date "+%Y%m%d-%H%M%S")
 save_path=${ckpt_path}/${save_path}/${time}
 log_path=${save_path}/log/
-mkdir -p $log_path
+mkdir -p $
+world_size=$3
 #torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 
 python linear_probe.py \
     --accum_iter 8 \
@@ -21,5 +22,5 @@ python linear_probe.py \
     --output_dir $save_path \
     --log_dir $log_path \
     --num_workers 16 \
-    --world_size 4 \
+    --world_size $world_size \
     --dist_eval --data_path /home/bytetriper/VAE-enhanced/data/imagenet

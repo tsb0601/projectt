@@ -17,9 +17,11 @@ def custom_forward(
     x = self.decoder_embed(hidden_states)
 
     # append mask tokens to sequence
-    #mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.#shape[1], 1)
-    #x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
-    x_ = x[:, 1:, :] 
+    if x.shape[1] < ids_restore.shape[1] + 1:
+        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+        x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
+    else:
+        x_ = x[:, 1:, :] 
     # unshuffle
     x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x_.device))
     x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
@@ -71,8 +73,10 @@ class Stage1MAE(Stage1Model):
     def __init__(self, ckpt_path:str ,mask_ratio: float = 0. )->None:
         super().__init__()
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
-        self.model.decoder.forward = custom_forward.__get__(self.model.decoder) # original forward method would cause XLA error when mask ratio is zero, we replace it with a custom forward method
         self.model.config.mask_ratio = mask_ratio
+        assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
+        if mask_ratio == 0.:
+            self.model.decoder.forward = custom_forward.__get__(self.model.decoder) # original forward method would cause XLA error when mask ratio is zero, we replace it with a custom forward method
         self.model.vit.requires_grad_(False) # freeze encoder
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
@@ -93,12 +97,13 @@ class Stage1MAE(Stage1Model):
         image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
         xs = (xs - image_mean) / image_std
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
-        outputs = self.model(xs, noise)
+        outputs = self.model(xs, noise) if self.model.config.mask_ratio > 0. else self.model(xs)
         logits = outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
-        return (xs_recon ,)
+        return (xs_recon, outputs)
     def encode(self, xs:torch.Tensor)->tuple:
+        # mask_ratio must be zero
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
         xs = (xs - image_mean) / image_std
@@ -114,8 +119,8 @@ class Stage1MAE(Stage1Model):
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
         return (xs_recon,)
-    def compute_loss(self, xs_recon, xs , valid:bool = True) -> dict:
-        loss_recon = (xs_recon - xs).abs().mean()
+    def compute_loss(self, xs_recon, outputs, xs , valid:bool = True) -> dict:
+        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio > 0. else outputs.loss
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
             'loss_total': loss_recon + loss_latent,

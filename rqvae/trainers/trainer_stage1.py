@@ -272,12 +272,12 @@ class Trainer(TrainerTemplate):
                 xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
                 # make sure every process is in sync
                 exit()
+            line = f"""(epoch {epoch} / iter {it}) """
+            line += accm.get_summary().print_line()
+            line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
+            line += f""", d_lr: {self.disc_scheduler.get_last_lr()[0]:e}"""
+            pbar.set_description(line)
             if self.distenv.master:
-                line = f"""(epoch {epoch} / iter {it}) """
-                line += accm.get_summary().print_line()
-                line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
-                line += f""", d_lr: {self.disc_scheduler.get_last_lr()[0]:e}"""
-                pbar.set_description(line)
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
                 if (global_iter+1) % 50 == 0:
