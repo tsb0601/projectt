@@ -54,7 +54,7 @@ def initialize(args: argparse.Namespace , logger =None):
         timeout=datetime.timedelta(0, args.timeout))
         print(
             f"""[dist] Distributed: success device:{rank}, """,
-            f"""{dist.get_rank()}/{dist.get_world_size()}"""
+            f"""{local_rank}/{dist.get_rank()}/{dist.get_world_size()}"""
         )
         distenv = DistEnv(world_size=dist.get_world_size(), # or xm.xrt_world_size()
                           world_rank=dist.get_rank(), # or xm.get_ordinal()
