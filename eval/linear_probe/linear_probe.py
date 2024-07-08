@@ -215,9 +215,11 @@ def main(rank, args):
     args.rank = rank
     misc.init_distributed_mode(args)
     # xm.master_print("args = %s" % args)
-    XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
-    os.makedirs(XLA_CACHE_PATH, exist_ok=True)
-    xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
+    xm.master_print(f'[!]XLACACHE_PATH: {cache_path}')
+    os.makedirs(cache_path, exist_ok=True)
+    if not xla._XLAC._xla_computation_cache_is_initialized(): # only initialize once
+        # add a lock to prevent multiple processes from initializing the cache
+        xr.initialize_cache(cache_path, readonly=False)
     xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
