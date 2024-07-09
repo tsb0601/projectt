@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
@@ -26,7 +26,7 @@ optimizer:
     start_from_zero: true
 
 experiment:
-  batch_size: 64
+  batch_size: 1
   accu_step: 1
   epochs: 10
   save_ckpt_freq: 5

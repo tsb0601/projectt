@@ -21,14 +21,16 @@ from tqdm import tqdm
 
 import rqvae.utils.dist as dist_utils
 
-from .accumulator import AccmStage1WithGAN
+from .accumulator import AccmStage1WithGAN, SummaryStage1WithGAN
 from .trainer import TrainerTemplate
+from header import *
 import torch_xla.core.xla_model as xm
 logger = logging.getLogger(__name__)
 import os
 DEBUG = bool(os.environ.get("DEBUG", 0))
 import time # for debugging
-
+from typing import *
+from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput, Stage1Encodings
 class Trainer(TrainerTemplate):
 
     def __init__(self, *args, **kwargs):
@@ -46,7 +48,7 @@ class Trainer(TrainerTemplate):
         return accm
 
     @torch.no_grad()
-    def eval(self, valid=True, ema=False, verbose=False, epoch=0):
+    def eval(self, valid=True, ema=False, verbose=False, epoch=0) ->SummaryStage1WithGAN:
         model = self.model_ema if ema else self.model
         loader = self.wrap_loader('valid' if valid else 'train')
         n_inst = len(self.dataset_val) if valid else len(self.dataset_trn)
@@ -58,10 +60,11 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad()
             xs = inputs[0].to(self.device)
-            stage_1_output, stage_2_output = model(xs)
-            zs = stage_1_output[0]
-            zs_pred = stage_2_output[0]
-            outputs = model.module.compute_loss(zs_pred, zs, *stage_1_output[1:], *stage_2_output[1:], xs=xs, valid=True)
+            stage1_encodings, stage2_output = model(xs)
+            stage1_encodings: Stage1Encodings
+            stage2_output: Stage2ModelOutput
+            zs = stage1_encodings.zs
+            outputs = model.module.compute_loss(stage1_encodings, stage2_output, xs=xs, valid=True)
             xm.mark_step()
             loss_gen = outputs['loss_total'] # logging
             loss_total = loss_gen
@@ -80,11 +83,11 @@ class Trainer(TrainerTemplate):
             self.reconstruct(zs, epoch=0, mode=mode)
 
         summary = accm.get_summary(n_inst)
-        summary['zs'] = zs
+        summary['zs'] = zs.detach().clone()
 
         return summary
 
-    def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
+    def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0) ->SummaryStage1WithGAN:
         model = self.model
         model.train()
         model.zero_grad(set_to_none=True)
@@ -101,12 +104,15 @@ class Trainer(TrainerTemplate):
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
             
-        for it, inputs in pbar:
-            xs = inputs[0].to(self.device, non_blocking=True)
-            stage_1_output, stage_2_output = model(xs)
-            zs = stage_1_output[0]
-            zs_pred = stage_2_output[0]
-            outputs = model.module.compute_loss(zs_pred, zs, *stage_1_output[1:], *stage_2_output[1:], xs=xs)
+        for it, inputs in pbar: 
+            # inputs: [xs, label]
+            xs = inputs[0].to(self.device).to(self.dtype)
+            stage1_encodings, stage2_output = model(xs)
+            stage1_encodings: Stage1Encodings
+            stage2_output: Stage2ModelOutput
+            zs = stage1_encodings.zs
+            zs_pred = stage2_output.zs_pred
+            outputs = model.module.compute_loss(zs, stage2_output, xs=xs)
             xm.mark_step()
             loss_gen = outputs['loss_total']
             loss_gen_total = loss_gen 
@@ -128,11 +134,12 @@ class Trainer(TrainerTemplate):
                 xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
                 # make sure every process is in sync
                 exit()
+            line = f"""(epoch {epoch} / iter {it}) """
+            line += accm.get_summary().print_line()
+            line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
+            pbar.set_description(line)
             if self.distenv.master:
-                line = f"""(epoch {epoch} / iter {it}) """
-                line += accm.get_summary().print_line()
-                line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
-                pbar.set_description(line)
+                
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
                 if (global_iter+1) % 50 == 0:
@@ -147,12 +154,12 @@ class Trainer(TrainerTemplate):
                         continue
                     max_shard_size = min(bsz,16)
                     zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size])
-                    print(zs.shape, zs_pred.shape)
-                    grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2).detach().cpu().float()
+                    grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0).detach().cpu().float()
+                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2)
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
+
         summary = accm.get_summary()
-        summary['zs'] = zs
+        summary['zs'] = zs.detach().clone()
 
         return summary
 
@@ -180,10 +187,12 @@ class Trainer(TrainerTemplate):
         model = self.model_ema if 'ema' in mode else self.model
         model.eval()
         zs_real = zs[:max_shard_size]
-        zs_recon = model.module.stage_2_model(zs_real)[0]
-        zs_real, zs_recon = model.module.get_recon_imgs(zs_real, zs_recon)
+        stage2_output:Stage2ModelOutput = model.module.stage_2_model(zs_real)
+        zs_pred = stage2_output.zs_pred
+        zs_degraded = stage2_output.zs_degraded
+        zs_real, zs_recon = model.module.get_recon_imgs(zs_degraded, zs_pred)
         grid = torch.cat([zs_real[:max_shard_size//2], zs_recon[:max_shard_size//2], zs_real[max_shard_size//2:], zs_recon[max_shard_size//2:]], dim=0)
-        grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float()
+        grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2).detach().cpu().float()
         self.writer.add_image('reconstruction', grid, mode, epoch)
     def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
         return super()._load_ckpt(optimizer, scheduler, epoch,load_from_master=load_from_master)

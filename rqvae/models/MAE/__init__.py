@@ -1,9 +1,10 @@
 from transformers import ViTMAEForPreTraining, ViTImageProcessor, ViTMAEModel
 import torch
-from rqvae.models.interfaces import Stage1Model
+from rqvae.models.interfaces import Stage1Model, Stage1Encodings, Stage1ModelOutput, Stage2ModelOutput
 import torch_xla.core.xla_model as xm
 from transformers.models.vit_mae.modeling_vit_mae import ViTMAEDecoderOutput
 from torch import nn
+from header import *
 def custom_forward(
     self,
     hidden_states,
@@ -70,7 +71,7 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str ,mask_ratio: float = 0. )->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0.)->None:
         super().__init__()
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
         self.model.config.mask_ratio = mask_ratio
@@ -92,7 +93,7 @@ class Stage1MAE(Stage1Model):
         self.image_mean = self.image_mean
         self.image_std = self.image_std
         #take out mean and std from processor
-    def forward(self, xs:torch.Tensor)-> tuple:
+    def forward(self, xs:torch.Tensor)-> Stage1ModelOutput:
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
         xs = (xs - image_mean) / image_std
@@ -101,16 +102,25 @@ class Stage1MAE(Stage1Model):
         logits = outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
-        return (xs_recon, outputs)
-    def encode(self, xs:torch.Tensor)->tuple:
+        output = Stage1ModelOutput(
+            xs_recon = xs_recon,
+            additional_attr= {'outputs': outputs}
+        )
+        return output
+    def encode(self, xs:torch.Tensor) -> Stage1Encodings:
         # mask_ratio must be zero
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
         xs = (xs - image_mean) / image_std
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
-        outputs = self.model.vit(xs,noise=noise)
-        return (outputs.last_hidden_state,)
-    def decode(self, zs:torch.Tensor)->tuple:
+        outputs = self.model.vit(xs, noise=noise)
+        encodings = Stage1Encodings(
+            zs = outputs.last_hidden_state,
+            additional_attr = {'outputs': outputs}
+        )
+        return encodings
+    def decode(self, outputs: Union[Stage1Encodings,Stage2ModelOutput]):
+        zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
@@ -118,20 +128,26 @@ class Stage1MAE(Stage1Model):
         logits = outputs.logits
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
-        return (xs_recon,)
-    def compute_loss(self, xs_recon, outputs, xs , valid:bool = True) -> dict:
-        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio > 0. else outputs.loss
+        outputs = Stage1ModelOutput(
+            xs_recon = xs_recon,
+            additional_attr = {'outputs': outputs}
+        )
+        return outputs
+    def compute_loss(self, outputs: Stage1ModelOutput, xs:torch.Tensor , valid:bool = True) -> dict:
+        xs_recon = outputs.xs_recon
+        MAE_outputs = outputs.additional_attr['outputs']
+        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
             'loss_total': loss_recon + loss_latent,
             'loss_recon': loss_recon,
             'loss_latent': loss_latent
         }
-    def get_recon_imgs(self, xs , xs_recon) -> tuple:
+    def get_recon_imgs(self, xs: torch.Tensor , xs_recon: torch.Tensor):
         xs = xs.clamp(0, 1)
         xs_recon = xs_recon.clamp(0, 1)
         return xs , xs_recon
-    def get_last_layer(self):
+    def get_last_layer(self) ->torch.Tensor:
         return self.model.decoder.decoder_pred.weight
     @torch.no_grad()
     def infer(self, xs):

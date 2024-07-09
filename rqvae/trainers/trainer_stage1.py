@@ -22,7 +22,7 @@ from tqdm import tqdm
 from rqvae.losses.vqgan import create_vqgan_loss, create_discriminator_with_optimizer_scheduler
 import rqvae.utils.dist as dist_utils
 
-from .accumulator import AccmStage1WithGAN
+from .accumulator import AccmStage1WithGAN, SummaryStage1WithGAN
 from .trainer import TrainerTemplate
 from header import *
 import torch_xla.core.xla_model as xm
@@ -31,7 +31,7 @@ import os
 DEBUG = bool(os.environ.get("DEBUG", 0))
 import time # for debugging
 from typing import *
-
+from rqvae.models.interfaces import Stage1ModelOutput
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
     g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
@@ -126,7 +126,7 @@ class Trainer(TrainerTemplate):
 
         return loss_gen, loss_disc, logits_avg
     @torch.no_grad()
-    def eval(self, valid=True, ema=False, verbose=False, epoch=0):
+    def eval(self, valid=True, ema=False, verbose=False, epoch=0)->SummaryStage1WithGAN:
         model = self.model_ema if ema else self.model
         discriminator = self.discriminator
         loader = self.wrap_loader('valid' if valid else 'train')
@@ -140,11 +140,10 @@ class Trainer(TrainerTemplate):
         model.eval()
         discriminator.eval()
         for it, inputs in pbar:
-            model.zero_grad()
             xs = inputs[0].to(self.device).to(self.dtype)
-            outputs = model(xs)
-            xs_recon = outputs[0]
-            outputs = model.module.compute_loss(*outputs, xs=xs, valid=True)
+            stage1_output:Stage1ModelOutput = model(xs)
+            xs_recon = stage1_output.xs_recon # calling convention
+            outputs = model.module.compute_loss(stage1_output, xs=xs, valid=True)
             xm.mark_step()
             loss_rec_lat = outputs['loss_total']
             loss_recon = outputs['loss_recon']
@@ -188,7 +187,7 @@ class Trainer(TrainerTemplate):
 
         return summary
 
-    def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0):
+    def train(self, optimizer=None, scheduler=None, scaler=None, epoch=0) ->SummaryStage1WithGAN:
         model = self.model
         model.train()
         model.zero_grad(set_to_none=True)
@@ -209,9 +208,9 @@ class Trainer(TrainerTemplate):
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
             xs = inputs[0].to(self.device).to(self.dtype)
-            outputs = model(xs)
-            xs_recon = outputs[0]
-            outputs = model.module.compute_loss(*outputs, xs=xs)
+            stage1_output:Stage1ModelOutput = model(xs)
+            xs_recon = stage1_output.xs_recon # calling convention
+            outputs = model.module.compute_loss(stage1_output, xs=xs)
             xm.mark_step()
             loss_rec_lat = outputs['loss_total']
             loss_recon = outputs['loss_recon']
@@ -294,8 +293,8 @@ class Trainer(TrainerTemplate):
                     if bsz == 1: # need to be handle properly
                         continue
                     max_shard_size = min(bsz,16)
-                    zs, zs_pred = model.module.get_recon_imgs(zs[:max_shard_size], zs_pred[:max_shard_size]).detach().cpu().float()
-                    grid = torch.cat([zs[:max_shard_size//2], zs_pred[:max_shard_size//2], zs[max_shard_size//2:], zs_pred[max_shard_size//2:]], dim=0)
+                    xs, xs_recon = model.module.get_recon_imgs(xs[:max_shard_size], xs_recon[:max_shard_size])
+                    grid = torch.cat([xs[:max_shard_size//2], xs_recon[:max_shard_size//2], xs[max_shard_size//2:], xs_recon[max_shard_size//2:]], dim=0).detach().cpu().float()
                     grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2)
                     self.writer.add_image('reconstruction_step', grid, 'train', global_iter)
 
@@ -319,19 +318,20 @@ class Trainer(TrainerTemplate):
         logger.info(line)
 
     @torch.no_grad()
-    def reconstruct(self, zs, epoch, mode='valid'):
+    def reconstruct(self, xs, epoch, mode='valid'):
         # do not write image when bs is 1
-        if zs.size(0) == 1:
+        if xs.size(0) == 1:
             return
-        bsz = zs.size(0)
+        bsz = xs.size(0)
         max_shard_size = min((bsz//2)*2, 16)
         model = self.model_ema if 'ema' in mode else self.model
         model.eval()
-        zs_real = zs[:max_shard_size]
-        zs_recon = model.module.stage_2_model(zs_real)[0]
-        zs_real, zs_recon = model.module.get_recon_imgs(zs_real, zs_recon)
-        grid = torch.cat([zs_real[:max_shard_size//2], zs_recon[:max_shard_size//2], zs_real[max_shard_size//2:], zs_recon[max_shard_size//2:]], dim=0)
-        grid = torchvision.utils.make_grid(grid, nrow=8).detach().cpu().float()
+        xs_real = xs[:max_shard_size]
+        stage1_output:Stage1ModelOutput = model.module(xs_real)
+        xs_recon = stage1_output.xs_recon
+        xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
+        grid = torch.cat([xs_real[:max_shard_size//2], xs_recon[:max_shard_size//2], xs_real[max_shard_size//2:], xs_recon[max_shard_size//2:]], dim=0)
+        grid = torchvision.utils.make_grid(grid, nrow=max_shard_size//2).detach().cpu().float()
         self.writer.add_image('reconstruction', grid, mode, epoch)
     def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
         return super()._load_ckpt(optimizer, scheduler, epoch, additional_attr_to_load=('discriminator',))
