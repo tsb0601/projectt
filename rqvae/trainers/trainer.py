@@ -25,7 +25,6 @@ import torch_xla.core.xla_model as xm
 from PIL import Image
 from header import *
 from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput
-from rqvae.utils.upload_api import asyncio_GCS_op, USER_NAME
 
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
@@ -70,7 +69,6 @@ class TrainerTemplate:
         self.actual_batch_size = config.experiment.actual_batch_size
         self.dataset_trn = dataset_trn
         self.dataset_val = dataset_val
-        self.GCS_dir = USER_NAME + '/'
         self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
             self.dataset_trn,
             num_replicas=self.distenv.world_size,

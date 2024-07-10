@@ -71,34 +71,33 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0.)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False)->None:
         super().__init__()
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
         self.model.config.mask_ratio = mask_ratio
         assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
         if mask_ratio == 0.:
             self.model.decoder.forward = custom_forward.__get__(self.model.decoder) # original forward method would cause XLA error when mask ratio is zero, we replace it with a custom forward method
-        self.model.vit.requires_grad_(False) # freeze encoder
+        self.model.vit.requires_grad_(train_encoder) # freeze encoder
+        self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
-        noise = torch.arange(256)
-        default_id_restore = torch.arange(256)
+        patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
+        noise = torch.arange(patch_num)
+        default_id_restore = torch.arange(patch_num)
         image_mean, image_std = processor.image_mean, processor.image_std
         self.register_buffer('image_mean', torch.tensor(image_mean).view(1, 3, 1, 1))
         self.register_buffer('image_std', torch.tensor(image_std).view(1, 3, 1, 1))
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
-        print(f'Stage1MAE model loaded with mean {image_mean} and std {image_std}')
-        self.image_mean = self.image_mean
-        self.image_std = self.image_std
-        #take out mean and std from processor
+        print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, xs:torch.Tensor)-> Stage1ModelOutput:
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
         xs = (xs - image_mean) / image_std
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
-        outputs = self.model(xs, noise) if self.model.config.mask_ratio > 0. else self.model(xs)
+        outputs = self.model(xs, noise) if self.model.config.mask_ratio == 0. else self.model(xs)
         logits = outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean

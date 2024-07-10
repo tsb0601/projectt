@@ -139,3 +139,4 @@ test/
 *.pth
 logs/
 eval/linear_probe/~
+ckpt_gcs/

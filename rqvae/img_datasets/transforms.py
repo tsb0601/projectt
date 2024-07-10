@@ -15,11 +15,14 @@
 import torchvision.transforms as transforms
 
 def create_transforms(config, split='train', is_eval=False):
-    if config.transforms.type == 'imagenet256x256':
+    if config.transforms.type.startswith('imagenet'):
+        # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
+        resolution = int(config.transforms.type.split('x')[-1])
         if split == 'train' and not is_eval:
+            #weak data augmentation
             transforms_ = [
-                transforms.Resize(256),
-                transforms.RandomCrop(256),
+                transforms.Resize(resolution),
+                transforms.RandomCrop(resolution),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
@@ -28,7 +31,7 @@ def create_transforms(config, split='train', is_eval=False):
             transforms_ = [
                 #transforms.Resize(256),
                 #transforms.CenterCrop(256),
-                transforms.Resize((256, 256)),
+                transforms.Resize((resolution, resolution)),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ]
