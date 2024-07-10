@@ -217,7 +217,7 @@ class Trainer(TrainerTemplate):
             loss_latent = outputs['loss_latent']
 
             # generator loss
-            loss_pcpt = self.perceptual_loss(xs, xs_recon)
+            loss_pcpt = self.perceptual_loss(xs, xs_recon) if self.perceptual_weight > 0 else torch.zeros((), device=self.device, dtype=self.dtype)
             p_weight = self.perceptual_weight
 
             if use_discriminator:

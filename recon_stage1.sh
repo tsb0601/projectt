@@ -15,8 +15,11 @@ export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_ft_test'
 env | grep PJRT
 env | grep DEBUG
 load_path=$2
-torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 main_stage1.py \
+model_config=$3
+world_size=$4
+python main_stage1.py \
     --eval \
-    -m=configs/imagenet256/stage1/MAE_r.yaml \
+    -m=$model_config \
     -r=$SAVE_DIR \
-    -l=$load_path
+    -l=$load_path \
+    --world_size=$world_size

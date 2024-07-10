@@ -24,6 +24,9 @@ import torch.distributed as dist
 import torch_xla.core.xla_model as xm
 from PIL import Image
 from header import *
+from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput
+from rqvae.utils.upload_api import asyncio_GCS_op, USER_NAME
+
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
@@ -67,7 +70,7 @@ class TrainerTemplate:
         self.actual_batch_size = config.experiment.actual_batch_size
         self.dataset_trn = dataset_trn
         self.dataset_val = dataset_val
-
+        self.GCS_dir = USER_NAME + '/'
         self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
             self.dataset_trn,
             num_replicas=self.distenv.world_size,
@@ -143,8 +146,8 @@ class TrainerTemplate:
             model.zero_grad()
             xs = inputs[0].to(self.device).to(self.dtype)
             img_paths = inputs[1]
-            outputs = model.module.infer(xs)
-            xs_recon_or_gen = outputs[0]
+            outputs:Stage1ModelOutput = model.module.infer(xs)
+            xs_recon_or_gen = outputs.xs_recon
             xm.mark_step()
             for i, img_path in enumerate(img_paths):
                 img_name = os.path.basename(img_path)

@@ -1,7 +1,6 @@
 from google.cloud import storage
 import os
 import sys
-from rqvae.utils.upload_api import asyncio_GCS_op
 BUCKET_NAME = os.getenv('BUCKET_NAME','us-central2-storage')
 USER_NAME = os.getenv('USER_NAME', 'boyang-ckpt')
 def ensure_data_safety(blob_or_dir_name):
@@ -17,8 +16,7 @@ def delete_blob(bucket_name, blob_name):
     # check whether the blob exists
     blobs = list(bucket.list_blobs(prefix=blob_name)) if blob_name.endswith('/') else [bucket.blob(blob_name)]
     if not blobs:
-        print(f"FAIL; No blobs found with prefix {blob_name}.")
-        return
+        raise ValueError(f"FAIL; No blobs found with prefix {blob_name}")
     for blob in blobs:
         blob: storage.Blob
         generation_match_precondition = None
@@ -112,13 +110,5 @@ def main():
     args = [arg for arg in args if arg is not None]
     print(f"Calling {func.__name__} with args {args}")
     func(*args)
-    #upload_dir('us-central2-storage', '/home/bytetriper/model_zoo/mae_base_256_ft', 'boyang-ckpt/')
-    #download_dir(BUCKET_NAME, 'boyang-ckpt', '/home/bytetriper/test/')
-    #upload_blob('us-central2-storage', '../test.txt', 'boyang-ckpt/')
-    #delete_blob('', 'boyang-ckpt/test.txt')
-    #upload_blob('us-central2-storage', '../test.txt', 'boyang-ckpt/')
-    #download_blob('us-central2-storage', 'boyang-ckpt/test.txt', 'test.txt')
 if __name__ == "__main__":
-    print("ASYNC TEST # 1")
-    asyncio_GCS_op(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None, sys.argv[3] if len(sys.argv) > 3 else None)
-    print("ASYNC TEST # 2")
+    main()
