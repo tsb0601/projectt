@@ -225,7 +225,9 @@ def main(rank, args):
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
     torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
+
     device = torch.device(args.device)
+
     # fix the seed for reproducibility
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)

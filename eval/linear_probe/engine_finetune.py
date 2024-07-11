@@ -54,7 +54,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         loss_value = loss.item()
 
         if not math.isfinite(loss_value):
-            print("Loss is {}, stopping skipping".format(loss_value))
+            print("Loss is {}, skipping".format(loss_value))
             continue
             #sys.exit(1)
 
