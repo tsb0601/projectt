@@ -29,7 +29,7 @@ optimizer:
 
 experiment:
   batch_size: 32
-  accu_step: 1
+  accu_step: 2 # total bsz of 4096 on a 128 pod
   epochs: 100
   save_ckpt_freq: 1
   test_freq: 1
