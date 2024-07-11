@@ -1,3 +1,4 @@
 transformers
 timm > 1
 omegaconf
+wandb

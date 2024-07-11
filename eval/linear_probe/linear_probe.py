@@ -217,10 +217,10 @@ def main(rank, args):
     args.rank = rank
     misc.init_distributed_mode(args)
     # xm.master_print("args = %s" % args)
-    XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "~/xla_compile/tmp")
+    XLA_CACHE_PATH = os.environ.get("XLACACHE_PATH", "/home/bytetriper/xla_compile/tmp")
     os.makedirs(XLA_CACHE_PATH, exist_ok=True)
     if not xla._XLAC._xla_computation_cache_is_initialized(): # only initialize once
-        # add a lock to prevent multiple processes from initializing the cache
+        # TODO: add a lock to prevent multiple processes from initializing the cache
         xr.initialize_cache(XLA_CACHE_PATH, readonly=False)
     xm.rendezvous("init_cache")
     device = xm.xla_device()
@@ -416,6 +416,7 @@ def main(rank, args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
+        one_epoch_start_time = time.time()
         train_stats = train_one_epoch(
             model,
             criterion,
@@ -461,6 +462,10 @@ def main(rank, args):
                 os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8"
             ) as f:
                 f.write(json.dumps(log_stats) + "\n")
+        one_epoch_end_time = time.time()
+        xm.master_print(
+            f"Epoch {epoch} time: {one_epoch_end_time - one_epoch_start_time:.2f}"
+        )
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     xm.master_print("Training time {}".format(total_time_str))

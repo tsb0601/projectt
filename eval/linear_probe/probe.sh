@@ -21,9 +21,10 @@ python linear_probe.py \
     --model_config $1 \
     --epochs 90 \
     --warmup_epochs 10 \
-    --blr 3e-4 \
+    --blr 1e-2 \
+    --save_freq 30 \
     --weight_decay 0.0 \
-    --global_pool \
+    --cls_token \
     --dtype float32 \
     --image_size $image_size \
     --output_dir $save_path \
