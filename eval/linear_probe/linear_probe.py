@@ -223,11 +223,9 @@ def main(rank, args):
     xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    # torch.set_default_dtype(dtype) # set default dtype
+    torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
-
     device = torch.device(args.device)
-
     # fix the seed for reproducibility
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)
@@ -326,25 +324,6 @@ def main(rank, args):
     )  # use float32 for the head
     model = head_model(model, head)
     if args.finetune and not args.eval:
-        # model = head_model(model, head, args.cls_token)
-        # if args.global_pool:
-        #    raise NotImplementedError("Global pool not supported now")
-        #    model.fc_norm = nn.LayerNorm(args.hidden_size, eps=1e-6, elementwise_affine=False) # a frozen layernorm
-        #    model.norm = nn.Identity() # special judge for MAE model
-        #    def forward_hook(module, input, output):
-        #        #use global pooling of non-cls tokens
-        #        latent = output[0] # the output is a tuple, latent: [batch_size, seq_len, hidden_size]
-        #        x = latent[:, 1:, :].mean(dim=1) # [batch_size, hidden_size]
-        #        x = model.fc_norm(x)
-        #        x = model.head(x)
-        #        return x
-        # else:
-        #    def forward_hook(module, input, output):
-        #        x = output[0][:, 0]
-        #        x = model.head(x) # [batch_size, nb_classes]
-        #        print(x.shape)
-        #        return x
-        # model.register_forward_hook(forward_hook)
         if os.path.isfile(args.finetune):
             raise NotImplementedError(
                 "Finetuning from a checkpoint is not supported now"
@@ -367,14 +346,6 @@ def main(rank, args):
             # load pre-trained model
             msg = model.load_state_dict(checkpoint_model, strict=False)
             print(msg)
-
-        # if args.global_pool:
-        #    assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
-        # else:
-        #    assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
-
-        # manually initialize fc layer: following MoCo v3
-        # trunc_normal_(model.head.weight, std=0.01)
 
     # for linear prob only
     # hack: revise model's head with BN
@@ -419,18 +390,14 @@ def main(rank, args):
     # )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
-
     criterion = torch.nn.CrossEntropyLoss()
-
     xm.master_print("criterion = %s" % str(criterion))
-
     misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
-
     if args.eval:
         test_stats = evaluate(data_loader_val, model, device)
         xm.master_print(
