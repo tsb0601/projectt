@@ -42,8 +42,10 @@ import sys
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla.runtime as xr
 import torch_xla.distributed.xla_multiprocessing as xmp
-
-
+wandb_dir = os.environ.get("WANDB_DIR", None)
+PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'linear_probe')
+if wandb_dir:
+    import wandb
 # add ../.. to the sys path
 class head_model(nn.Module):
     def __init__(
@@ -287,6 +289,7 @@ def main(rank, args):
 
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
+        wandb.init(project=PROJECT_NAME, dir=args.log_dir, name="linear_probe")
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
@@ -461,7 +464,8 @@ def main(rank, args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     xm.master_print("Training time {}".format(total_time_str))
-
+    if global_rank == 0 and args.log_dir is not None and not args.eval and wandb_dir:
+        wandb.finish()    
 
 if __name__ == "__main__":
     args = get_args_parser()
