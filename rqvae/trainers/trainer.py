@@ -25,7 +25,6 @@ import torch_xla.core.xla_model as xm
 from PIL import Image
 from header import *
 from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput
-
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
@@ -154,6 +153,8 @@ class TrainerTemplate:
                 img = (img * 255).astype('uint8').transpose(1, 2, 0)
                 img = Image.fromarray(img)
                 img.save(save_path)
+    def logging(self, *args, **kwargs):
+        raise NotImplementedError
     def run_epoch(self, optimizer=None, scheduler=None, epoch_st=0):
         scaler = GradScaler() if self.config.experiment.amp else None
         for i in range(epoch_st, self.config.experiment.epochs):

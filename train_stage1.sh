@@ -1,5 +1,7 @@
-SAVE_DIR=$1
+EXP_NAME=$1
+CKPT_DIR=$2 # ./ckpt_gcs
 #assert save_dir is not empty
+SAVE_DIR=${CKPT_DIR}/${EXP_NAME}
 if [ -z "$SAVE_DIR" ]
 then
     echo "Save dir is empty"
@@ -7,19 +9,15 @@ then
 fi
 mkdir -p $SAVE_DIR
 echo "Save dir: $SAVE_DIR"
-#export DEBUG=1
 export PJRT_DEVICE=TPU
 export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_ft'
-#echo "Running stage1 training"
-#echo "setting env vars"
 env | grep PJRT
 env | grep DEBUG
-#torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 main_stage1.py \
-#    -m=configs/imagenet256/stage1/MAE.yaml \
-#    -r=$SAVE_DIR
-model_config=$2
-world_size=$3
-
+model_config=$3
+world_size=$4
+export WANDB_DIR=$SAVE_DIR
+export WANDB_PROJECT=$EXP_NAME
+env | grep WANDB
 python main_stage1.py \
     -m=$model_config \
     -r=$SAVE_DIR \

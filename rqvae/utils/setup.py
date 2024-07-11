@@ -6,14 +6,16 @@ import shutil
 from pathlib import Path
 
 from omegaconf import OmegaConf
-import torch
-
 from .writer import Writer
 from .config import config_setup
 from .dist import initialize as dist_init
-
+wandb_dir = os.environ.get("WANDB_DIR", None)
+PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'VAE-enhanced')
+if wandb_dir:
+    import wandb
+import torch_xla.core.xla_model as xm
 def logger_setup(log_path, eval=False):
-
+    global wandb_dir, PROJECT_NAME
     log_fname = os.path.join(log_path, 'val.log' if eval else 'train.log')
 
     for hdlr in logging.root.handlers:
@@ -30,6 +32,10 @@ def logger_setup(log_path, eval=False):
     main_filename, *_ = inspect.getframeinfo(inspect.currentframe().f_back.f_back)
 
     logger = logging.getLogger(Path(main_filename).name)
+    if wandb_dir:
+        # find the parent directory of log_path
+        wandb.init(project=PROJECT_NAME, sync_tensorboard=True, dir=log_path, name=os.path.basename(log_path))
+        xm.master_print(f'wandb initialized with project: {PROJECT_NAME}, log_path: {log_path}')
     writer = Writer(log_path)
 
     return logger, writer

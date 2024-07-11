@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
@@ -7,20 +7,18 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256'
-    mask_ratio: .75
-    train_encoder: true
+    ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
   checkpointing: false
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.6e-3
+  init_lr: 1.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
   warmup:
-    epoch: 5  # 5% of total epochs
+    epoch: 1  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
@@ -28,11 +26,11 @@ optimizer:
     start_from_zero: true
 
 experiment:
-  batch_size: 32
-  accu_step: 2 # total bsz of 4096 on a 128 pod
-  epochs: 100
-  save_ckpt_freq: 20
-  test_freq: 5
+  batch_size: 64
+  accu_step: 1
+  epochs: 1
+  save_ckpt_freq: 1
+  test_freq: 1
   amp: false
 
 gan:
@@ -64,5 +62,5 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: 0.
+    perceptual_weight: 1.0
     disc_start: 100000
