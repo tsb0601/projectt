@@ -1,4 +1,4 @@
 target: rqvae.models.MAE.MAEEncoder_ForProbing
 params:
-  ckpt_path: '/ckpt_gcs/model_zoo/mae_base_224'
+  ckpt_path: './ckpt_gcs/model_zoo/mae_base_224'
 
