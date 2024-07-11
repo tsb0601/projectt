@@ -149,7 +149,7 @@ class Trainer(TrainerTemplate):
             loss_recon = outputs['loss_recon']
             loss_latent = outputs['loss_latent']
 
-            loss_pcpt = self.perceptual_loss(xs, xs_recon)
+            loss_pcpt = self.perceptual_loss(xs, xs_recon) if self.perceptual_weight > 0 else torch.zeros((), device=self.device, dtype=self.dtype)
             p_weight = self.perceptual_weight
 
             if use_discriminator:

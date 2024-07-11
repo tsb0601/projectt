@@ -7,7 +7,7 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256'
+    ckpt_path: '../model_zoo/mae_base_256'
     mask_ratio: .75
     train_encoder: true
   checkpointing: false
@@ -20,7 +20,7 @@ optimizer:
   betas: [0.9, 0.95]
   max_gn: None
   warmup:
-    epoch: 1  # 5% of total epochs
+    epoch: 5  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
@@ -28,9 +28,9 @@ optimizer:
     start_from_zero: true
 
 experiment:
-  batch_size: 2
+  batch_size: 32
   accu_step: 1
-  epochs: 10
+  epochs: 100
   save_ckpt_freq: 1
   test_freq: 1
   amp: false
