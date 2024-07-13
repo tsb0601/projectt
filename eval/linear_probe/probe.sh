@@ -27,7 +27,7 @@ python linear_probe.py \
     --save_freq 30 \
     --weight_decay 0.0 \
     --cls_token \
-    --dtype bfloat16 \
+    --dtype float32 \
     --image_size $image_size \
     --output_dir $save_path \
     --log_dir $log_path \
