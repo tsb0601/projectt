@@ -14,6 +14,8 @@ image_size=$3
 bsz=$4
 acc_iter=$5
 world_size=$6
+export WANDB_DIR=${log_path}
+export WANDB_PROJECT='linear_probe'
 #torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 
 python linear_probe.py \
     --accum_iter $acc_iter \
@@ -25,7 +27,7 @@ python linear_probe.py \
     --save_freq 30 \
     --weight_decay 0.0 \
     --cls_token \
-    --dtype float32 \
+    --dtype bfloat16 \
     --image_size $image_size \
     --output_dir $save_path \
     --log_dir $log_path \

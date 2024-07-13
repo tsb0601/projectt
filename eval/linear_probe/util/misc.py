@@ -20,6 +20,7 @@ import torch
 import torch.distributed as dist
 from torch import inf
 import torch_xla.core.xla_model as xm
+from torch_xla.distributed import xla_backend 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.

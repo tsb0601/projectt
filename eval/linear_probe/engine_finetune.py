@@ -34,7 +34,6 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     print_freq = 200
     accum_iter = args.accum_iter
     optimizer.zero_grad()
-
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
     data_loader = ParallelLoader(data_loader, [device]).per_device_loader(device)

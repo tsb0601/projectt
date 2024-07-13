@@ -225,7 +225,8 @@ def main(rank, args):
     xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    torch.set_default_dtype(dtype) # set default dtype
+    if dtype == torch.bfloat16:
+        torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
 
     device = torch.device(args.device)
@@ -409,7 +410,6 @@ def main(rank, args):
             f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
         )
         exit(0)
-
     xm.master_print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
