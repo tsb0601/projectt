@@ -171,7 +171,7 @@ def setup_for_distributed(is_master):
     #        builtin_print('[{}] '.format(now), end='')  # print with time stamp
     #        builtin_print(*args, **kwargs)
 
-    builtins.print = xm.master_print 
+    # builtins.print = xm.master_print 
 
 
 def is_dist_avail_and_initialized():
