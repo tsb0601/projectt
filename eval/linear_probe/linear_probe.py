@@ -290,7 +290,7 @@ def main(rank, args):
 
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
-        wandb.init(project=PROJECT_NAME, dir=args.log_dir, name="linear_probe")
+        wandb.init(project=PROJECT_NAME, dir=args.log_dir, name="linear_probe", sync_tensorboard=True)
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
