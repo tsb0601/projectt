@@ -14,6 +14,7 @@ DEFAULT_PROCESSOR = ViTImageProcessor.from_pretrained('/home/bytetriper/model_zo
 def convert(ckpt_path:str, load_path:str, save_path:str):
     global DEFAULT_PROCESSOR
     mae = Stage1MAE(ckpt_path=ckpt_path).cpu()
+    mae.model.config.mask_ratio = .75
     load_ckpt = torch.load(load_path, map_location='cpu')
     keys = list(load_ckpt.keys())
     for key in keys:

@@ -199,6 +199,8 @@ class TrainerTemplate:
                 self.model_ema.module.load_state_dict(ema_model_weight)
             else:
                 xm.master_print(f"[!] EMA model path {ema_model_path} does not exist, skip loading EMA model")
+        if len(additional_attr_to_load) == 0:
+            return
         additional_path = os.path.join(load_path, ADDIONTIONAL_NAME.format(rank))
         additional_attr_ckpt = torch.load(additional_path)
         for attr in additional_attr_to_load:
