@@ -1,0 +1,7 @@
+target: rqvae.models.mae_pt.Stage1MAE_For_Probing_PT
+params:
+  model_type: 'vit_base_patch16'
+  nb_classes: 1000
+  global_pool: false
+  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/model_zoo/mae_base_224_pt/mae_pretrain_vit_base.pth'
+

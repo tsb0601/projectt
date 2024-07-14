@@ -54,9 +54,10 @@ class head_model(nn.Module):
         super(head_model, self).__init__()
         self.model_to_wrap = model_to_wrap
         self.head = head
-        self.model_to_wrap.requires_grad_(False)
-        self.head.requires_grad_(True)
-
+        for _, param in self.model_to_wrap.named_parameters():
+            param.requires_grad = False
+        for _, param in self.head.named_parameters():
+            param.requires_grad = True
     def forward(self, x):
         with torch.no_grad():
             x = self.model_to_wrap(x)
@@ -225,8 +226,8 @@ def main(rank, args):
     xm.rendezvous("init_cache")
     device = xm.xla_device()
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
-    if dtype == torch.bfloat16:
-        torch.set_default_dtype(dtype) # set default dtype
+    #if dtype == torch.bfloat16:
+    #    torch.set_default_dtype(dtype) # set default dtype
     xm.master_print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
 
     device = torch.device(args.device)
@@ -385,15 +386,15 @@ def main(rank, args):
     if args.distributed:
         model = DDP(model, gradient_as_bucket_view=True)
         model_without_ddp = model.module
-    #optimizer = torch.optim.AdamW(
-    #    model_without_ddp.head.parameters(),
-    #    betas=(0.9, 0.95),
-    #    lr=args.lr,
-    #    weight_decay=args.weight_decay,
-    #)
-    optimizer = LARS(
-       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    optimizer = torch.optim.AdamW(
+        model_without_ddp.head.parameters(),
+        betas=(0.9, 0.95),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
     )
+    #optimizer = LARS(
+    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    #)
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
     criterion = torch.nn.CrossEntropyLoss()
