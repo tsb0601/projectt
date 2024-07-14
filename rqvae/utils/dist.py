@@ -42,10 +42,6 @@ def initialize(args: argparse.Namespace , logger =None):
     os.environ["WORLD_SIZE"] = str(world_size)
     os.environ["LOCAL_RANK"] = str(local_rank)
     if args.world_size > 1:
-        #os.environ["RANK"] = str(args.rank)
-        #os.environ["WORLD_SIZE"] = str(args.world_size)
-        #os.environ["LOCAL_RANK"] = str(args.local_rank)
-        #local_rank = os.environ["LOCAL_RANK"]
         # recaculate rank and world_size
         local_rank = rank % 4 # we have 4 cores per TPU
         args.local_rank = local_rank
