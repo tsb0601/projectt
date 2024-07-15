@@ -17,67 +17,82 @@ import abc
 from torch import nn
 import torch
 from typing import Tuple
+
 # create a dataclass for ModelOutput
 from dataclasses import dataclass
+
+
 @dataclass
 class Stage1ModelOutput:
     xs_recon: torch.Tensor
     additional_attr: dict
+
 
 @dataclass
 class Stage2ModelOutput:
     zs_pred: torch.Tensor
     zs_degraded: torch.Tensor
     additional_attr: dict
-    
+
+
 @dataclass
 class Stage1Encodings:
     zs: torch.Tensor
     additional_attr: dict
+
+
 class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
     """
     an abstract class for STage1 and Stage2 models
     """
+
     @abc.abstractmethod
     def infer(self, *args, **kwargs):
-        """Inference the model.
-        """
+        """Inference the model."""
         pass
+
     @abc.abstractmethod
-    def get_recon_imgs(self, *args, **kwargs)-> Tuple[torch.Tensor, torch.Tensor]:
+    def get_recon_imgs(
+        self, x, xs, *args, **kwargs
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         don't actually need this, but for the sake of consistency
         """
         raise NotImplementedError
+    @abc.abstractmethod
+    def get_last_layer(self, *args, **kwargs) -> torch.Tensor:
+        """Get the last layer of the model."""
+        pass
+
 class Stage1Model(XLA_Model):
 
-    #@abc.abstractmethod
-    #def get_codes(self, *args, **kwargs):
+    # @abc.abstractmethod
+    # def get_codes(self, *args, **kwargs):
     #    """Generate the code from the input."""
     #    pass
 
-    #@abc.abstractmethod
-    #def decode_code(self, *args, **kwargs):
+    # @abc.abstractmethod
+    # def decode_code(self, *args, **kwargs):
     #    """Generate the decoded image from the given code."""
     #    pass
     # for vq based mode you should use the above two, but for more general models only the below two are needed
     @abc.abstractmethod
-    def get_recon_imgs(self, *args, **kwargs)-> Tuple[torch.Tensor, torch.Tensor]:
-        """Scales the real and recon images properly.
-        """
+    def get_recon_imgs(self, *args, **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Scales the real and recon images properly."""
         pass
+
     @abc.abstractmethod
-    def encode(self, *args, **kwargs)-> Stage1Encodings:
-        """Encode the input image to the latent space.
-        """
+    def encode(self, *args, **kwargs) -> Stage1Encodings:
+        """Encode the input image to the latent space."""
         pass
+
     @abc.abstractmethod
-    def decode(self, *args, **kwargs)-> Stage1ModelOutput:
-        """Decode the latent code to the image space.
-        """
+    def decode(self, *args, **kwargs) -> Stage1ModelOutput:
+        """Decode the latent code to the image space."""
         pass
+
     @abc.abstractmethod
-    def compute_loss(self, *args, **kwargs)-> dict:
+    def compute_loss(self, *args, **kwargs) -> dict:
         """Compute the losses necessary for training.
 
         return {
@@ -89,63 +104,68 @@ class Stage1Model(XLA_Model):
         }
         """
         pass
+
     @abc.abstractmethod
-    def forward(self, *args, **kwargs)-> Stage1ModelOutput:
-        """Forward pass of the model.
-        """
+    def forward(self, *args, **kwargs) -> Stage1ModelOutput:
+        """Forward pass of the model."""
         pass
-    @abc.abstractmethod
-    def get_last_layer(self, *args, **kwargs)-> torch.Tensor:
-        """Get the last layer of the model.
-        """
-        pass
+
+
+
 class Stage2Model(XLA_Model):
     """A template for the Stage2 model."""
-    
+
     @abc.abstractmethod
-    def compute_loss(self, zs_pred, zs ,*args, **kwargs)-> dict:
+    def compute_loss(
+        self, stage1_encodings: Stage1Encodings, stage2_output: Stage2ModelOutput, xs: torch.Tensor
+    ) -> dict:
         """Compute the losses necessary for training.
         Typically, it would be the cross-entropy of the AR prediction w.r.t. the ground truth.
         """
         raise NotImplementedError
+
     @abc.abstractmethod
-    def forward(self, *args, **kwargs)-> Stage2ModelOutput:
-        """Forward pass of the model.
-        """
+    def forward(
+        self, stage1_encodings: Stage1Encodings, *args, **kwargs
+    ) -> Stage2ModelOutput:
+        """Forward pass of the model."""
         pass
+
     @abc.abstractmethod
-    def infer(self, *args, **kwargs)-> Stage2ModelOutput:
-        """Inference the model.
-        """
+    def infer(self, *args, **kwargs) -> Stage2ModelOutput:
+        """Inference the model."""
         pass
+
+
 class Stage2ModelWrapper(XLA_Model):
     """
     Wrap a Stage2 model with a Stage1 model.
     """
+
     def __init__(self, stage_1_model: Stage1Model, stage_2_model: Stage2Model):
         super().__init__()
         self.stage_1_model = stage_1_model
         self.stage_2_model = stage_2_model
-        self.stage_1_model.requires_grad_(False) # freeze the stage 1 model
-        self.stage_2_model.requires_grad_(True) # train the stage 2 model
+        self.stage_1_model.requires_grad_(False)  # freeze the stage 1 model
+        self.stage_2_model.requires_grad_(True)  # train the stage 2 model
+
     def forward(self, *args, **kwargs) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(*args, **kwargs)
         stage2_output = self.stage_2_model(stage1_encodings, *args, **kwargs)
         return stage1_encodings, stage2_output
-    def compute_loss(self, zs_pred, zs , *args, **kwargs) -> dict:
-        return self.stage_2_model.compute_loss(zs_pred, zs, *args, **kwargs)
+
+    def compute_loss(self, stage1_encodings: Stage1Encodings ,stage2_output: Stage2ModelOutput , *args, **kwargs) -> dict:
+        return self.stage_2_model.compute_loss(stage1_encodings, stage2_output , *args, **kwargs)
+
     @torch.no_grad()
     def get_recon_imgs(self, zs, zs_pred) -> Tuple[torch.Tensor, torch.Tensor]:
-        xs = self.stage_1_model.decode(zs).xs_recon
-        xs_pred = self.stage_1_model.decode(zs_pred).xs_recon
-        return xs, xs_pred
+        return self.stage_2_model.get_recon_imgs(zs, zs_pred)
+
     @torch.no_grad()
     def infer(self, *args, **kwargs) -> Stage1ModelOutput:
         stage_2_gen = self.stage_2_model.infer(*args, **kwargs)
-        zs_gen = stage_2_gen.zs_pred
-        stage_1_gen = self.stage_1_model.decode(zs_gen)
+        stage_1_gen = self.stage_1_model.decode(stage_2_gen)
         return stage_1_gen
-
-    
-
+    def get_last_layer(self, *args, **kwargs) -> torch.Tensor:
+        return self.stage_2_model.get_last_layer(*args, **kwargs)

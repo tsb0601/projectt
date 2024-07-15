@@ -119,8 +119,8 @@ def main(rank, args, extra_args):
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
     if args.eval:
-        trainer.eval(valid=False, verbose=True)
-        #trainer.batch_infer(valid=True, save_root=args.result_path)
+        #trainer.eval(valid=False, verbose=True)
+        trainer.batch_infer(valid=True, save_root=args.result_path)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
 

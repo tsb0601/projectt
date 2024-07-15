@@ -26,7 +26,8 @@ from rqvae.trainers import create_trainer
 from rqvae.img_datasets import create_dataset
 from rqvae.optimizer import create_optimizer, create_scheduler
 from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
-from rqvae.utils.setup import setup
+from rqvae.utils.setup import setup , wandb_dir
+import wandb
 import torch_xla.runtime as xr
 import torch_xla.distributed.xla_multiprocessing as xmp
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
@@ -113,7 +114,7 @@ def main(rank, args, extra_args):
             epoch_st = int(epoch_st) - 1 # actual epoch to start
 
         else:
-            trainer._load_model_only(args.load_path)
+            trainer._load_model_only(args.load_path,additional_attr_to_load= ())
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
@@ -127,8 +128,9 @@ def main(rank, args, extra_args):
 
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
+        if wandb_dir:
+            wandb.finish()
     dist.destroy_process_group()
-    
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args))
