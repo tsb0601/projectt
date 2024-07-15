@@ -47,7 +47,8 @@ class SmoothedValue(object):
             return
         t = torch.tensor([self.count, self.total], dtype=torch.float64).to(xm.xla_device()) # dist only works with tensors on TPU
         xm.mark_step()
-        dist.all_reduce(t)
+        xm.all_reduce(xm.REDUCE_SUM, t)
+        #dist.all_reduce(t)
         t = t.tolist()
         self.count = int(t[0])
         self.total = t[1]
@@ -229,7 +230,7 @@ def init_distributed_mode(args):
         dist.init_process_group(backend='xla', init_method='xla://', world_size=args.world_size, rank=args.rank)
     print(
             f"""[dist] Distributed: success device:{args.local_rank}, """,
-            f"""{dist.get_rank()}/{dist.get_world_size()}"""
+            f"""{xm.get_ordinal()}/{xm.xrt_world_size()}"""
     )
     #setup_for_distributed(args.rank == 0) # this will give a hang in xmp.spawn
 import importlib

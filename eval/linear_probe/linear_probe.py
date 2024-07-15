@@ -42,7 +42,7 @@ import sys
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla.runtime as xr
 import torch_xla.distributed.xla_multiprocessing as xmp
-from torch_xla.amp import autocast
+from torch_xla.amp import autocast, syncfree
 wandb_dir = os.environ.get("WANDB_DIR", None)
 PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'linear_probe')
 if wandb_dir:
@@ -387,18 +387,21 @@ def main(rank, args):
     xm.master_print("accumulate grad iterations: %d" % args.accum_iter)
     xm.master_print("effective batch size: %d" % eff_batch_size)
 
-    if args.distributed:
+    if args.use_ddp:
         model = DDP(model, gradient_as_bucket_view=True)
         model_without_ddp = model.module
-    #optimizer = torch.optim.AdamW(
-    #    model_without_ddp.head.parameters(),
-    #    betas=(0.9, 0.95),
-    #    lr=args.lr,
-    #    weight_decay=args.weight_decay,
+    else:
+        model_without_ddp = model
+    optim_class = syncfree if args.use_ddp else torch.optim
+    optimizer = optim_class.AdamW(
+        model_without_ddp.head.parameters(),
+        betas=(0.9, 0.95),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+    ) 
+    #optimizer = LARS(
+    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
     #)
-    optimizer = LARS(
-       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
     criterion = torch.nn.CrossEntropyLoss()
@@ -444,7 +447,7 @@ def main(rank, args):
                 loss_scaler=loss_scaler,
                 epoch=epoch,
             )
-        test_stats = evaluate(data_loader_val, model, device)
+        test_stats = evaluate(data_loader_val, model, device, dtype)
         xm.master_print(
             f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
         )
