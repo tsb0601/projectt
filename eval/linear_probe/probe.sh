@@ -1,5 +1,5 @@
 export PJRG_DEVICE=TPU
-export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_linear_probe'
+export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_linear_probe'
 save_path=$2
 time=$(date "+%Y%m%d-%H%M%S")
 save_path=${save_path}/${time}
@@ -14,8 +14,8 @@ image_size=$3
 bsz=$4
 acc_iter=$5
 world_size=$6
-#export WANDB_DIR=${log_path}
-#export WANDB_PROJECT='linear_probe'
+export WANDB_DIR=${log_path}
+export WANDB_PROJECT='linear_probe'
 #torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 
 python linear_probe.py \
     --accum_iter $acc_iter \
