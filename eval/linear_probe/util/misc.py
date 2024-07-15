@@ -43,8 +43,6 @@ class SmoothedValue(object):
         """
         Warning: does not synchronize the deque!
         """
-        if not is_dist_avail_and_initialized():
-            return
         t = torch.tensor([self.count, self.total], dtype=torch.float64).to(xm.xla_device()) # dist only works with tensors on TPU
         xm.mark_step()
         xm.all_reduce(xm.REDUCE_SUM, t)
