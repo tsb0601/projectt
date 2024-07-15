@@ -64,6 +64,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         #            parameters=model.parameters(), create_graph=False,
         #            update_grad=(data_iter_step + 1) % accum_iter == 0)
         if (data_iter_step + 1) % accum_iter == 0:
+            if args.use_ddp:
+                optimizer.step()
+            else:
+                xm.optimizer_step(optimizer)
             optimizer.zero_grad()
 
         xm.mark_step()
