@@ -250,7 +250,6 @@ class Trainer(TrainerTemplate):
                     else torch.zeros((), device=self.device, dtype=self.dtype)
                 )
                 p_weight = self.perceptual_weight
-            xm.master_print(f"[!]loss computed")
             if use_discriminator:
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     loss_gen, _, _ = self.gan_loss(xs, xs_recon, mode="gen")
@@ -262,7 +261,6 @@ class Trainer(TrainerTemplate):
             else:
                 loss_gen = torch.zeros((), device=self.device)
                 g_weight = torch.zeros((), device=self.device)
-            xm.master_print(f"[!]adaptive weight computed")
             xm.mark_step()
             loss_gen_total = (
                 loss_rec_lat
@@ -270,7 +268,6 @@ class Trainer(TrainerTemplate):
                 + g_weight * self.disc_weight * loss_gen
             )
             loss_gen_total.backward()
-            xm.master_print(f"[!]backward done")
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
