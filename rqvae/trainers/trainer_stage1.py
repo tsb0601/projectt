@@ -37,7 +37,8 @@ DEBUG = bool(os.environ.get("DEBUG", 0))
 import time  # for debugging
 from typing import *
 from rqvae.models.interfaces import Stage1ModelOutput
-
+from torch_xla.amp import autocast
+from contextlib import nullcontext
 
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
@@ -65,6 +66,8 @@ class Trainer(TrainerTemplate):
                 disc_config,
                 steps_per_epoch=len(self.loader_trn),
                 max_epoch=num_epochs_for_gan,
+                device = self.device,
+                dtype = self.dtype,
                 distenv=self.distenv,
                 is_eval=self.is_eval,
             )
@@ -73,7 +76,6 @@ class Trainer(TrainerTemplate):
         if disc_state_dict is not None:
             disc_model.load_state_dict(disc_state_dict)
             logger.info("[state] discriminator loaded")
-        disc_model = disc_model.to(self.device).to(self.dtype)
 
         self.discriminator = dist_utils.dataparallel_and_sync(self.distenv, disc_model)
         self.disc_optimizer = disc_optim
@@ -83,17 +85,11 @@ class Trainer(TrainerTemplate):
 
         self.disc_loss = d_loss
         self.gen_loss = g_loss
-        self.perceptual_loss = p_loss.to(self.device).eval()
+        self.perceptual_loss = p_loss.to(self.device).to(self.dtype).eval()
         self.perceptual_weight = gan_config.loss.perceptual_weight
         self.disc_weight = gan_config.loss.disc_weight
-
-        if hasattr(self.model, "module"):
-            self.get_last_layer = self.model.module.get_last_layer
-        else:
-            self.get_last_layer = self.model.get_last_layer
-
+        self.get_last_layer = self.model_woddp.get_last_layer
     def get_accm(self):
-        config = self.config
         metric_names = [
             "loss_total",
             "loss_recon",
@@ -166,27 +162,28 @@ class Trainer(TrainerTemplate):
         discriminator.eval()
         for it, inputs in pbar:
             xs = inputs[0].to(self.device).to(self.dtype)
-            stage1_output: Stage1ModelOutput = model(xs)
-            xs_recon = stage1_output.xs_recon  # calling convention
-            outputs = model.module.compute_loss(stage1_output, xs=xs, valid=True)
-            xm.mark_step()
-            loss_rec_lat = outputs["loss_total"]
-            loss_recon = outputs["loss_recon"]
-            loss_latent = outputs["loss_latent"]
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_output: Stage1ModelOutput = model(xs)
+                xs_recon = stage1_output.xs_recon  # calling convention
+                outputs = self.model_woddp.compute_loss(stage1_output, xs=xs, valid=True)
+                xm.mark_step()
+                loss_rec_lat = outputs["loss_total"]
+                loss_recon = outputs["loss_recon"]
+                loss_latent = outputs["loss_latent"]
 
-            loss_pcpt = (
-                self.perceptual_loss(xs, xs_recon)
-                if self.perceptual_weight > 0
-                else torch.zeros((), device=self.device, dtype=self.dtype)
-            )
-            p_weight = self.perceptual_weight
+                loss_pcpt = (
+                    self.perceptual_loss(xs, xs_recon)
+                    if self.perceptual_weight > 0
+                    else torch.zeros((), device=self.device, dtype=self.dtype)
+                )
+                p_weight = self.perceptual_weight
 
-            if use_discriminator:
-                loss_gen, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="eval")
-            else:
-                loss_gen = torch.zeros((), device=self.device)
-                loss_disc = torch.zeros((), device=self.device)
-                logits = {}
+                if use_discriminator:
+                    loss_gen, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="eval")
+                else:
+                    loss_gen = torch.zeros((), device=self.device)
+                    loss_disc = torch.zeros((), device=self.device)
+                    logits = {}
 
             # logging
             loss_total = loss_rec_lat + p_weight * loss_pcpt  # rec + lat + pcpt
@@ -239,25 +236,27 @@ class Trainer(TrainerTemplate):
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
             xs = inputs[0].to(self.device).to(self.dtype)
-            stage1_output: Stage1ModelOutput = model(xs)
-            xs_recon = stage1_output.xs_recon  # calling convention
-            outputs = model.module.compute_loss(stage1_output, xs=xs)
-            xm.mark_step()
-            loss_rec_lat = outputs["loss_total"]
-            loss_recon = outputs["loss_recon"]
-            loss_latent = outputs["loss_latent"]
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_output: Stage1ModelOutput = model(xs)
+                xs_recon = stage1_output.xs_recon  # calling convention
+                outputs = self.model_woddp.compute_loss(stage1_output, xs=xs)
+                xm.mark_step()
+                loss_rec_lat = outputs["loss_total"]
+                loss_recon = outputs["loss_recon"]
+                loss_latent = outputs["loss_latent"]
 
-            # generator loss
-            loss_pcpt = (
-                self.perceptual_loss(xs, xs_recon)
-                if self.perceptual_weight > 0
-                else torch.zeros((), device=self.device, dtype=self.dtype)
-            )
-            p_weight = self.perceptual_weight
+                # generator loss
+                loss_pcpt = (
+                    self.perceptual_loss(xs, xs_recon)
+                    if self.perceptual_weight > 0
+                    else torch.zeros((), device=self.device, dtype=self.dtype)
+                )
+                p_weight = self.perceptual_weight
 
             if use_discriminator:
-                loss_gen, _, _ = self.gan_loss(xs, xs_recon, mode="gen")
-                g_weight = calculate_adaptive_weight(
+                with autocast(self.device) if self.use_autocast else nullcontext():
+                    loss_gen, _, _ = self.gan_loss(xs, xs_recon, mode="gen")
+                g_weight = calculate_adaptive_weight( # calculate adaptive weight involves backward so it should be excluded from autocast
                     loss_recon + p_weight * loss_pcpt,
                     loss_gen,
                     last_layer=self.get_last_layer(),
@@ -273,19 +272,26 @@ class Trainer(TrainerTemplate):
             )
             loss_gen_total.backward()
             if (it + 1) % self.accu_step == 0:
-                optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
+                if self.use_ddp:
+                    optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
+                else:
+                    xm.optimizer_step(optimizer) # else we use xm.optimizer_step
                 scheduler.step()
                 model.zero_grad(set_to_none=True)
             xm.mark_step()
             # discriminator loss
 
             if use_discriminator:
-                _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="disc")
-                dict_loss = loss_disc * self.disc_weight
-                (self.disc_weight * loss_disc).backward()
+                with autocast(self.device) if self.use_autocast else nullcontext():
+                    _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="disc")
+                    dict_loss = loss_disc * self.disc_weight
+                dict_loss.backward()
                 # torch.autograd.backward(dict_loss, grad_tensors=[xs], retain_graph=False)
                 if (it + 1) % self.accu_step == 0:
-                    self.disc_optimizer.step()
+                    if self.use_ddp:
+                        self.disc_optimizer.step()
+                    else:
+                        xm.optimizer_step(self.disc_optimizer)
                     self.disc_scheduler.step()
                     # discriminator.zero_grad(set_to_none=True)
                     model.zero_grad(set_to_none=True)
@@ -349,7 +355,7 @@ class Trainer(TrainerTemplate):
                     if bsz == 1:  # need to be handle properly
                         continue
                     max_shard_size = min(bsz, 16)
-                    xs, xs_recon = model.module.get_recon_imgs(
+                    xs, xs_recon = self.model_woddp.get_recon_imgs(
                         xs[:max_shard_size], xs_recon[:max_shard_size]
                     )
                     grid = (
@@ -400,9 +406,9 @@ class Trainer(TrainerTemplate):
         model = self.model_ema if "ema" in mode else self.model
         model.eval()
         xs_real = xs[:max_shard_size]
-        stage1_output: Stage1ModelOutput = model.module(xs_real)
+        stage1_output: Stage1ModelOutput = self.model_woddp(xs_real)
         xs_recon = stage1_output.xs_recon
-        xs_real, xs_recon = model.module.get_recon_imgs(xs_real, xs_recon)
+        xs_real, xs_recon = self.model_woddp.get_recon_imgs(xs_real, xs_recon)
         grid = torch.cat(
             [
                 xs_real[: max_shard_size // 2],

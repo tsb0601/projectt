@@ -25,7 +25,8 @@ from .accumulator import AccmStage1WithGAN, SummaryStage1WithGAN
 from .trainer import TrainerTemplate
 from header import *
 import torch_xla.core.xla_model as xm
-
+from torch_xla.amp import autocast
+from contextlib import nullcontext
 logger = logging.getLogger(__name__)
 import os
 
@@ -72,15 +73,16 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             model.zero_grad()
             xs = inputs[0].to(self.device).to(self.dtype)
-            stage1_encodings, stage2_output = model(xs)
-            stage1_encodings: Stage1Encodings
-            stage2_output: Stage2ModelOutput
-            zs = stage1_encodings.zs
-            outputs = model.module.compute_loss(
-                stage1_encodings, stage2_output, xs=xs, valid=True
-            )
-            xm.mark_step()
-            loss_gen = outputs["loss_total"]  # logging
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_encodings, stage2_output = model(xs)
+                stage1_encodings: Stage1Encodings
+                stage2_output: Stage2ModelOutput
+                zs = stage1_encodings.zs
+                outputs = self.model_woddp.compute_loss(
+                    stage1_encodings, stage2_output, xs=xs, valid=True
+                )
+                xm.mark_step()
+                loss_gen = outputs["loss_total"]  # logging
             loss_total = loss_gen
             metrics = dict(loss_total=loss_total)
             accm.update(metrics, count=1, sync=True, distenv=self.distenv)
@@ -119,17 +121,21 @@ class Trainer(TrainerTemplate):
         for it, inputs in pbar:
             # inputs: [xs, label]
             xs = inputs[0].to(self.device).to(self.dtype)
-            stage1_encodings, stage2_output = model(xs)
-            stage1_encodings: Stage1Encodings
-            stage2_output: Stage2ModelOutput
-            zs = stage1_encodings.zs
-            zs_pred = stage2_output.zs_pred
-            outputs = model.module.compute_loss(stage1_encodings, stage2_output, xs=xs)
-            xm.mark_step()
-            loss = outputs["loss_total"]
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_encodings, stage2_output = model(xs)
+                stage1_encodings: Stage1Encodings
+                stage2_output: Stage2ModelOutput
+                zs = stage1_encodings.zs
+                zs_pred = stage2_output.zs_pred
+                outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, xs=xs)
+                xm.mark_step()
+                loss = outputs["loss_total"]
             loss.backward()
             if (it + 1) % self.accu_step == 0:
-                optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer)
+                if self.use_ddp:
+                    optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
+                else:
+                    xm.optimizer_step(optimizer, pin_layout=False) # else we use xm.optimizer_step
                 scheduler.step()
                 model.zero_grad(set_to_none=True)
             xm.mark_step()
@@ -145,7 +151,6 @@ class Trainer(TrainerTemplate):
                 xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
                 # make sure every process is in sync
                 exit()
-
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
@@ -170,7 +175,7 @@ class Trainer(TrainerTemplate):
                     if bsz == 1:  # need to be handle properly
                         continue
                     max_shard_size = min(bsz, 16)
-                    zs, zs_pred = model.module.get_recon_imgs(
+                    zs, zs_pred = self.model_woddp.get_recon_imgs(
                         zs[:max_shard_size], zs_pred[:max_shard_size]
                     )
                     grid = (
@@ -222,10 +227,10 @@ class Trainer(TrainerTemplate):
         model.eval()
         zs_real = zs[:max_shard_size]
         fake_stage1_input = Stage1Encodings(zs=zs_real, additional_attr={})
-        stage2_output: Stage2ModelOutput = model.module.stage_2_model(fake_stage1_input)
+        stage2_output: Stage2ModelOutput = self.model_woddp.stage_2_model(fake_stage1_input)
         zs_pred = stage2_output.zs_pred
         zs_degraded = stage2_output.zs_degraded
-        zs_real, zs_recon = model.module.get_recon_imgs(zs_degraded, zs_pred)
+        zs_real, zs_recon = self.model_woddp.get_recon_imgs(zs_degraded, zs_pred)
         grid = torch.cat(
             [
                 zs_real[: max_shard_size // 2],

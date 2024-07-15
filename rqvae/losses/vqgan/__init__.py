@@ -42,14 +42,14 @@ def create_vqgan_loss(loss_config):
 
 
 def create_discriminator_with_optimizer_scheduler(
-    disc_config, steps_per_epoch, max_epoch, distenv=None, is_eval:bool = False
+    disc_config, steps_per_epoch, max_epoch, device, dtype, distenv=None, is_eval:bool = False
 ):
     model = NLayerDiscriminator(
         input_nc=disc_config.arch.in_channels,
         n_layers=disc_config.arch.num_layers,
         use_actnorm=disc_config.arch.use_actnorm,
         ndf=disc_config.arch.ndf,
-    ).apply(weights_init)
+    ).apply(weights_init).to(device).to(dtype)
     if not is_eval:
         optimizer = create_resnet_optimizer(model, disc_config.optimizer)
         scheduler = create_scheduler(

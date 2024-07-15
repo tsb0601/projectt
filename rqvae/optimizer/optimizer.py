@@ -14,6 +14,7 @@
 
 import torch
 import torch_xla.core.xla_model as xm
+from torch_xla.amp import syncfree
 def create_resnet_optimizer(model, config):
     optimizer_type = config.type.lower()
     trainable_params_wname = [(name, param) for name, param in model.named_parameters() if param.requires_grad]
@@ -23,18 +24,20 @@ def create_resnet_optimizer(model, config):
     xm.master_print(f'All trainable parameters: {all_param_cnt}')
     xm.master_print(f'Creating optimizer with type {optimizer_type}')
     xm.master_print(f'trainable_params: {trainable_param_names}')
+    optim_class = syncfree if config.amp else torch.optim
+    xm.master_print(f'Using {optim_class} optimizer')
     xm.mark_step()
     if optimizer_type == 'adamw':
-        optimizer = torch.optim.AdamW(
+        optimizer = optim_class.AdamW(
             trainable_params, lr=config.init_lr, weight_decay=config.weight_decay,
             betas=config.betas
         )
     elif optimizer_type == 'adam':
-        optimizer = torch.optim.Adam(
+        optimizer = optim_class.Adam(
             trainable_params, lr=config.init_lr, weight_decay=config.weight_decay, betas=config.betas
         )
     elif optimizer_type == 'sgd':
-        optimizer = torch.optim.SGD(
+        optimizer = optim_class.SGD(
             trainable_params, lr=config.init_lr, weight_decay=config.weight_decay, momentum=0.9
         )
     else:
@@ -44,11 +47,4 @@ def create_resnet_optimizer(model, config):
 
 def create_optimizer(model, config):
     optimizer = create_resnet_optimizer(model, config.optimizer)
-    return optimizer
-    arch_type = config.arch.type.lower()
-    if 'rq-vae' in config.arch.type:
-        optimizer = create_resnet_optimizer(model, config.optimizer)
-    else: # why raise an error...
-        optimizer = create_resnet_optimizer(model, config.optimizer)
-        #raise ValueError(f'{arch_type} invalid..')
     return optimizer

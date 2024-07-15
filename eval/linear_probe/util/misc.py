@@ -174,21 +174,24 @@ def setup_for_distributed(is_master):
     # builtins.print = xm.master_print 
 
 
-def is_dist_avail_and_initialized():
-    if not dist.is_available():
-        return False
-    if not dist.is_initialized():
-        return False
-    return True
+def is_dist_avail_and_initialized(use_ddp:bool):
+    if use_ddp:
+        if not dist.is_available():
+            return False
+        if not dist.is_initialized():
+            return False
+    return xm.xrt_world_size() > 1
 
 
 def get_world_size():
-    if not is_dist_avail_and_initialized():
-        return 1
-    return dist.get_world_size()
+    return xm.xrt_world_size()
+    #if not is_dist_avail_and_initialized():
+    #    return 1
+    #return dist.get_world_size()
 
 
 def get_rank():
+    return xm.get_ordinal()
     if not is_dist_avail_and_initialized():
         return 0
     return dist.get_rank()
@@ -222,7 +225,8 @@ def init_distributed_mode(args):
     args.dist_url = 'xla://'  # 'env://'
     print('| distributed init (rank {}): {}'.format(
         args.rank, args.dist_url), flush=True)
-    dist.init_process_group(backend='xla', init_method='xla://', world_size=args.world_size, rank=args.rank)
+    if args.use_ddp:
+        dist.init_process_group(backend='xla', init_method='xla://', world_size=args.world_size, rank=args.rank)
     print(
             f"""[dist] Distributed: success device:{args.local_rank}, """,
             f"""{dist.get_rank()}/{dist.get_world_size()}"""
@@ -337,8 +341,8 @@ def all_reduce_mean(x):
             x = torch.tensor(x).to(xm.xla_device())   
         else:
             x = x.clone().detach().to(xm.xla_device()) # avoid modifying the original tensor
-        dist.all_reduce(x, op=dist.ReduceOp.SUM)
-        return x / world_size
-        return g_tensor.item()
+        #dist.all_reduce(x, op=dist.ReduceOp.SUM)
+        xm.all_reduce(xm.REDUCE_SUM, x, scale=1.0 / world_size)
+        return x
     else:
         return x

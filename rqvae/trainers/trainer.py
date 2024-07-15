@@ -44,25 +44,24 @@ class TrainerTemplate:
         *,
         disc_state_dict=None,  # only used in VQGAN trainer
         eval:bool = False,
+        use_ddp:bool = False,
+        use_autocast:bool = False,
     ):
         super().__init__()
 
         num_workers = 16
-
-        if DEBUG:
-            if not dist.is_initialized():
-                num_workers = 0
-            config.experiment.test_freq = 1
-            config.experiment.save_ckpt_freq = 1
-
         self.model = model
         self.model_ema = model_ema
+        self.model_woddp = model.module if use_ddp else model
+        self.model_ema_woddp = model_ema.module if use_ddp and (model_ema is not None) else model_ema
         self.model_aux = model_aux
-        self.dtype = self.model.module.get_last_layer().dtype
+        self.use_ddp = use_ddp
+        self.dtype = self.model_woddp.get_last_layer().dtype
         self.config = config
         self.writer = writer
         self.device = device
         self.is_eval = eval
+        self.use_autocast = use_autocast
         self.distenv = distenv
         self.accu_step = config.experiment.accu_step
         self.actual_batch_size = config.experiment.actual_batch_size
@@ -106,10 +105,11 @@ class TrainerTemplate:
             logger.info(
                 f"train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}"
             )
-        if dist.get_world_size() > 1 and self.distenv.TPU:
-            assert (
-                dist.is_initialized()
-            ), "Distributed training is not initialized when using multiple xla device"
+        if xm.xrt_world_size() > 1 and self.distenv.TPU:
+            if use_ddp:
+                assert (
+                    dist.is_initialized()
+                ), "Distributed training is not initialized when using multiple xla device"
             self.parallel_loader_trn = ParallelLoader(self.loader_trn, [self.device])
             self.parallel_loader_val = ParallelLoader(
                 self.loader_val, [self.device]
@@ -136,6 +136,7 @@ class TrainerTemplate:
     def batch_infer(self, valid:bool = True , save_root:str=None):
         assert os.path.exists(save_root), f"save_root {save_root} does not exist"
         model = self.model
+        modelwoddp = self.model_woddp
         model.eval()
         loader = self.wrap_loader('valid' if valid else 'train')
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
@@ -143,7 +144,7 @@ class TrainerTemplate:
             model.zero_grad()
             xs = inputs[0].to(self.device).to(self.dtype)
             img_paths = inputs[1]
-            outputs:Stage1ModelOutput = model.module.infer(xs)
+            outputs:Stage1ModelOutput = modelwoddp.infer(xs) # no autocast here
             xs_recon_or_gen = outputs.xs_recon
             xm.mark_step()
             for i, img_path in enumerate(img_paths):
@@ -191,7 +192,7 @@ class TrainerTemplate:
         rank = self.distenv.local_rank if not load_from_master else 0 # load from master (rank:0)
         model_path = os.path.join(load_path, MODEL_NAME.format(rank))
         model_weight = torch.load(model_path) # to xla directly
-        self.model.module.load_state_dict(model_weight)
+        self.model_woddp.load_state_dict(model_weight)
         if self.model_ema:
             ema_model_path = os.path.join(load_path, EMA_MODEL_NAME.format(rank))
             if os.path.exists(ema_model_path):
@@ -219,7 +220,7 @@ class TrainerTemplate:
         optimizer_weight = torch.load(opt_path)
         scheduler_weight = torch.load(sch_path)
         additional_attr_ckpt = torch.load(additional_path)
-        self.model.module.load_state_dict(model_weight)
+        self.model_woddp.load_state_dict(model_weight)
         optimizer.load_state_dict(optimizer_weight)
         scheduler.load_state_dict(scheduler_weight)
         for attr in additional_attr_to_load:
@@ -264,7 +265,7 @@ class TrainerTemplate:
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
         additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
         os.makedirs(ckpt_folder, exist_ok=True)
-        model_weight = self.sync_and_to_cpu(self.model.module.state_dict())
+        model_weight = self.sync_and_to_cpu(self.model_woddp.state_dict())
         optimizer_weight = self.sync_and_to_cpu(optimizer.state_dict())
         scheduler_weight = self.sync_and_to_cpu(scheduler.state_dict())
         additional_attr_ckpt = {}

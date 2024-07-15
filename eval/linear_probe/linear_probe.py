@@ -42,6 +42,7 @@ import sys
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch_xla.runtime as xr
 import torch_xla.distributed.xla_multiprocessing as xmp
+from torch_xla.amp import autocast
 wandb_dir = os.environ.get("WANDB_DIR", None)
 PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'linear_probe')
 if wandb_dir:
@@ -199,6 +200,9 @@ def get_args_parser():
     parser.add_argument(
         "--dist_url", default="xla://", help="url used to set up distributed training"
     )
+    parser.add_argument(
+        "--use_ddp", action="store_true", help="Use DDP for distributed training"
+    )
     return parser
 
 
@@ -319,7 +323,7 @@ def main(rank, args):
     model_config.params.global_pool = args.global_pool
     # to dict
     model_dict = OmegaConf.to_container(model_config)
-    model = instantiate_from_config(model_dict).to(device).to(dtype)  # fix bfloat16
+    model = instantiate_from_config(model_dict).to(device)  # fix bfloat16
     # add head to the model
     linear_probe_head = torch.nn.Linear(args.hidden_size, args.nb_classes)
     trunc_normal_(linear_probe_head.weight, std=0.01)
@@ -327,7 +331,7 @@ def main(rank, args):
         args.hidden_size, affine=False, eps=1e-6
     )  # use this could boost the performance
     head = (
-        torch.nn.Sequential(bn, linear_probe_head).to(device).to(dtype)
+        torch.nn.Sequential(bn, linear_probe_head).to(device)
     )  # use float32 for the head
     model = head_model(model, head)
     if args.finetune and not args.eval:
@@ -386,15 +390,15 @@ def main(rank, args):
     if args.distributed:
         model = DDP(model, gradient_as_bucket_view=True)
         model_without_ddp = model.module
-    optimizer = torch.optim.AdamW(
-        model_without_ddp.head.parameters(),
-        betas=(0.9, 0.95),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    )
-    #optimizer = LARS(
-    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    #optimizer = torch.optim.AdamW(
+    #    model_without_ddp.head.parameters(),
+    #    betas=(0.9, 0.95),
+    #    lr=args.lr,
+    #    weight_decay=args.weight_decay,
     #)
+    optimizer = LARS(
+       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
     criterion = torch.nn.CrossEntropyLoss()

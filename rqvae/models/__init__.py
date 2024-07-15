@@ -56,7 +56,7 @@ def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XL
         model_ema.update(model, step=-1)
     model: XLA_Model
     model_ema: Optional[ExponentialMovingAverage]
-    model = model.to(torch.bfloat16)
+    model = model
     if use_ema:
-        model_ema = model_ema.to(torch.bfloat16)
+        model_ema = model_ema
     return model, model_ema

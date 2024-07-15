@@ -10,7 +10,8 @@ import torch_xla.distributed.xla_backend # must be imported for xla init_process
 import torch_xla.core.xla_model as xm
 import argparse
 from rqvae.utils.utils import set_seed
-
+import itertools
+from torch_xla.core.xla_model import collective_broadcast
 def update_argument_parser(parser):
     parser.add_argument('--dist-backend', default='xla', type=str, help='distributed backend')
     parser.add_argument(
@@ -28,41 +29,42 @@ class DistEnv:
     master: bool
     device_name: str
     TPU: bool
-
+    use_ddp: bool
 
 def initialize(args: argparse.Namespace , logger =None):
     # see if args have rank or world_size, if not, try to get from env
-    rank = args.rank if hasattr(args, 'rank') else int(os.environ.get("RANK", 0))
-    world_size = args.world_size if hasattr(args, 'world_size') else int(os.environ.get('WORLD_SIZE', 1))
-    local_rank = args.local_rank if hasattr(args, 'local_rank') else int(os.environ.get('LOCAL_RANK', 0))
-    args.rank = rank
-    args.world_size = world_size
-    args.local_rank = local_rank
-    os.environ["RANK"] = str(rank)
-    os.environ["WORLD_SIZE"] = str(world_size)
-    os.environ["LOCAL_RANK"] = str(local_rank)
+    #rank = args.rank if hasattr(args, 'rank') else int(os.environ.get("RANK", 0))
+    #world_size = args.world_size if hasattr(args, 'world_size') else int(os.environ.get('WORLD_SIZE', 1))
+    #local_rank = args.local_rank if hasattr(args, 'local_rank') else int(os.environ.get('LOCAL_RANK', 0))
+    args.rank = xm.get_ordinal()
+    args.world_size = xm.xrt_world_size()
+    args.local_rank = xm.get_local_ordinal()
+    os.environ["RANK"] = str(args.rank)
+    os.environ["WORLD_SIZE"] = str(args.world_size)
+    os.environ["LOCAL_RANK"] = str(args.local_rank)
     if args.world_size > 1:
         # recaculate rank and world_size
-        local_rank = rank % 4 # we have 4 cores per TPU
-        args.local_rank = local_rank
-        print(f'[dist] Distributed: wait dist process group:{rank}')
-        dist.init_process_group(backend=args.dist_backend, init_method='xla://', world_size=world_size, rank=rank,
-        timeout=datetime.timedelta(0, args.timeout))
+        print(f'[dist] Distributed: wait dist process group:{args.rank}')
+        if args.use_ddp:
+            dist.init_process_group(backend=args.dist_backend, init_method='xla://', world_size=args.world_size, rank=args.rank,
+            timeout=datetime.timedelta(0, args.timeout))
         print(
-            f"""[dist] Distributed: success device:{rank}, """,
-            f"""{local_rank}/{dist.get_rank()}/{dist.get_world_size()}"""
+            f"""[dist] Distributed: success device:{args.rank}, """,
+            f"""{args.local_rank}/{args.rank}/{args.world_size}""",
         )
-        distenv = DistEnv(world_size=dist.get_world_size(), # or xm.xrt_world_size()
-                          world_rank=dist.get_rank(), # or xm.get_ordinal()
-                          local_rank=local_rank,
-                          master=(dist.get_rank() == 0), # or xm.is_master_ordinal()
+        distenv = DistEnv(world_size=args.world_size, # or xm.xrt_world_size()
+                          world_rank=args.rank, # or xm.get_ordinal()
+                          local_rank=args.local_rank,
+                          master=(args.rank == 0), # or xm.is_master_ordinal()
                           device_name=str(xm.xla_real_devices([str(xm.xla_device())])[0]),
-                          TPU=True
+                          TPU=True,
+                          use_ddp=args.use_ddp
                           )
         # set seed for each process to avoid same seed
-        # the seed would be a function of (args.seed, dist.get_rank()) and should be random enough
+        # the seed would be a function of (args.seed, xm.get_ordinal()) and should be random enough
         # for example, generate random seed from args.seed for (rank + 1) times
         seed = args.seed
+        rank = args.rank
         for _ in range(rank + 1):
             seed = hash((seed, rank)) 
             # convert seed to [0, 2^32 - 1]
@@ -80,29 +82,41 @@ def initialize(args: argparse.Namespace , logger =None):
 
     return distenv
 
-
+def broadcast_master_param(model: torch.nn.Module) -> None:
+  """
+  Broadcast the model parameters from master process to other processes
+  """
+  parameters_and_buffers = list(
+      itertools.chain(model.parameters(), model.buffers()))
+  collective_broadcast(parameters_and_buffers, pin_layout=True)
+  xm.mark_step()
 def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
-    if dist.is_initialized():
+    if distenv.use_ddp:
+        assert dist.is_initialized(), 'DistributedDataParallel requires torch.distributed to be initialized.'
         model = DDP(
             model,
             find_unused_parameters=find_unused_parameters,
             gradient_as_bucket_view=True
         )
+        #broadcast_master_param(model)
         for _, param in model.state_dict().items():
             dist.broadcast(param, 0)
         # could be replaced by xm.broadcast_master_param, but this is a feature for torchxla > 2.0
         # xm.broadcast_master_param(model.parameters(), 0)
-        dist.barrier()
-        xm.mark_step() # not sure if this is necessary
+        #dist.barrier()
+        xm.mark_step() # mark step for sync
     else:
-        model = torch.nn.DataParallel(model)
-    #torch.cuda.synchronize()
+        broadcast_master_param(model)
+        #model = torch.nn.DataParallel(model)
+    #torch.cuda.synchronize()s
     return model
 
 
-def param_sync(param):
-    dist.broadcast(param, 0)
-    dist.barrier()
+#def param_sync(param):
+#    xm.broadcast_master_param(param)
+#    xm.mark_step()
+    #dist.broadcast(param, 0)
+    #dist.barrier()
     #torch.cuda.synchronize()
 
 

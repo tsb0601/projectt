@@ -51,7 +51,8 @@ parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, h
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
 parser.add_argument('--eval', action='store_true')
 parser.add_argument('--resume', action='store_true')
-
+parser.add_argument('--use_ddp', action='store_true')
+parser.add_argument('--use_autocast', action='store_true')
 def main(rank, args, extra_args):
     global cache_path
     args.rank = rank
@@ -102,7 +103,7 @@ def main(rank, args, extra_args):
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)

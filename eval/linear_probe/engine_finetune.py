@@ -22,6 +22,7 @@ import util.misc as misc
 import util.lr_sched as lr_sched
 from torch_xla.distributed.parallel_loader import ParallelLoader
 import torch_xla.core.xla_model as xm
+from torch_xla.amp import autocast
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device,dtype:torch.dtype, epoch: int, loss_scaler, max_norm: float = 0,
@@ -41,14 +42,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
+        with torch.autocast('xla',dtype=dtype):
+            samples = samples.to(device).to(dtype)
+            targets = targets.to(device)
+            if mixup_fn is not None:
+                samples, targets = mixup_fn(samples, targets)
 
-        samples = samples.to(device).to(dtype)
-        targets = targets.to(device)
-        if mixup_fn is not None:
-            samples, targets = mixup_fn(samples, targets)
-
-        outputs = model(samples)
-        loss = criterion(outputs, targets).float() # need to convert to float for gradient scaler
+            outputs = model(samples)
+            loss = criterion(outputs, targets)
 
         loss_value = loss.item()
 
@@ -58,9 +59,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             #sys.exit(1)
 
         loss /= accum_iter
-        loss_scaler(loss, optimizer, clip_grad=max_norm,
-                    parameters=model.parameters(), create_graph=False,
-                    update_grad=(data_iter_step + 1) % accum_iter == 0)
+        loss.backward() # no scaler is needed here as TPU supports bf16 natively
+        #loss_scaler(loss, optimizer, clip_grad=max_norm,
+        #            parameters=model.parameters(), create_graph=False,
+        #            update_grad=(data_iter_step + 1) % accum_iter == 0)
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad()
 

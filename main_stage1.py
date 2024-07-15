@@ -51,7 +51,8 @@ parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, h
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
 parser.add_argument('--eval', action='store_true')
 parser.add_argument('--resume', action='store_true')
-
+parser.add_argument('--use_ddp', action='store_true')
+parser.add_argument('--use_autocast', action='store_true')
 def main(rank, args, extra_args):
     global cache_path
     args.rank = rank
@@ -102,7 +103,7 @@ def main(rank, args, extra_args):
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
@@ -119,18 +120,17 @@ def main(rank, args, extra_args):
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
     if args.eval:
-        #trainer.eval(valid=False, verbose=True)
-        trainer.batch_infer(valid=True, save_root=args.result_path)
+        trainer.eval(valid=True, verbose=True)
+        #trainer.batch_infer(valid=True, save_root=args.result_path)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
-
-    dist.barrier()
 
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
         if wandb_dir:
             wandb.finish()
-    dist.destroy_process_group()
+    if args.use_ddp:
+        dist.destroy_process_group()
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args))
