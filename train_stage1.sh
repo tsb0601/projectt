@@ -10,7 +10,7 @@ fi
 mkdir -p $SAVE_DIR
 echo "Save dir: $SAVE_DIR"
 export PJRT_DEVICE=TPU
-export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_224_ft'
+export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_ft_test'
 env | grep PJRT
 env | grep DEBUG
 model_config=$3

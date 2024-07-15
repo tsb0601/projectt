@@ -15,10 +15,11 @@ arch:
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.6e-4
+  init_lr: 1.6e-3
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
+  amp: true
   warmup:
     epoch: 10  # 10% of total epochs
     multiplier: 1
@@ -29,9 +30,9 @@ optimizer:
 
 experiment:
   batch_size: 32
-  accu_step: 2 # total bsz of 4096 on a 128 pod
+  accu_step: 1 # total bsz of 4096 on a 256 pod (128 cores)
   epochs: 100
-  save_ckpt_freq: 20
+  save_ckpt_freq: 30
   test_freq: 5
   amp: false
 
@@ -50,6 +51,7 @@ gan:
       weight_decay: 0.0
       betas: [0.9, 0.95]
       max_gn: None
+      amp: true
       warmup:
         epoch: 5  # 5% of total epochs
         multiplier: 1

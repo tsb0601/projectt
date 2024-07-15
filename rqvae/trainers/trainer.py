@@ -197,7 +197,7 @@ class TrainerTemplate:
             ema_model_path = os.path.join(load_path, EMA_MODEL_NAME.format(rank))
             if os.path.exists(ema_model_path):
                 ema_model_weight = torch.load(ema_model_path)
-                self.model_ema.module.load_state_dict(ema_model_weight)
+                self.model_ema_woddp.load_state_dict(ema_model_weight)
             else:
                 xm.master_print(f"[!] EMA model path {ema_model_path} does not exist, skip loading EMA model")
         if len(additional_attr_to_load) == 0:
@@ -207,7 +207,8 @@ class TrainerTemplate:
         for attr in additional_attr_to_load:
             assert attr in additional_attr_ckpt, f"additional_attr_to_load {attr} not in additional_attr_ckpt"
             assert hasattr(self, attr), f"self does not have attribute {attr}"
-            getattr(self, attr).module.load_state_dict(additional_attr_ckpt[attr])
+            target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
+            target_module.load_state_dict(additional_attr_ckpt[attr]) 
     def _load_ckpt(self,load_path, optimizer, scheduler, additional_attr_to_load:tuple = (), load_from_master:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME
         rank = self.distenv.local_rank if not load_from_master else 0
@@ -226,12 +227,13 @@ class TrainerTemplate:
         for attr in additional_attr_to_load:
             assert attr in additional_attr_ckpt, f"additional_attr_to_load {attr} not in additional_attr_ckpt"
             assert hasattr(self, attr), f"self does not have attribute {attr}"
-            getattr(self, attr).module.load_state_dict(additional_attr_ckpt[attr])
+            target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
+            target_module.load_state_dict(additional_attr_ckpt[attr])
         if self.model_ema:
             ema_model_path = os.path.join(ckpt_folder, EMA_MODEL_NAME.format(rank))
             if os.path.exists(ema_model_path):
                 ema_model_weight = torch.load(ema_model_path)
-                self.model_ema.module.load_state_dict(ema_model_weight)
+                self.model_ema_woddp.load_state_dict(ema_model_weight)
             else:
                 xm.master_print(f"[!] EMA model path {ema_model_path} does not exist, skip loading EMA model")
     def sync_and_to_cpu(self, state_dict, key_match:Optional[dict] = None):
@@ -270,7 +272,8 @@ class TrainerTemplate:
         scheduler_weight = self.sync_and_to_cpu(scheduler.state_dict())
         additional_attr_ckpt = {}
         for attr in additional_attr_to_save:
-            additional_attr_ckpt[attr] = self.sync_and_to_cpu(getattr(self, attr).module.state_dict())
+            target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
+            additional_attr_ckpt[attr] = self.sync_and_to_cpu(target_module.state_dict())
         torch.save(model_weight, model_path)
         torch.save(optimizer_weight, opt_path)
         torch.save(scheduler_weight, sch_path)

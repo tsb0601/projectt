@@ -104,11 +104,10 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
         # could be replaced by xm.broadcast_master_param, but this is a feature for torchxla > 2.0
         # xm.broadcast_master_param(model.parameters(), 0)
         #dist.barrier()
-        xm.mark_step() # mark step for sync
     else:
-        broadcast_master_param(model)
+        broadcast_master_param(model) # significantly slower than dist.broadcast before first compilation, so caching is really important
         #model = torch.nn.DataParallel(model)
-    #torch.cuda.synchronize()s
+    xm.mark_step() # mark step for sync
     return model
 
 
