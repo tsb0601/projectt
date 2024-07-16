@@ -393,15 +393,15 @@ def main(rank, args):
     else:
         model_without_ddp = model
     optim_class = syncfree if args.use_ddp else torch.optim
-    optimizer = optim_class.AdamW(
-        model_without_ddp.head.parameters(),
-        betas=(0.9, 0.95),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    ) 
-    #optimizer = LARS(
-    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    #)
+    #optimizer = optim_class.AdamW(
+    #    model_without_ddp.head.parameters(),
+    #    betas=(0.9, 0.95),
+    #    lr=args.lr,
+    #    weight_decay=args.weight_decay,
+    #) 
+    optimizer = LARS(
+       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
     criterion = torch.nn.CrossEntropyLoss()
@@ -479,7 +479,7 @@ def main(rank, args):
     xm.master_print("Training time {}".format(total_time_str))
     if global_rank == 0 and args.log_dir is not None and not args.eval and wandb_dir:
         wandb.finish()    
-
+    xm.rendezvous("end_cache")
 if __name__ == "__main__":
     args = get_args_parser()
     args = args.parse_args()
