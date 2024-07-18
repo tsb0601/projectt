@@ -254,7 +254,7 @@ def main(rank, args):
     )
     transform_val = transforms.Compose(
         [
-            transforms.Resize(image_size * 1.1, interpolation=3),
+            transforms.Resize(round(image_size * 1.1), interpolation=3),
             transforms.CenterCrop(image_size),
             # transforms.ToTensor(),
             custom_pil_to_tensor,
