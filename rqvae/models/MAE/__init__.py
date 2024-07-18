@@ -71,7 +71,7 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False)->None:
         super().__init__()
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
         self.model.config.mask_ratio = mask_ratio
@@ -91,6 +91,10 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('image_std', torch.tensor(image_std).view(1, 3, 1, 1))
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
+        self.no_cls = no_cls
+        if no_cls:
+            # add a learnable cls token
+            self.model.addition_cls_token = nn.Parameter(torch.randn(1, 1, self.model.config.hidden_size))
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, xs:torch.Tensor)-> Stage1ModelOutput:
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
@@ -123,6 +127,10 @@ class Stage1MAE(Stage1Model):
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
+        if self.no_cls:
+            zs = zs[:, 1:, :]
+            cls_token = self.model.addition_cls_token.expand(zs.shape[0], -1, -1)
+            zs = torch.cat([cls_token, zs], dim=1).contiguous()
         outputs = self.model.decoder(zs,ids_restore)
         logits = outputs.logits
         xs_recon = self.model.unpatchify(logits)
