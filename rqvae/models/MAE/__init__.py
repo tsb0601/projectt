@@ -1,4 +1,5 @@
-from transformers import ViTMAEForPreTraining, ViTImageProcessor, ViTMAEModel
+from .modeling_vit_mae import ViTMAEForPreTraining, ViTMAEModel
+from transformers import ViTImageProcessor
 import torch
 from rqvae.models.interfaces import Stage1Model, Stage1Encodings, Stage1ModelOutput, Stage2ModelOutput
 import torch_xla.core.xla_model as xm
@@ -76,8 +77,6 @@ class Stage1MAE(Stage1Model):
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
         self.model.config.mask_ratio = mask_ratio
         assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
-        if mask_ratio == 0.:
-            self.model.decoder.forward = custom_forward.__get__(self.model.decoder) # original forward method would cause XLA error when mask ratio is zero, we replace it with a custom forward method
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         self.model.decoder.requires_grad_(True)
@@ -94,7 +93,7 @@ class Stage1MAE(Stage1Model):
         self.no_cls = no_cls
         if no_cls:
             # add a learnable cls token
-            self.model.addition_cls_token = nn.Parameter(torch.randn(1, 1, self.model.config.hidden_size))
+            self.model.decoder.set_trainable_cls_token()
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, xs:torch.Tensor)-> Stage1ModelOutput:
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
@@ -127,11 +126,7 @@ class Stage1MAE(Stage1Model):
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
-        if self.no_cls:
-            zs = zs[:, 1:, :]
-            cls_token = self.model.addition_cls_token.expand(zs.shape[0], -1, -1)
-            zs = torch.cat([cls_token, zs], dim=1).contiguous()
-        outputs = self.model.decoder(zs,ids_restore)
+        outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls)
         logits = outputs.logits
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean

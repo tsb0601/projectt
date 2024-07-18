@@ -7,10 +7,9 @@ import torch
 from torchvision.transforms import ToTensor, ToPILImage
 ckpt_path = './ckpt_gcs/model_zoo/mae_base_256_ft_r'
 with torch.no_grad():
-    mae = Stage1MAE(ckpt_path)
+    mae = Stage1MAE(ckpt_path, no_cls=True)
     mae.eval()
     processor = ViTImageProcessor.from_pretrained(ckpt_path)
-
     image_path = '/home/bytetriper/VAE-enhanced/test.png'
     image_mean = torch.tensor(processor.image_mean).view(1, 3, 1, 1)
     image_std = torch.tensor(processor.image_std).view(1, 3, 1, 1)

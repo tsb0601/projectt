@@ -24,21 +24,19 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers.models
-from ...activations import ACT2FN
-from ...modeling_outputs import BaseModelOutput
-from ...modeling_utils import PreTrainedModel
-from ...pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
-from ...utils import (
+# correct the above import to the following
+from transformers.models.vit_mae.configuration_vit_mae import ViTMAEConfig
+from transformers.utils import (
     ModelOutput,
     add_start_docstrings,
-    add_start_docstrings_to_model_forward,
     logging,
     replace_return_docstrings,
+    add_start_docstrings_to_model_forward,
 )
-from .configuration_vit_mae import ViTMAEConfig
-
-
+from transformers.pytorch_utils import find_pruneable_heads_and_indices, prune_linear_layer
+from transformers.activations import ACT2FN
+from transformers.modeling_outputs import BaseModelOutput
+from transformers.modeling_utils import PreTrainedModel
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "ViTMAEConfig"
@@ -830,7 +828,10 @@ class ViTMAEDecoder(nn.Module):
         self.gradient_checkpointing = False
         self.config = config
         self.initialize_weights(num_patches)
-
+        self.decoder_config = decoder_config
+    def set_trainable_cls_token(self):
+        # register a trainable CLS token
+        self.trainable_cls_token = nn.Parameter(torch.zeros(1, 1, self.decoder_config.hidden_size))
     def interpolate_pos_encoding(self, embeddings: torch.Tensor) -> torch.Tensor:
         """
         This method is a modified version of the interpolation function for ViT-mae model at the deocder, that
@@ -890,16 +891,28 @@ class ViTMAEDecoder(nn.Module):
         output_hidden_states=False,
         return_dict=True,
         interpolate_pos_encoding: bool = False,
+        drop_cls_token: bool = False,
     ):
         # embed tokens
         x = self.decoder_embed(hidden_states)
 
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
-        x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        # mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+        # append mask tokens to sequence
+        # _ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        if x.shape[1] < ids_restore.shape[1] + 1: # modified for zero masking ratio, which will cause a XLA internal error under original implementation
+            mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+            x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        else:
+            x_ = x[:, 1:, :] 
+
         # unshuffle
         x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x_.device))
-        x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
+        if drop_cls_token:
+            cls_token = self.trainable_cls_token.expand(x_.shape[0], -1, -1)
+            x = torch.cat([cls_token, x_], dim=1)
+        else:
+            x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
         # add pos embed
         if interpolate_pos_encoding:
             decoder_pos_embed = self.interpolate_pos_encoding(x)
@@ -1091,7 +1104,6 @@ class ViTMAEForPreTraining(ViTMAEPreTrainedModel):
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
-
     @add_start_docstrings_to_model_forward(VIT_MAE_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=ViTMAEForPreTrainingOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
@@ -1103,6 +1115,7 @@ class ViTMAEForPreTraining(ViTMAEPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         interpolate_pos_encoding: bool = False,
+        drop_cls_token: bool = False,
     ) -> Union[Tuple, ViTMAEForPreTrainingOutput]:
         r"""
         Returns:
@@ -1142,7 +1155,7 @@ class ViTMAEForPreTraining(ViTMAEPreTrainedModel):
         ids_restore = outputs.ids_restore
         mask = outputs.mask
 
-        decoder_outputs = self.decoder(latent, ids_restore, interpolate_pos_encoding=interpolate_pos_encoding)
+        decoder_outputs = self.decoder(latent, ids_restore, interpolate_pos_encoding=interpolate_pos_encoding, drop_cls_token=drop_cls_token)
         logits = decoder_outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
 
         loss = self.forward_loss(pixel_values, logits, mask, interpolate_pos_encoding=interpolate_pos_encoding)
