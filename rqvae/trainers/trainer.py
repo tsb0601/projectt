@@ -24,6 +24,7 @@ import torch.distributed as dist
 import torch_xla.core.xla_model as xm
 from PIL import Image
 from header import *
+from rqvae.img_datasets.interfaces import LabeledImageData
 from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
@@ -142,9 +143,11 @@ class TrainerTemplate:
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
         for it, inputs in pbar:
             model.zero_grad()
-            xs = inputs[0].to(self.device).to(self.dtype)
-            img_paths = inputs[1]
-            outputs:Stage1ModelOutput = modelwoddp.infer(xs) # no autocast here
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            img_paths = inputs.img_paths
+
+            outputs:Stage1ModelOutput = modelwoddp.infer(inputs) # no autocast here
             xs_recon_or_gen = outputs.xs_recon
             xm.mark_step()
             for i, img_path in enumerate(img_paths):

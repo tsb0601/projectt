@@ -38,7 +38,7 @@ DEBUG = bool(os.environ.get("DEBUG", 0))
 import time  # for debugging
 from typing import *
 from rqvae.models.interfaces import Stage1ModelOutput
-
+from rqvae.img_datasets.interfaces import LabeledImageData
 
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
@@ -161,11 +161,13 @@ class Trainer(TrainerTemplate):
         model.eval()
         discriminator.eval()
         for it, inputs in pbar:
-            xs = inputs[0].to(self.device).to(self.dtype)
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
-                stage1_output: Stage1ModelOutput = model(xs)
+                stage1_output: Stage1ModelOutput = model(inputs)
                 xs_recon = stage1_output.xs_recon  # calling convention
-                outputs = self.model_woddp.compute_loss(stage1_output, xs=xs, valid=True)
+                outputs = self.model_woddp.compute_loss(stage1_output, inputs, valid=True)
                 xm.mark_step()
                 loss_rec_lat = outputs["loss_total"]
                 loss_recon = outputs["loss_recon"]
@@ -234,12 +236,13 @@ class Trainer(TrainerTemplate):
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
-            # inputs: [xs, label]
-            xs = inputs[0].to(self.device).to(self.dtype)
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
-                stage1_output: Stage1ModelOutput = self.model(xs)
+                stage1_output: Stage1ModelOutput = self.model(inputs)
                 xs_recon = stage1_output.xs_recon  # calling convention
-                outputs = self.model_woddp.compute_loss(stage1_output, xs=xs)
+                outputs = self.model_woddp.compute_loss(stage1_output, inputs)
                 loss_rec_lat = outputs["loss_total"]
                 loss_recon = outputs["loss_recon"]
                 loss_latent = outputs["loss_latent"]

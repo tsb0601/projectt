@@ -38,6 +38,7 @@ from rqvae.models.interfaces import (
     Stage2ModelOutput,
     Stage1Encodings,
 )
+from rqvae.img_datasets.interfaces import LabeledImageData
 
 
 class Trainer(TrainerTemplate):
@@ -71,14 +72,16 @@ class Trainer(TrainerTemplate):
         )
         model.eval()
         for it, inputs in pbar:
-            xs = inputs[0].to(self.device).to(self.dtype)
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
-                stage1_encodings, stage2_output = model(xs)
+                stage1_encodings, stage2_output = model(inputs)
                 stage1_encodings: Stage1Encodings
                 stage2_output: Stage2ModelOutput
                 zs = stage1_encodings.zs
                 outputs = self.model_woddp.compute_loss(
-                    stage1_encodings, stage2_output, xs=xs, valid=True
+                    stage1_encodings, stage2_output, inputs, valid=True
                 )
                 xm.mark_step()
                 loss_gen = outputs["loss_total"]  # logging
@@ -116,15 +119,16 @@ class Trainer(TrainerTemplate):
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
-            # inputs: [xs, label]
-            xs = inputs[0].to(self.device).to(self.dtype)
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
-                stage1_encodings, stage2_output = self.model(xs)
+                stage1_encodings, stage2_output = self.model(inputs)
                 stage1_encodings: Stage1Encodings
                 stage2_output: Stage2ModelOutput
                 zs = stage1_encodings.zs
                 zs_pred = stage2_output.zs_pred
-                outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, xs=xs)
+                outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
                 xm.mark_step()
                 loss = outputs["loss_total"]
             loss.backward()
@@ -134,7 +138,7 @@ class Trainer(TrainerTemplate):
                 else:
                     xm.optimizer_step(optimizer) # else we use xm.optimizer_step
                 scheduler.step()
-                model.zero_grad(set_to_none=True)
+                self.model.zero_grad(set_to_none=True)
             xm.mark_step()
             # logging
             loss_total = loss.detach()

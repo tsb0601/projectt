@@ -11,7 +11,7 @@ import torch as th
 import enum
 
 from .diffusion_utils import discretized_gaussian_log_likelihood, normal_kl
-
+import torch_xla.core.xla_model as xm
 
 def mean_flat(tensor):
     """
@@ -507,6 +507,7 @@ class GaussianDiffusion:
                     cond_fn=cond_fn,
                     model_kwargs=model_kwargs,
                 )
+                xm.mark_step()
                 yield out
                 img = out["sample"]
 
@@ -676,6 +677,7 @@ class GaussianDiffusion:
                     model_kwargs=model_kwargs,
                     eta=eta,
                 )
+                xm.mark_step()
                 yield out
                 img = out["sample"]
 

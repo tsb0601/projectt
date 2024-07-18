@@ -22,7 +22,7 @@ from .dummy import Dummy_Dataset
 from .lsun import LSUNClass
 from .ffhq import FFHQ
 from .transforms import create_transforms
-
+from .interfaces import LabeledImageDatasetWrapper
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
 def create_dataset(config, is_eval=False, logger=None):
     transforms_trn = create_transforms(config.dataset, split='train', is_eval=is_eval)
@@ -63,13 +63,8 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = LSUNClass(root, category_name=category_name, transform=transforms_trn)
     else:
         raise ValueError('%s not supported...' % config.dataset.type)
-
-    if SMOKE_TEST:
-        dataset_len = config.experiment.total_batch_size * 2
-        dataset_trn = torch.utils.data.Subset(dataset_trn, torch.randperm(len(dataset_trn))[:dataset_len])
-        dataset_val = torch.utils.data.Subset(dataset_val, torch.randperm(len(dataset_val))[:dataset_len])
-
+    dataset_trn = LabeledImageDatasetWrapper(dataset_trn)
+    dataset_val = LabeledImageDatasetWrapper(dataset_val)
     if logger is not None:
         logger.info(f'#train samples: {len(dataset_trn)}, #valid samples: {len(dataset_val)}')
-
     return dataset_trn, dataset_val
