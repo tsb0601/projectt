@@ -79,6 +79,9 @@ class Stage1MAE(Stage1Model):
         assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
+        if no_cls:
+            # add a learnable cls token
+            self.model.decoder.set_trainable_cls_token()
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
@@ -91,9 +94,6 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
         self.no_cls = no_cls
-        if no_cls:
-            # add a learnable cls token
-            self.model.decoder.set_trainable_cls_token()
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, xs:torch.Tensor)-> Stage1ModelOutput:
         image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
