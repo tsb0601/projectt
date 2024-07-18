@@ -125,13 +125,13 @@ def main(rank, args, extra_args):
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
 
-    dist.barrier()
-
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
         if wandb_dir:
             wandb.finish()
-    dist.destroy_process_group()
+    xm.rendezvous('main')
+    if args.use_ddp:
+        dist.destroy_process_group()
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args))

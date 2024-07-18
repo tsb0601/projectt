@@ -29,7 +29,8 @@ from .accumulator import AccmStage1WithGAN, SummaryStage1WithGAN
 from .trainer import TrainerTemplate
 from header import *
 import torch_xla.core.xla_model as xm
-
+from torch_xla.amp import autocast
+from contextlib import nullcontext
 logger = logging.getLogger(__name__)
 import os
 
@@ -37,8 +38,7 @@ DEBUG = bool(os.environ.get("DEBUG", 0))
 import time  # for debugging
 from typing import *
 from rqvae.models.interfaces import Stage1ModelOutput
-from torch_xla.amp import autocast
-from contextlib import nullcontext
+
 
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
@@ -234,6 +234,7 @@ class Trainer(TrainerTemplate):
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
+            # inputs: [xs, label]
             xs = inputs[0].to(self.device).to(self.dtype)
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_output: Stage1ModelOutput = self.model(xs)

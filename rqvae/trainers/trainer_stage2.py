@@ -71,7 +71,6 @@ class Trainer(TrainerTemplate):
         )
         model.eval()
         for it, inputs in pbar:
-            model.zero_grad()
             xs = inputs[0].to(self.device).to(self.dtype)
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = model(xs)
@@ -103,9 +102,8 @@ class Trainer(TrainerTemplate):
     def train(
         self, optimizer=None, scheduler=None, scaler=None, epoch=0
     ) -> SummaryStage1WithGAN:
-        model = self.model
-        model.train()
-        model.zero_grad(set_to_none=True)
+        self.model.train()
+        self.model.zero_grad(set_to_none=True)
 
         accm = self.get_accm()
         loader = self.wrap_loader("train")
@@ -117,12 +115,11 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
-
         for it, inputs in pbar:
             # inputs: [xs, label]
             xs = inputs[0].to(self.device).to(self.dtype)
             with autocast(self.device) if self.use_autocast else nullcontext():
-                stage1_encodings, stage2_output = model(xs)
+                stage1_encodings, stage2_output = self.model(xs)
                 stage1_encodings: Stage1Encodings
                 stage2_output: Stage2ModelOutput
                 zs = stage1_encodings.zs
@@ -135,7 +132,7 @@ class Trainer(TrainerTemplate):
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
                 else:
-                    xm.optimizer_step(optimizer, pin_layout=False) # else we use xm.optimizer_step
+                    xm.optimizer_step(optimizer) # else we use xm.optimizer_step
                 scheduler.step()
                 model.zero_grad(set_to_none=True)
             xm.mark_step()
