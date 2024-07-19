@@ -53,6 +53,7 @@ parser.add_argument('--eval', action='store_true')
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
+parser.add_argument('--cache_latent', action='store_true')
 def main(rank, args, extra_args):
     global cache_path
     args.rank = rank
@@ -85,8 +86,9 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!] micro_batch_size_per_core: {config.experiment.batch_size}, accu_step: {config.experiment.accu_step}, actual_batch_size: {actual_batch_size}, steps_per_epoch: {steps_per_epoch}')
     if distenv.master:
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
-
-    if not args.eval:
+    use_optim = not args.eval and not args.cache_latent
+    xm.master_print(f'[!]use_optim: {use_optim}')
+    if use_optim:
         optimizer = create_optimizer(model, config)
         scheduler = create_scheduler(
             optimizer, config.optimizer.warmup, steps_per_epoch,
@@ -95,15 +97,15 @@ def main(rank, args, extra_args):
     disc_state_dict = None
     xm.master_print(f'[!]model loaded')
     if distenv.master:
-        print(model)
+        xm.master_print(model)
         compute_model_size(model, logger)
-    if distenv.master and not args.eval:
+    if distenv.master and use_optim:
         logger.info(optimizer.__repr__())
     model = dist_utils.dataparallel_and_sync(distenv, model)
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval or args.cache_latent,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
@@ -119,7 +121,16 @@ def main(rank, args, extra_args):
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
-    if args.eval:
+    if args.cache_latent:
+        train_save_path = os.path.join(args.result_path, 'train')
+        valid_save_path = os.path.join(args.result_path, 'valid')
+        os.makedirs(train_save_path, exist_ok=True)
+        os.makedirs(valid_save_path, exist_ok=True)
+        xm.master_print(f'[!]caching latent for train and valid dataset')
+        trainer.cache_latent(feature_path=train_save_path, valid=False)
+        xm.master_print(f'[!]caching latent for valid dataset')
+        trainer.cache_latent(feature_path=valid_save_path, valid = True)
+    elif args.eval:
         #trainer.eval(valid=True, verbose=True)
         trainer.batch_infer(valid=True, save_root=args.result_path)
     else:

@@ -15,8 +15,8 @@ env | grep PJRT
 env | grep DEBUG
 model_config=$3
 world_size=$4
-#export WANDB_DIR=$SAVE_DIR
-#export WANDB_PROJECT=$EXP_NAME
+export WANDB_DIR=$SAVE_DIR
+export WANDB_PROJECT=$EXP_NAME
 #env | grep WANDB
 python main_stage2.py \
     -m=$model_config \

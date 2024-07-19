@@ -228,7 +228,12 @@ class Trainer(TrainerTemplate):
         model.eval()
         zs_real = zs[:max_shard_size]
         fake_stage1_input = Stage1Encodings(zs=zs_real, additional_attr={})
-        stage2_output: Stage2ModelOutput = self.model_woddp.stage_2_model(fake_stage1_input)
+        #stage2_output: Stage2ModelOutput = self.model_woddp.stage_2_model(fake_stage1_input)
+        stage2_output = Stage2ModelOutput(
+            zs_pred=zs_real,
+            zs_degraded=zs_real,
+            additional_attr={}
+        )
         zs_pred = stage2_output.zs_pred
         zs_degraded = stage2_output.zs_degraded
         zs_real, zs_recon = self.model_woddp.get_recon_imgs(zs_degraded, zs_pred)

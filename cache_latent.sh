@@ -1,7 +1,5 @@
-EXP_NAME=$1
-CKPT_DIR=$2 # ./ckpt_gcs
+SAVE_DIR=$1
 #assert save_dir is not empty
-SAVE_DIR=${CKPT_DIR}/${EXP_NAME}
 if [ -z "$SAVE_DIR" ]
 then
     echo "Save dir is empty"
@@ -13,13 +11,11 @@ export PJRT_DEVICE=TPU
 export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_ft_test'
 env | grep PJRT
 env | grep DEBUG
-model_config=$3
-world_size=$4
-#export WANDB_DIR=$SAVE_DIR
-#export WANDB_PROJECT=$EXP_NAME
-#env | grep WANDB
+model_config=$2
+world_size=$3
 python main_stage1.py \
     -m=$model_config \
     -r=$SAVE_DIR \
     --world_size=$world_size \
-    --use_autocast 
+    --use_autocast \
+    --cache_latent 

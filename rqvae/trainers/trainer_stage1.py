@@ -33,11 +33,11 @@ from torch_xla.amp import autocast
 from contextlib import nullcontext
 logger = logging.getLogger(__name__)
 import os
-
+import numpy as np
 DEBUG = bool(os.environ.get("DEBUG", 0))
 import time  # for debugging
 from typing import *
-from rqvae.models.interfaces import Stage1ModelOutput
+from rqvae.models.interfaces import *
 from rqvae.img_datasets.interfaces import LabeledImageData
 
 def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
@@ -143,8 +143,34 @@ class Trainer(TrainerTemplate):
         return loss_gen, loss_disc, logits_avg
 
     @torch.no_grad()
+    def cache_latent(self, feature_path:str, valid:bool= True):
+        self.model.eval()
+        loader = self.wrap_loader("valid" if valid else "train")
+        for it, inputs in tqdm(enumerate(loader)):
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            img_paths = inputs.img_path
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_encodings: Stage1Encodings = self.model_woddp.encode(inputs)
+                zs = stage1_encodings.zs
+                label = inputs.condition
+                for i, z in enumerate(zs):
+                    img_name = os.path.basename(img_paths[i])
+                    img_name = img_name.split('.')[0]
+                    save_path = f'{feature_path}/{img_name}.npy'   
+                    z_i = z.cpu().numpy()
+                    label_i = label[i].cpu().numpy()
+                    xm.master_print(f'[!]saving latent to {save_path}, latent shape: {z_i.shape}, label shape: {label_i.shape}')
+                    xm.mark_step()
+                    exit()
+                    np.save(save_path, {
+                        'z': z_i,
+                        'label': label_i
+                    })
+            xm.mark_step()
+    @torch.no_grad()
     def eval(
-        self, valid=True, ema=False, verbose=False, epoch=0
+        self, valid:bool=True, ema:bool=False, verbose:bool=False, epoch:int=0
     ) -> SummaryStage1WithGAN:
         model = self.model_ema if ema else self.model
         discriminator = self.discriminator
@@ -407,7 +433,8 @@ class Trainer(TrainerTemplate):
         model = self.model_ema if "ema" in mode else self.model
         model.eval()
         xs_real = xs[:max_shard_size]
-        stage1_output: Stage1ModelOutput = self.model_woddp(xs_real)
+        xs_data = LabeledImageData(img=xs_real, condition=None, img_path=None)
+        stage1_output: Stage1ModelOutput = self.model_woddp(xs_data)
         xs_recon = stage1_output.xs_recon
         xs_real, xs_recon = self.model_woddp.get_recon_imgs(xs_real, xs_recon)
         grid = torch.cat(

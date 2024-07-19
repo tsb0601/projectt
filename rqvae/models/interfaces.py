@@ -25,20 +25,20 @@ from rqvae.img_datasets.interfaces import LabeledImageData
 @dataclass
 class Stage1ModelOutput:
     xs_recon: torch.Tensor
-    additional_attr: dict
+    additional_attr: dict = None
 
 
 @dataclass
 class Stage2ModelOutput:
     zs_pred: torch.Tensor
     zs_degraded: torch.Tensor
-    additional_attr: dict
+    additional_attr: dict = None
 
 
 @dataclass
 class Stage1Encodings:
     zs: torch.Tensor
-    additional_attr: dict
+    additional_attr: dict = None
 
 
 class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
