@@ -8,12 +8,13 @@ arch:
   target: rqvae.models.MAE.Stage1MAE
   params:
     ckpt_path: '/home/bytetriper/model_zoo/mae_base_256'
+    no_cls: true
   checkpointing: false
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 2.0e-4
+  init_lr: 0.0
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
@@ -62,5 +63,5 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: 1.0
+    perceptual_weight: 0.0
     disc_start: 0

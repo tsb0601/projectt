@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import torch
 from torch.utils.data import Dataset
 from typing import Optional, Any, List
+from numpy import ndarray
 @dataclass
 class LabeledImageData:
     img: torch.Tensor
@@ -10,11 +11,17 @@ class LabeledImageData:
     additional_attr: Optional[str] = None
     def _to(self, device_or_dtype): # inplace
         self.img = self.img.to(device_or_dtype)
-        if self.condition is not None:
+        if (self.condition is not None) and isinstance(self.condition, torch.Tensor):
             self.condition = self.condition.to(device_or_dtype)
         return self
     def to(self, device_or_dtype):
-        return LabeledImageData(self.img.to(device_or_dtype), self.condition.to(device_or_dtype) if self.condition is not None else None, self.img_path, self.additional_attr)
+        data = LabeledImageData(
+            img=self.img.to(device_or_dtype),
+            condition=self.condition.to(device_or_dtype) if (self.condition is not None) and isinstance(self.condition, torch.Tensor) else self.condition,
+            img_path=self.img_path,
+            additional_attr=self.additional_attr
+        )
+        return data
 
 class LabeledImageDatasetWrapper(Dataset):
     """
@@ -44,7 +51,10 @@ class LabeledImageDatasetWrapper(Dataset):
     def default_collate_fn(self, batch: List[LabeledImageData]) -> LabeledImageData:
         img, condition, img_path, additional_attr = zip(*[(x.img, x.condition, x.img_path, x.additional_attr) for x in batch])
         # if condition is tensor then stack
-        if condition[0] is not None and isinstance(condition[0], torch.Tensor):
-            condition = torch.stack(condition)
+        if condition[0] is not None:
+            if isinstance(condition[0], torch.Tensor):
+                condition = torch.stack(condition)
+            elif isinstance(condition[0], int) or isinstance(condition[0], float) or isinstance(condition[0], bool) or isinstance(condition[0], ndarray):
+                condition = torch.Tensor(condition)
         img = torch.stack(img)
         return LabeledImageData(img=img, condition=condition, img_path=img_path, additional_attr=additional_attr)

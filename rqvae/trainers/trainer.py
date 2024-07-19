@@ -145,8 +145,7 @@ class TrainerTemplate:
             model.zero_grad()
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
-            img_paths = inputs.img_paths
-
+            img_paths = inputs.img_path
             outputs:Stage1ModelOutput = modelwoddp.infer(inputs) # no autocast here
             xs_recon_or_gen = outputs.xs_recon
             xm.mark_step()
