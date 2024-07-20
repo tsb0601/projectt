@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import Subset
 import torchvision
 from torchvision.datasets import ImageNet,ImageFolder
-from .imagenet import ImageNet_wImagepath
+from .imagenet import ImageNet_wImagepath, ImageNet_Fake
 from .dummy import Dummy_Dataset
 from .lsun import LSUNClass
 from .ffhq import FFHQ
@@ -39,8 +39,6 @@ def create_dataset(config, is_eval=False, logger=None):
         root = root if root else 'data/imagenet/val_256' # special judge
         dataset_trn = Dummy_Dataset(root, transform=transforms_val)
         dataset_val = Dummy_Dataset(root, transform=transforms_val)
-        #dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:4096])
-        #dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:1024])
     elif config.dataset.type == 'imagenet_test':
         root = root if root else 'data/imagenet'
         dataset_trn = ImageNet_wImagepath(root, split='val', transform=transforms_trn)
@@ -49,10 +47,10 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:512])
     elif config.dataset.type == 'imagenet_u':
         root = root if root else 'data/imagenet'
-        def target_transform(_):
-            return 0
-        dataset_trn = ImageNet_wImagepath(root, split='train', transform=transforms_trn, target_transform=target_transform)
-        dataset_val = ImageNet_wImagepath(root, split='val', transform=transforms_val, target_transform=target_transform)
+        dataset_trn = ImageNet_Fake(root, split='train', transform=transforms_trn)
+        dataset_val = ImageNet_Fake(root, split='val', transform=transforms_val)
+        dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:512])
+        dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:256])
     elif config.dataset.type == 'ffhq':
         root = root if root else 'data/ffhq'
         dataset_trn = FFHQ(root, split='train', transform=transforms_trn)

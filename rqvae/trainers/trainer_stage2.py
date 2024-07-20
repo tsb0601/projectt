@@ -254,13 +254,13 @@ class Trainer(TrainerTemplate):
         )
         self.writer.add_image("reconstruction", grid, mode, epoch)
 
-    def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True):
+    def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True,additional_attr_to_load = ()):
         return super()._load_ckpt(
-            optimizer, scheduler, epoch, load_from_master=load_from_master
+            optimizer, scheduler, epoch, load_from_master=load_from_master, additional_attr_to_load=additional_attr_to_load
         )
 
-    def _load_model_only(self, load_path, load_from_master=True):
-        return super()._load_model_only(load_path, load_from_master=load_from_master)
+    def _load_model_only(self, load_path, load_from_master=True, additional_attr_to_load = ()):
+        return super()._load_model_only(load_path, load_from_master=load_from_master, additional_attr_to_load=additional_attr_to_load)
 
     def save_ckpt(self, optimizer, scheduler, epoch):
         return super().save_ckpt(optimizer, scheduler, epoch)

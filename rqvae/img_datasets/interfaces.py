@@ -5,18 +5,19 @@ from typing import Optional, Any, List
 from numpy import ndarray
 @dataclass
 class LabeledImageData:
-    img: torch.Tensor
+    img: torch.Tensor = None
     condition: Any = None
     img_path: str = None
     additional_attr: Optional[str] = None
     def _to(self, device_or_dtype): # inplace
-        self.img = self.img.to(device_or_dtype)
+        if self.img is not None and isinstance(self.img, torch.Tensor):
+            self.img = self.img.to(device_or_dtype)
         if (self.condition is not None) and isinstance(self.condition, torch.Tensor):
             self.condition = self.condition.to(device_or_dtype).long() # shame on me! This is so bad
         return self
     def to(self, device_or_dtype):
         data = LabeledImageData(
-            img=self.img.to(device_or_dtype),
+            img=self.img.to(device_or_dtype) if (self.img is not None) and isinstance(self.img, torch.Tensor) else self.img,
             condition=self.condition.to(device_or_dtype).long() if (self.condition is not None) and isinstance(self.condition, torch.Tensor) else self.condition,
             img_path=self.img_path,
             additional_attr=self.additional_attr

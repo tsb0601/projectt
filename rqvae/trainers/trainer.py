@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from enum import auto
 import os
 import logging
 
@@ -23,9 +24,12 @@ from torch_xla.distributed.parallel_loader import ParallelLoader
 import torch.distributed as dist
 import torch_xla.core.xla_model as xm
 from PIL import Image
+from zmq import device
 from header import *
 from rqvae.img_datasets.interfaces import LabeledImageData
-from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput
+from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput, XLA_Model
+from torch_xla.amp import autocast
+from contextlib import nullcontext
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
@@ -137,7 +141,7 @@ class TrainerTemplate:
     def batch_infer(self, valid:bool = True , save_root:str=None):
         assert os.path.exists(save_root), f"save_root {save_root} does not exist"
         model = self.model
-        modelwoddp = self.model_woddp
+        modelwoddp:XLA_Model = self.model_woddp
         model.eval()
         loader = self.wrap_loader('valid' if valid else 'train')
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
@@ -146,7 +150,8 @@ class TrainerTemplate:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             img_paths = inputs.img_path
-            outputs:Stage1ModelOutput = modelwoddp.infer(inputs) # no autocast here
+            with autocast(device=self.device) if self.use_autocast else nullcontext():
+                outputs:Stage1ModelOutput = modelwoddp.infer(inputs) # no autocast here
             xs_recon_or_gen = outputs.xs_recon
             xm.mark_step()
             for i, img_path in enumerate(img_paths):

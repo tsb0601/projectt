@@ -77,8 +77,8 @@ def config_setup(args, distenv, config_path, extra_args=()):
     extra_config = OmegaConf.from_dotlist(extra_args)
     if args.eval:
         config = load_config(config_path)
-        if hasattr(args, 'test_batch_size'):
-            config.experiment.batch_size = args.test_batch_size
+        #if hasattr(args, 'test_batch_size'):
+        #    config.experiment.batch_size = args.test_batch_size
         if not hasattr(config, 'seed'):
             config.seed = args.seed
 

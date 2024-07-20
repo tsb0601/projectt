@@ -1,0 +1,33 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenet256x256
+
+arch:
+  stage: 2
+  stage_1:
+    target: rqvae.models.klvae.Stage1_KLVAE
+    params:
+      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+    checkpointing: false
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT S/8 Recipe
+      hidden_size: 384
+      input_size: 32
+      patch_size: 8
+      depth: 12
+      num_heads: 6
+      num_classes: 1000
+      timestep_respacing: 250
+    checkpointing: false
+  ema: 0.114514
+
+experiment:
+  batch_size: 2
+  accu_step: 1
+  epochs: 120
+  save_ckpt_freq: 40
+  test_freq: 1
+  amp: false

@@ -1,0 +1,38 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenet256x256
+
+arch:
+  stage: 1
+  target: rqvae.models.klvae.Stage1_KLVAE
+  params:
+    ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+  checkpointing: false
+  ema: 0.114514
+
+experiment:
+  batch_size: 125 # so it can divide 50000
+  epochs: 1
+  accu_step: 1
+  save_ckpt_freq: 1000
+  test_freq: 1
+  amp: false
+
+gan:
+  disc:
+    arch:
+      in_channels: 3
+      num_layers: 2
+      use_actnorm: false
+      ndf: 64
+      spectral_norm: false
+    experiment:
+      test_freq: 1
+      amp: false
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: .75
+    perceptual_weight: 1.0
+    disc_start: 10000

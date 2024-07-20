@@ -23,5 +23,4 @@ python main_stage1.py \
     -r=$SAVE_DIR \
     -l=$load_path \
     --world_size=$world_size  \
-    --use_ddp \
     --use_autocast
