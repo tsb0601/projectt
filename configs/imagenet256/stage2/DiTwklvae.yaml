@@ -13,12 +13,11 @@ arch:
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
-      # DiT S/8 Recipe
-      hidden_size: 384
+      # DiT B/2 Recipe
+      hidden_size: 768
       input_size: 32
-      patch_size: 8
+      patch_size: 2
       depth: 12
-      num_heads: 6
       num_classes: 1000
     checkpointing: false
   ema: 0.114514
