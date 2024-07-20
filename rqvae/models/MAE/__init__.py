@@ -170,8 +170,7 @@ class MAEEncoder_ForProbing(nn.Module):
         if global_pool:
             self.model.layernorm = nn.Identity() # remove layernorm
             self.model.fc_norm = nn.LayerNorm(self.model.config.hidden_size)
-    def forward(self, inputs: LabeledImageData)->tuple:
-        xs = inputs.img
+    def forward(self, xs: torch.Tensor) -> torch.Tensor:
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1).to(xs.device).to(xs.dtype)
         outputs = self.model(xs, noise)
         latent = outputs.last_hidden_state

@@ -33,3 +33,19 @@ class Stage1_KLVAE(Stage1Model):
         return self(inputs)
     def get_recon_imgs(self, x: torch.Tensor, xs: torch.Tensor):
         return x.clamp(0, 1), xs.clamp(0, 1)
+    
+    
+class Stage1_KLVAE_ForProbing(nn.Module):
+    def __init__(self, ckpt_path:str, latent_size:int, global_pool:bool = False): # global pool only
+        super().__init__()
+        vae = AutoencoderKL.from_pretrained(ckpt_path)
+        vae: AutoencoderKL
+        self.vae = vae
+        self.hidden_size = latent_size * latent_size * vae.config.latent_channels
+        self.fc_norm = nn.LayerNorm(self.hidden_size)
+    def forward(self, xs: torch.Tensor) -> torch.Tensor:
+        xs = xs.mul_(2).sub_(1)
+        xs = self.vae.encode(xs).latent_dist.sample().mul_(0.18215)
+        latent = xs.reshape(xs.shape[0], -1)
+        latent = self.fc_norm(latent)
+        return latent

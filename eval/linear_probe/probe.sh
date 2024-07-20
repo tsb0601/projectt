@@ -13,7 +13,8 @@ cp linear_probe.py ${log_path}/
 image_size=$3
 bsz=$4
 acc_iter=$5
-world_size=$6
+hidden_dim=$6
+world_size=$7
 export WANDB_DIR=${log_path}
 export WANDB_PROJECT='linear_probe'
 #torchrun --nnodes=1 --nproc_per_node=4 --node_rank=0 
@@ -32,6 +33,7 @@ python linear_probe.py \
     --output_dir $save_path \
     --log_dir $log_path \
     --num_workers 16 \
+    --hidden_size $hidden_dim \
     --world_size $world_size \
     --dist_eval --data_path /home/bytetriper/VAE-enhanced/data/imagenet
 

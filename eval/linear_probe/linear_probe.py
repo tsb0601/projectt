@@ -296,6 +296,9 @@ def main(rank, args):
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
         wandb.init(project=PROJECT_NAME, dir=args.log_dir, name="linear_probe", sync_tensorboard=True)
+        #upload all file  under the log_dir
+        wandb.save(os.path.join(args.log_dir, "./*.py"))
+        wandb.save(os.path.join(args.log_dir, "./*.yaml"))
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
@@ -451,6 +454,15 @@ def main(rank, args):
         xm.master_print(
             f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
         )
+        if max_accuracy < test_stats["acc1"] and args.output_dir:
+            misc.save_model(
+                args=args,
+                model=model,
+                model_without_ddp=model_without_ddp,
+                optimizer=optimizer,
+                loss_scaler=loss_scaler,
+                epoch="best",
+            )
         max_accuracy = max(max_accuracy, test_stats["acc1"])
         xm.master_print(f"Max accuracy: {max_accuracy:.2f}%")
         if log_writer is not None:
