@@ -302,8 +302,7 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
         checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % epoch_name)]
         for checkpoint_path in checkpoint_paths:
             to_save = {
-                'model': model_without_ddp.head.state_dict(),
-                'optimizer': optimizer.state_dict(),
+                'model': model_without_ddp.state_dict(),
                 'epoch': epoch,
                 'args': args,
             }
