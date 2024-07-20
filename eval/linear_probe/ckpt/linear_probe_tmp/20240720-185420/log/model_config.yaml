@@ -1,0 +1,4 @@
+target: rqvae.models.klvae.Stage1_KLVAE_ForProbing
+params:
+  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/model_zoo/klvae/mse'
+  latent_size: 32
