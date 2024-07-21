@@ -17,6 +17,7 @@ env | grep DEBUG
 load_path=$2
 model_config=$3
 world_size=$4
+mkdir -p $SAVE_DIR
 python main_stage2.py \
     --eval \
     -m=$model_config \

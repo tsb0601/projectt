@@ -8,12 +8,13 @@ class DiT_Stage2(Stage2Model):
     def __init__(self,hidden_size:int, input_size:int, num_classes:int, depth:int, **kwargs):
         super().__init__()
         self.timestep_respacing = str(kwargs.pop("timestep_respacing", ""))
+        self.cfg = kwargs.pop("cfg", .0)
         self.model = DiT(num_classes=num_classes, input_size=input_size, hidden_size = hidden_size, depth=depth, **kwargs) 
         self.model.requires_grad_(True)
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing) # like DiT we set default 1000 timesteps
         self.input_size = input_size
-        self.cfg = kwargs.get("cfg", .0)
+        
         self.use_cfg = self.cfg > 1.
         self.n_samples = kwargs.get("n_samples", 1)
         xm.master_print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}')

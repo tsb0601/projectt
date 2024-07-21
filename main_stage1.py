@@ -29,6 +29,7 @@ from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup , wandb_dir
 import wandb
 import torch_xla.runtime as xr
+import time
 import torch_xla.distributed.xla_multiprocessing as xmp
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
@@ -54,6 +55,7 @@ parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
 parser.add_argument('--cache_latent', action='store_true')
 def main(rank, args, extra_args):
+    start = time.time()
     global cache_path
     args.rank = rank
     config, logger, writer = setup(args, extra_args)
@@ -63,6 +65,8 @@ def main(rank, args, extra_args):
         # add a lock to prevent multiple processes from initializing the cache
         xr.initialize_cache(cache_path, readonly=False)
     distenv = config.runtime.distenv
+    if distenv.master and wandb_dir:
+        wandb.save(str(args.model_config)) # save the config file
     device = xm.xla_device()
     print(f'Using device: {device}')
     xm.master_print(f'loading dataset of {config.dataset.type}...')
@@ -139,9 +143,10 @@ def main(rank, args, extra_args):
         writer.close()  # may prevent from a file stable error in brain cloud..
         if wandb_dir:
             wandb.finish()
+    xm.master_print(f'[!]finished in {time.time() - start} seconds')
     xm.rendezvous('main')
     if args.use_ddp:
         dist.destroy_process_group()
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
-    xmp.spawn(main, args=(args, extra_args))
+    xmp.spawn(main, args=(args, extra_args), start_method='fork')

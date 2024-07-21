@@ -156,6 +156,8 @@ class TrainerTemplate:
             xm.mark_step()
             for i, img_path in enumerate(img_paths):
                 img_name = os.path.basename(img_path)
+                # change the suffix to png
+                img_name = img_name.split('.')[0] + '.png'
                 save_path = os.path.join(save_root, img_name)
                 img = xs_recon_or_gen[i].to(torch.float32).cpu().clamp(0, 1).numpy() 
                 img = (img * 255).astype('uint8').transpose(1, 2, 0)

@@ -86,7 +86,6 @@ def setup(args, extra_args=()):
         logger.info(f'log_path: {log_path}')
         logger.info('\n' + OmegaConf.to_yaml(config))
         OmegaConf.save(config, log_path.joinpath('config.yaml'))
-
         src_dir = Path(os.getcwd()).joinpath('rqvae')
         shutil.copytree(src_dir, log_path.joinpath('rqvae'))
         logger.info(f'source copied to {log_path}/rqvae')

@@ -21,13 +21,14 @@ arch:
       num_heads: 6
       num_classes: 1000
       timestep_respacing: 250
+      cfg: 4.0
     checkpointing: false
   ema: 0.114514
 
 experiment:
-  batch_size: 2
+  batch_size: 125
   accu_step: 1
-  epochs: 120
-  save_ckpt_freq: 40
+  epochs: 1
+  save_ckpt_freq: 1000
   test_freq: 1
   amp: false

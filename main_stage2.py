@@ -62,6 +62,8 @@ def main(rank, args, extra_args):
         # add a lock to prevent multiple processes from initializing the cache
         xr.initialize_cache(cache_path, readonly=False)
     distenv = config.runtime.distenv
+    if distenv.master and wandb_dir:
+        wandb.save(str(args.model_config)) # save the config file
     device = xm.xla_device()
     print(f'Using device: {device}')
     xm.master_print(f'loading dataset of {config.dataset.type}...')
@@ -133,4 +135,4 @@ def main(rank, args, extra_args):
         dist.destroy_process_group()
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
-    xmp.spawn(main, args=(args, extra_args))
+    xmp.spawn(main, args=(args, extra_args), start_method='fork')
