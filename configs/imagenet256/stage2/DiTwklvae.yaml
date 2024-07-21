@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
@@ -19,6 +19,7 @@ arch:
       patch_size: 2
       depth: 12
       num_classes: 1000
+      cfg: 4.0
     checkpointing: false
   ema: 0.114514
 optimizer:
@@ -38,10 +39,10 @@ optimizer:
     start_from_zero: false
 
 experiment:
-  batch_size: 32
+  batch_size: 2
   accu_step: 1
-  epochs: 120
-  save_ckpt_freq: 40
+  epochs: 1
+  save_ckpt_freq: 1
   test_freq: 1
   amp: false
 

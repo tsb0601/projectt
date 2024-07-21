@@ -3,6 +3,7 @@ import os
 from omegaconf import OmegaConf, DictConfig
 from easydict import EasyDict as edict
 import yaml
+import torch_xla.core.xla_model as xm
 
 
 
@@ -85,7 +86,16 @@ def config_setup(args, distenv, config_path, extra_args=()):
     elif args.resume:
         config = load_config(config_path)
         if distenv.world_size != config.runtime.distenv.world_size:
-            raise ValueError("world_size not identical to the resuming config")
+            xm.master_print(f"[!] WARNING: current world_size {distenv.world_size} not identical to the resumed world size {config.runtime.distenv.world_size}")
+            # recalculate accu step
+            local_batch_size = config.experiment.batch_size
+            original_whole_batch_size = config.experiment.total_batch_size
+            accu_step = original_whole_batch_size / (local_batch_size * distenv.world_size)
+            if accu_step < 1:
+                raise ValueError('accu_step must be at least 1')
+            if round(accu_step) != accu_step:
+                raise ValueError(f'accu_step must be an integer, get {original_whole_batch_size}/{local_batch_size}/{distenv.world_size} = {accu_step}')
+            config.experiment.accu_step = accu_step
         config.runtime = {'args': vars(args), 'distenv': distenv}
     else:  # training
         config_path = args.model_config

@@ -15,7 +15,9 @@
 from enum import auto
 import os
 import logging
+import random
 
+import numpy as np
 import torch
 from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader
@@ -219,20 +221,29 @@ class TrainerTemplate:
             target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
             target_module.load_state_dict(additional_attr_ckpt[attr]) 
     def _load_ckpt(self,load_path, optimizer, scheduler, additional_attr_to_load:tuple = (), load_from_master:bool = True):
-        global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME
+        global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
         rank = self.distenv.local_rank if not load_from_master else 0
         ckpt_folder = load_path
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
-        additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
+        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
         model_weight = torch.load(model_path)
         optimizer_weight = torch.load(opt_path)
         scheduler_weight = torch.load(sch_path)
-        additional_attr_ckpt = torch.load(additional_path)
         self.model_woddp.load_state_dict(model_weight)
         optimizer.load_state_dict(optimizer_weight)
         scheduler.load_state_dict(scheduler_weight)
+        if os.path.exists(rng_path):
+            rng_state = torch.load(rng_path)
+            torch.set_rng_state(rng_state['torch'])
+            np.random.set_state(rng_state['numpy'])
+            random.setstate(rng_state['random'])
+            xm.set_rng_state(rng_state['xm'])
+        if len(additional_attr_to_load) == 0:
+            return
+        additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
+        additional_attr_ckpt = torch.load(additional_path)
         for attr in additional_attr_to_load:
             assert attr in additional_attr_ckpt, f"additional_attr_to_load {attr} not in additional_attr_ckpt"
             assert hasattr(self, attr), f"self does not have attribute {attr}"
@@ -265,7 +276,7 @@ class TrainerTemplate:
         }
         return state_dict
     def save_ckpt(self, optimizer, scheduler, epoch, additional_attr_to_save:tuple = (), master_only:bool = True):
-        global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME
+        global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
         if master_only and not self.distenv.master:
             return
         epoch = 'last' if epoch == -1 else epoch
@@ -274,18 +285,26 @@ class TrainerTemplate:
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
+        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
         additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
         os.makedirs(ckpt_folder, exist_ok=True)
         model_weight = self.sync_and_to_cpu(self.model_woddp.state_dict())
         optimizer_weight = self.sync_and_to_cpu(optimizer.state_dict())
         scheduler_weight = self.sync_and_to_cpu(scheduler.state_dict())
+        rng_state = {
+            'torch': torch.get_rng_state(),
+            'numpy': np.random.get_state(),
+            'random': random.getstate(),
+            'xm': xm.get_rng_state()
+        }
+        torch.save(model_weight, model_path)
+        torch.save(optimizer_weight, opt_path)
+        torch.save(scheduler_weight, sch_path)
+        torch.save(rng_state, rng_path)
         additional_attr_ckpt = {}
         for attr in additional_attr_to_save:
             target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
             additional_attr_ckpt[attr] = self.sync_and_to_cpu(target_module.state_dict())
-        torch.save(model_weight, model_path)
-        torch.save(optimizer_weight, opt_path)
-        torch.save(scheduler_weight, sch_path)
         if len(additional_attr_ckpt) > 0:
             torch.save(additional_attr_ckpt, additional_path)
         if self.model_ema:

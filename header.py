@@ -12,6 +12,7 @@ from typing import *
 CKPT_FOLDER = 'ep_{}-checkpoint/' # epoch
 OPT_NAME = '{}-optimizer.pt' # rank
 SCH_NAME = '{}-scheduler.pt' # rank
+RNG_NAME = '{}-rng.pt' # rank
 MODEL_NAME = '{}-model.pt' # rank
 EMA_MODEL_NAME = '{}-ema-model.pt' # rank
 ADDIONTIONAL_NAME = '{}-additional.pt' # rank

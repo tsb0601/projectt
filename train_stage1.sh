@@ -15,6 +15,24 @@ env | grep PJRT
 env | grep DEBUG
 model_config=$3
 world_size=$4
+load_ckpt=$5
+# if load_ckpt != '', add --resume to the command
+if [ -z "$load_ckpt" ]
+then
+    echo "load_ckpt is empty"
+else
+    # append --resume to load_ckpt to $load_ckpt --resume
+    load_ckpt="${load_ckpt} --resume"
+    echo "load from: $load_ckpt"
+fi
+wandb_id=$6
+if [ -z "$wandb_id" ]
+then
+    echo "wandb_id is empty"
+else
+    echo "wanb_id: $wandb_id"
+    export WANDB_ID=$wandb_id
+fi
 export WANDB_DIR=$SAVE_DIR
 export WANDB_PROJECT=$EXP_NAME
 env | grep WANDB
@@ -22,4 +40,5 @@ python main_stage1.py \
     -m=$model_config \
     -r=$SAVE_DIR \
     --world_size=$world_size \
-    --use_autocast 
+    --use_autocast \
+    -l=$load_ckpt \

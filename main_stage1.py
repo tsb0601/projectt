@@ -113,7 +113,7 @@ def main(rank, args, extra_args):
         if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
             #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
-            epoch_st = args.load_path.split('/')[-2].split('-')[0].split('_')[-1]
+            epoch_st = os.path.basename(args.load_path).split('-')[0].split('_')[-1]
             if epoch_st == 'last':
                 xm.master_print(f'[!]model already trained complete, exit')
                 exit()
@@ -123,7 +123,7 @@ def main(rank, args, extra_args):
             trainer._load_model_only(args.load_path,additional_attr_to_load= ())
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
-    xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
+    xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
     if args.cache_latent:
         train_save_path = os.path.join(args.result_path, 'train')
         valid_save_path = os.path.join(args.result_path, 'valid')

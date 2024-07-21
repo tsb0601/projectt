@@ -105,11 +105,12 @@ def main(rank, args, extra_args):
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
                       device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
+    xm.master_print(f'[!]trainer created')
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
             #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
-            epoch_st = args.load_path.split('/')[-2].split('-')[0].split('_')[-1]
+            epoch_st = os.path.basename(args.load_path).split('-')[0].split('_')[-1]
             if epoch_st == 'last':
                 xm.master_print(f'[!]model already trained complete, exit')
                 exit()

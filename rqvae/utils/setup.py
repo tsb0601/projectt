@@ -60,18 +60,14 @@ def setup(args, extra_args=()):
     args.model_config = Path(args.model_config).absolute().resolve().as_posix()
 
     now = datetime.now().strftime('%d%m%Y_%H%M%S')
-
+    config_path = Path(args.model_config).absolute()
     if args.eval:
-        config_path = Path(args.model_config).absolute()
         log_path = Path('./logs/tmp').joinpath(now)
-
     elif args.resume:
-        load_path = Path(args.load_path)
-        config_path = load_path.parent.joinpath('config.yaml').absolute()
-        log_path = load_path.parent.parent.joinpath(now)
-
+        task_name = config_path.stem
+        config_path = Path(args.load_path).parent.joinpath('config.yaml')
+        log_path = Path(args.result_path).joinpath(task_name, now)
     else:
-        config_path = Path(args.model_config).absolute()
         task_name = config_path.stem
         if args.postfix:
             task_name += f'__{args.postfix}'
