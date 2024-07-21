@@ -15,6 +15,7 @@
 import logging
 import os
 
+from sentry_sdk import last_event_id
 import torch
 import torchvision
 from tqdm import tqdm
@@ -37,6 +38,7 @@ from rqvae.models.interfaces import (
     Stage1ModelOutput,
     Stage2ModelOutput,
     Stage1Encodings,
+    Stage2ModelWrapper,
 )
 from rqvae.img_datasets.interfaces import LabeledImageData
 
@@ -71,9 +73,11 @@ class Trainer(TrainerTemplate):
             enumerate(loader), total=len(loader), disable=not self.distenv.master
         )
         model.eval()
+        last_input = None
         for it, inputs in pbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
+            last_input = inputs
             xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = model(inputs)
@@ -98,7 +102,7 @@ class Trainer(TrainerTemplate):
             self.reconstruct(zs, epoch=0, mode=mode)
 
         summary = accm.get_summary(n_inst)
-        summary["zs"] = zs.detach().clone()
+        summary["input"] = last_input
 
         return summary
 
@@ -118,9 +122,11 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
             it_st_time = time.time()
             xm.master_print(f"[!]start time: {it_st_time}s")
+        last_input = None
         for it, inputs in pbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
+            last_input = inputs
             xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = self.model(inputs)
@@ -172,40 +178,29 @@ class Trainer(TrainerTemplate):
                         "lr_step", scheduler.get_last_lr()[0], "train", global_iter
                     )
                 if (global_iter + 1) % 500 == 0:
-                    bsz = xs.size(0)
-                    if bsz == 1:  # need to be handle properly
-                        continue
-                    max_shard_size = min(bsz, 16)
-                    zs, zs_pred = self.model_woddp.get_recon_imgs(
-                        zs[:max_shard_size], zs_pred[:max_shard_size]
-                    )
-                    grid = (
-                        torch.cat(
-                            [
-                                zs[: max_shard_size // 2],
-                                zs_pred[: max_shard_size // 2],
-                                zs[max_shard_size // 2 :],
-                                zs_pred[max_shard_size // 2 :],
-                            ],
-                            dim=0,
+                    with torch.no_grad():
+                        bsz = xs.size(0)
+                        bsz = len(inputs)
+                        max_shard_size = min(bsz, 16)
+                        inputs = inputs[:max_shard_size]
+                        self.model_woddp: Stage2ModelWrapper
+                        with autocast(self.device) if self.use_autocast else nullcontext():
+                            infer_output = self.model_woddp.infer(inputs)
+                        xs = infer_output.xs_recon
+                        grid = torchvision.utils.make_grid(xs, nrow=4).detach().cpu().float()
+                        self.writer.add_image(
+                            "generation_step", grid, "train", global_iter
                         )
-                        .detach()
-                        .cpu()
-                        .float()
-                    )
-                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size // 2)
-                    self.writer.add_image(
-                        "reconstruction_step", grid, "train", global_iter
-                    )
-
+            xm.mark_step() # wait for main process to finish logging
+        
         summary = accm.get_summary()
-        summary["zs"] = zs.detach().clone()
+        summary["input"] =  last_input
 
         return summary
 
     def logging(self, summary, scheduler=None, epoch=0, mode="train"):
         if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
-            self.reconstruct(summary["zs"], epoch, mode)
+            self.generate(summary["input"], epoch, mode)
         for key, value in summary.metrics.items():
             self.writer.add_scalar(f"loss/{key}", summary[key], mode, epoch)
         if mode == "train":
@@ -216,43 +211,21 @@ class Trainer(TrainerTemplate):
         if scheduler:
             line += f"""lr: {scheduler.get_last_lr()[0]:e}"""
         logger.info(line)
-
+    @torch.no_grad()
+    def generate(self, inputs:LabeledImageData, epoch:int, mode="valid"):
+        self.model.eval()
+        bsz = len(inputs)
+        max_shard_size = min(bsz, 16)
+        inputs = inputs[:max_shard_size]
+        inputs._to(self.device)._to(self.dtype)
+        self.model_woddp: Stage2ModelWrapper
+        infer_output = self.model_woddp.infer(inputs)
+        xs = infer_output.xs_recon
+        grid = torchvision.utils.make_grid(xs, nrow=4).detach().cpu().float()
+        self.writer.add_image("generation", grid, mode, epoch)
     @torch.no_grad()
     def reconstruct(self, zs, epoch, mode="valid"):
-        # do not write image when bs is 1
-        if zs.size(0) == 1:
-            return
-        bsz = zs.size(0)
-        max_shard_size = min((bsz // 2) * 2, 16)
-        model = self.model_ema if "ema" in mode else self.model
-        model.eval()
-        zs_real = zs[:max_shard_size]
-        fake_stage1_input = Stage1Encodings(zs=zs_real, additional_attr={})
-        #stage2_output: Stage2ModelOutput = self.model_woddp.stage_2_model(fake_stage1_input)
-        stage2_output = Stage2ModelOutput(
-            zs_pred=zs_real,
-            zs_degraded=zs_real,
-            additional_attr={}
-        )
-        zs_pred = stage2_output.zs_pred
-        zs_degraded = stage2_output.zs_degraded
-        zs_real, zs_recon = self.model_woddp.get_recon_imgs(zs_degraded, zs_pred)
-        grid = torch.cat(
-            [
-                zs_real[: max_shard_size // 2],
-                zs_recon[: max_shard_size // 2],
-                zs_real[max_shard_size // 2 :],
-                zs_recon[max_shard_size // 2 :],
-            ],
-            dim=0,
-        )
-        grid = (
-            torchvision.utils.make_grid(grid, nrow=max_shard_size // 2)
-            .detach()
-            .cpu()
-            .float()
-        )
-        self.writer.add_image("reconstruction", grid, mode, epoch)
+        raise NotImplementedError("reconstruct method is not implemented in the stage2 trainer")
 
     def _load_ckpt(self, optimizer, scheduler, epoch: int = -1, load_from_master=True,additional_attr_to_load = ()):
         return super()._load_ckpt(

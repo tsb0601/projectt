@@ -75,3 +75,6 @@ class DiT_Stage2(Stage2Model):
         )
     def get_last_layer(self):
         return self.model.final_layer.linear.weight
+    def requires_grad_(self, requires_grad: bool = True):
+        super().requires_grad_(requires_grad)
+        self.model.pos_embed.requires_grad_(False) # always freeze positional embeddings

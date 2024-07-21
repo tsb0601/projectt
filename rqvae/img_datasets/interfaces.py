@@ -23,7 +23,19 @@ class LabeledImageData:
             additional_attr=self.additional_attr
         )
         return data
-
+    def __getitem__(self, idx):
+        return LabeledImageData(
+            img=self.img[idx] if (self.img is not None) and isinstance(self.img, torch.Tensor) else self.img,
+            condition=self.condition[idx] if (self.condition is not None) and isinstance(self.condition, torch.Tensor) else self.condition,
+            img_path=self.img_path[idx] if self.img_path is not None else self.img_path,
+            additional_attr=self.additional_attr[idx] if self.additional_attr is not None else self.additional_attr
+        )
+    def __len__(self):
+        img_len = len(self.img) if (self.img is not None) and isinstance(self.img, torch.Tensor) else 1
+        condition_len = len(self.condition) if (self.condition is not None) and isinstance(self.condition, torch.Tensor) else 1
+        return max(img_len, condition_len)
+    def __setitem__(self, idx, value):
+        raise ValueError('Cannot set item to LabeledImageData')
 class LabeledImageDatasetWrapper(Dataset):
     """
     We assume the base dataset returns a tuple of (img, label, img_path, additional_attr), the last two being optional.

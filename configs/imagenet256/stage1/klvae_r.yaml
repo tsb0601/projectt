@@ -7,12 +7,12 @@ arch:
   stage: 1
   target: rqvae.models.klvae.Stage1_KLVAE
   params:
-    ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+    ckpt_path: './ckpt_gcs/model_zoo/klvae/ema'
   checkpointing: false
   ema: 0.114514
 
 experiment:
-  batch_size: 125 # so it can divide 50000
+  batch_size: 50 # so it can divide 50000
   epochs: 1
   accu_step: 1
   save_ckpt_freq: 1000
