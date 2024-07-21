@@ -486,6 +486,7 @@ def main(rank, args):
         xm.master_print(
             f"Epoch {epoch} time: {one_epoch_end_time - one_epoch_start_time:.2f}"
         )
+        xm.rendezvous("epoch sync")
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     xm.master_print("Training time {}".format(total_time_str))

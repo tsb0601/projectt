@@ -32,7 +32,7 @@ python linear_probe.py \
     --image_size $image_size \
     --output_dir $save_path \
     --log_dir $log_path \
-    --num_workers 16 \
+    --num_workers 8 \
     --hidden_size $hidden_dim \
     --world_size $world_size \
     --dist_eval --data_path /home/bytetriper/VAE-enhanced/data/imagenet

@@ -303,7 +303,6 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
         for checkpoint_path in checkpoint_paths:
             to_save = {
                 'model': model_without_ddp.state_dict(),
-                'epoch': epoch,
                 'args': args,
             }
             save_on_master(to_save, checkpoint_path)
