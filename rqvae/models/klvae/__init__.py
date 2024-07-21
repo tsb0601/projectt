@@ -41,11 +41,14 @@ class Stage1_KLVAE_ForProbing(nn.Module):
         vae = AutoencoderKL.from_pretrained(ckpt_path)
         vae: AutoencoderKL
         self.vae = vae
-        self.hidden_size = latent_size * latent_size * vae.config.latent_channels
+        self.hidden_size = vae.config.latent_channels
         self.fc_norm = nn.LayerNorm(self.hidden_size)
+        #self.hidden_size = latent_size * latent_size * vae.config.latent_channels
+        #self.fc_norm = nn.LayerNorm(self.hidden_size)
     def forward(self, xs: torch.Tensor) -> torch.Tensor:
         xs = xs.mul_(2).sub_(1)
         xs = self.vae.encode(xs).latent_dist.sample().mul_(0.18215)
-        latent = xs.reshape(xs.shape[0], -1)
+        latent = xs.mean(dim=(-2,-1))
+        #latent = xs.reshape(xs.shape[0], -1)
         latent = self.fc_norm(latent)
         return latent

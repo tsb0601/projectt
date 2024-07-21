@@ -29,6 +29,7 @@ from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup , wandb_dir
 import wandb
 import torch_xla.runtime as xr
+import time
 import torch_xla.distributed.xla_multiprocessing as xmp
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
@@ -53,6 +54,7 @@ parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
 def main(rank, args, extra_args):
+    start = time.time()
     global cache_path
     args.rank = rank
     config, logger, writer = setup(args, extra_args)
@@ -120,7 +122,7 @@ def main(rank, args, extra_args):
             trainer._load_model_only(args.load_path,additional_attr_to_load= ())
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
-    xm.master_print(f'[!]all trainer config created, start for {train_epochs} epochs from ep {epoch_st} to ep {train_epochs + epoch_st}')
+    xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
     if args.eval:
         #trainer.eval(valid=False, verbose=True)
         trainer.batch_infer(valid=True, save_root=args.result_path)
@@ -131,6 +133,7 @@ def main(rank, args, extra_args):
         writer.close()  # may prevent from a file stable error in brain cloud..
         if wandb_dir:
             wandb.finish()
+    xm.master_print(f'[!]finished in {time.time() - start} seconds')
     xm.mark_step(wait=True)
     if args.use_ddp:
         dist.destroy_process_group()
