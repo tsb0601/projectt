@@ -22,7 +22,6 @@ arch:
       num_classes: 1000
       cfg: 4.0
       in_channels: 768
-      timestep_respacing: 10
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector
