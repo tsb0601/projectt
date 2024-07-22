@@ -18,7 +18,7 @@ class Stage1_KLVAE(Stage1Model):
         x = x.mul_(2).sub_(1)
         x = self.vae.encode(x).latent_dist.sample().mul_(0.18215)
         return Stage1Encodings(zs=x, additional_attr={})
-    def decode(self, outputs: Union[Stage1Encodings,Stage2ModelOutput]):
+    def decode(self, outputs: Stage1Encodings):
         z = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred
         z = z.div_(0.18215)
         x = self.vae.decode(z).sample

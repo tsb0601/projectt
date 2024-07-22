@@ -123,8 +123,8 @@ class Stage1MAE(Stage1Model):
             additional_attr = {'outputs': outputs}
         )
         return encodings
-    def decode(self, outputs: Union[Stage1Encodings,Stage2ModelOutput]):
-        zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred
+    def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
+        zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)

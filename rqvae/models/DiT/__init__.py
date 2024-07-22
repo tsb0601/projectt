@@ -43,6 +43,8 @@ class DiT_Stage2(Stage2Model):
     def infer(self, inputs: LabeledImageData) -> Stage2ModelOutput:
         device = xm.xla_device() # default to TPU
         labels = inputs.condition
+        if isinstance(labels, torch.Tensor):
+            device = labels.device # sp hack
         n = self.n_samples
         cfg = self.cfg
         if labels is None:

@@ -14,13 +14,13 @@
 
 import abc
 
+from git import Optional
 from torch import nn
 import torch
 from typing import Tuple, Union
 
 # create a dataclass for ModelOutput
 from dataclasses import dataclass
-
 from rqvae.img_datasets.interfaces import LabeledImageData
 @dataclass
 class Stage1ModelOutput:
@@ -63,7 +63,15 @@ class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
     def get_last_layer(self) -> torch.Tensor:
         """Get the last layer of the model."""
         pass
+class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 and stage2 models
+    def __init__(self):
+        super().__init__()
 
+    def forward(self, encodings: Stage1Encodings) -> Stage1Encodings: # from stage1 to stage2
+        raise NotImplementedError
+    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings: # from stage2 to stage1
+        raise NotImplementedError
+from .connectors import id_connector
 class Stage1Model(XLA_Model):
 
     @abc.abstractmethod
@@ -72,7 +80,7 @@ class Stage1Model(XLA_Model):
         pass
 
     @abc.abstractmethod
-    def decode(self,outputs: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1ModelOutput:
+    def decode(self,outputs: Stage1Encodings) -> Stage1ModelOutput:
         """Decode the latent code to the image space."""
         pass
 
@@ -127,16 +135,21 @@ class Stage2ModelWrapper(XLA_Model):
     Wrap a Stage2 model with a Stage1 model.
     """
 
-    def __init__(self, stage_1_model: Stage1Model, stage_2_model: Stage2Model):
+    def __init__(self, stage_1_model: Stage1Model, stage_2_model: Stage2Model, connector: Optional[base_connector] = None):
         super().__init__()
         self.stage_1_model = stage_1_model
         self.stage_2_model = stage_2_model
+        if connector is None:
+            connector = id_connector()
+        self.connector = connector 
+        # check the parameter of connector, ensure it's empty
+        assert not list(connector.parameters()), "Connector should not have any parameters."
         self.stage_1_model.requires_grad_(False)  # freeze the stage 1 model
         self.stage_2_model.requires_grad_(True)  # train the stage 2 model
-
     def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(inputs)
+            stage1_encodings = self.connector.forward(stage1_encodings)
         stage2_output = self.stage_2_model(stage1_encodings, inputs)
         return stage1_encodings, stage2_output
 
@@ -150,7 +163,8 @@ class Stage2ModelWrapper(XLA_Model):
     @torch.no_grad()
     def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         stage_2_gen = self.stage_2_model.infer(inputs)
-        stage_1_gen = self.stage_1_model.decode(stage_2_gen)
+        stage_1_encodings = self.connector.reverse(stage_2_gen)
+        stage_1_gen = self.stage_1_model.decode(stage_1_encodings)
         return stage_1_gen
     def get_last_layer(self) -> torch.Tensor:
         return self.stage_2_model.get_last_layer()

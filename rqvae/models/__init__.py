@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import os
 import torch.distributed as dist
-from rqvae.models.interfaces import XLA_Model, Stage2ModelWrapper
+from rqvae.models.interfaces import *
 from omegaconf import DictConfig
 from typing import Optional, Tuple
 import torch
@@ -38,8 +38,13 @@ def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XL
     if stage == 2:
         stage_1_model,stage_1_ema = create_model(config.stage_1, ema=ema, stage=1) 
         stage_2_model, stage_2_ema = create_model(config.stage_2, ema=ema, stage=1)
-        stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model)
-        stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema) if use_ema else None
+        if hasattr(config, 'connector'):
+            connector = instantiate_from_config(config.connector)
+        else:
+            connector = None
+        connector: Optional[base_connector]
+        stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
+        stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector) if use_ema else None # connector does not contains any trainable parameters so it's ok to use the same connector
         return stage2model, stage2model_ema
     model = instantiate_from_config(config)
     model_ema = instantiate_from_config(config) if use_ema else None
