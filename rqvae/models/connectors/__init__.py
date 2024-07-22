@@ -41,11 +41,11 @@ class MAE_Diffusion_connector(base_connector):
         #zs = self.forward_norm(zs)
         # channel goes first
         zs = zs.permute(0,3,1,2).contiguous() # [batch_size, hidden_size, patch_size, patch_size]
-        zs = zs.mul_(0.18215)
+        zs = zs.mul_(0.08838)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
         zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
-        zs = zs.div_(0.18215)
+        zs = zs.div_(0.08838)
         if len(zs.shape) == 4:
             # been reshaped, we reshape them back & add a zero cls token
             batch_size, hidden_size, patch_size, _ = zs.shape

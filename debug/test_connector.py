@@ -11,13 +11,13 @@ from rqvae.img_datasets.interfaces import LabeledImageData
 from PIL import Image
 import numpy as np
 from torchvision.transforms import ToTensor
-config_path = '/home/bytetriper/VAE-enhanced/configs/imagenet256/stage2/DiTwklvae.yaml'
+config_path = '/home/bytetriper/VAE-enhanced/configs/imagenet256/stage2/DiTwmae.yaml'
 def main():
     config = OmegaConf.load(config_path)
     model, _  = create_model(config.arch,stage=2)
     model: Stage2ModelWrapper
     model.to('cpu')
-    print(model)
+    #print(model)
     img_path = './test.png'
     pil_image = Image.open(img_path).resize((256,256))
     x = ToTensor()(pil_image).unsqueeze(0).repeat(4,1,1,1)
@@ -29,13 +29,14 @@ def main():
         additional_attr= {}
     )
     encodings = model.stage_1_model.encode(data)
+    encodings = model.connector.forward(encodings)
     zs = encodings.zs
     print(zs.shape)
-    zs = zs.permute(0,2,3,1).reshape(4, -1 , 4)
+    zs = zs.permute(0,2,3,1).reshape(4, -1 ,zs.shape[1])
     print(zs.shape)
-    for i in range(zs.shape[1]):
-        print('i:',zs[0,i,].norm(p=2))
-    print('zs:',zs[0].norm(p=2))
+    #for i in range(zs.shape[1]):
+    #    print('i:',zs[0,i,].norm(p=2))
+    print('zs:',zs[0].norm(p=2, dim=-1).mean())
     #outputs = model.infer(data)
     #print(outputs.xs_recon.shape)
 if __name__ == '__main__':
