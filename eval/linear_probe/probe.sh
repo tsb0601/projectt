@@ -24,7 +24,7 @@ python linear_probe.py \
     --model_config $1 \
     --epochs 90 \
     --warmup_epochs 10 \
-    --blr .1 \
+    --blr 1e-4 \
     --save_freq 30 \
     --weight_decay 0.0 \
     --cls_token \
