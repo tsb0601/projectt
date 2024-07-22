@@ -28,6 +28,8 @@ class id_connector(base_connector):
 class MAE_Diffusion_connector(base_connector):
     def __init__(self):
         super().__init__()
+        #self.forward_norm = nn.BatchNorm1d(hidden_size, affine=False)
+        #self.reverse_norm = nn.BatchNorm1d(hidden_size, affine=True)
     def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
         zs = encodings.zs # zs : [batch_size, num_patches + 1, hidden_size]
         # remove cls
@@ -36,11 +38,14 @@ class MAE_Diffusion_connector(base_connector):
         batch_size, num_patches, hidden_size = zs.shape
         patch_size = int(num_patches ** 0.5)
         zs = zs.view(batch_size, patch_size, patch_size, hidden_size)
+        #zs = self.forward_norm(zs)
         # channel goes first
         zs = zs.permute(0,3,1,2).contiguous() # [batch_size, hidden_size, patch_size, patch_size]
+        zs = zs.mul_(0.18215)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
         zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
+        zs = zs.div_(0.18215)
         if len(zs.shape) == 4:
             # been reshaped, we reshape them back & add a zero cls token
             batch_size, hidden_size, patch_size, _ = zs.shape

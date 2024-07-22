@@ -41,7 +41,7 @@ optimizer:
     buffer_epoch: 0
     min_lr: 1.0e-4
     mode: fix
-    start_from_zero: false
+    start_from_zero: true
 
 experiment:
   batch_size: 32

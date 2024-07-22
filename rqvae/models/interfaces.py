@@ -142,8 +142,6 @@ class Stage2ModelWrapper(XLA_Model):
         if connector is None:
             connector = id_connector()
         self.connector = connector 
-        # check the parameter of connector, ensure it's empty
-        assert not list(connector.parameters()), "Connector should not have any parameters."
         self.stage_1_model.requires_grad_(False)  # freeze the stage 1 model
         self.stage_2_model.requires_grad_(True)  # train the stage 2 model
     def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
