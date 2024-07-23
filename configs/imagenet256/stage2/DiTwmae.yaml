@@ -14,13 +14,13 @@ arch:
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
-      # DiT B/2 Recipe
+      # DiT B/1 Recipe
       hidden_size: 768
       input_size: 16
       patch_size: 1
       depth: 12
       num_classes: 1000
-      cfg: 4.0
+      cfg: 0.0
       in_channels: 768
     checkpointing: false
   connector:
