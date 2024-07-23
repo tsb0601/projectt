@@ -99,7 +99,8 @@ class Trainer(TrainerTemplate):
             mode = "valid" if valid else "train"
             mode = "%s_ema" % mode if ema else mode
             logger.info(f"""{mode:10s}, """ + line)
-            self.reconstruct(zs, epoch=0, mode=mode)
+            with torch.no_grad():
+                self.generate(last_input, epoch, mode)
 
         summary = accm.get_summary(n_inst)
         summary["input"] = last_input
