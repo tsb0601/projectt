@@ -179,6 +179,7 @@ class Trainer(TrainerTemplate):
                         "lr_step", scheduler.get_last_lr()[0], "train", global_iter
                     )
                 if (global_iter + 1) % 500 == 0:
+                    self.model.eval()
                     with torch.no_grad():
                         bsz = xs.size(0)
                         bsz = len(inputs)
@@ -187,11 +188,12 @@ class Trainer(TrainerTemplate):
                         self.model_woddp: Stage2ModelWrapper
                         with autocast(self.device) if self.use_autocast else nullcontext():
                             infer_output = self.model_woddp.infer(inputs)
-                        xs = infer_output.xs_recon
+                        xs = infer_output.xs_recon.clamp(0, 1)
                         grid = torchvision.utils.make_grid(xs, nrow=4).detach().cpu().float()
                         self.writer.add_image(
                             "generation_step", grid, "train", global_iter
                         )
+                    self.model.train()
             xm.mark_step() # wait for main process to finish logging
         
         summary = accm.get_summary()
@@ -221,7 +223,7 @@ class Trainer(TrainerTemplate):
         inputs._to(self.device)._to(self.dtype)
         self.model_woddp: Stage2ModelWrapper
         infer_output = self.model_woddp.infer(inputs)
-        xs = infer_output.xs_recon
+        xs = infer_output.xs_recon.clamp(0, 1)
         grid = torchvision.utils.make_grid(xs, nrow=4).detach().cpu().float()
         self.writer.add_image("generation", grid, mode, epoch)
     @torch.no_grad()

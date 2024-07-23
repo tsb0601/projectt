@@ -6,6 +6,7 @@ import torch_xla.core.xla_model as xm
 from transformers.models.vit_mae.modeling_vit_mae import ViTMAEDecoderOutput
 from torch import nn
 from header import *
+from safetensors import safe_open
 def custom_forward(
     self,
     hidden_states,
@@ -81,7 +82,12 @@ class Stage1MAE(Stage1Model):
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         if no_cls:
             # add a learnable cls token
-            self.model.decoder.set_trainable_cls_token()
+            safetensor_path = os.path.join(ckpt_path, 'model.safetensors')
+            with safe_open(safetensor_path, framework='pt', device='cpu') as ckpt:
+                if 'decoder.trainable_cls_token' in ckpt.keys():
+                    self.model.decoder.trainable_cls_token = nn.Parameter(ckpt.get_tensor('decoder.trainable_cls_token'))
+                else:
+                    self.model.decoder.set_trainable_cls_token()
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)

@@ -8,9 +8,11 @@ from torchvision.transforms import ToTensor, ToPILImage
 from rqvae.img_datasets.interfaces import LabeledImageData
 from torch_xla.amp import autocast
 import torch_xla.core.xla_model as xm
+from rqvae.models.connectors import MAE_Diffusion_connector
 ckpt_path = './ckpt_gcs/model_zoo/mae_base_256_ft_r'
 with torch.no_grad():
-    mae = Stage1MAE(ckpt_path, no_cls=True)
+    mae = Stage1MAE(ckpt_path)
+    connector = MAE_Diffusion_connector()
     mae.eval()
     processor = ViTImageProcessor.from_pretrained(ckpt_path)
     image_path = '/home/bytetriper/VAE-enhanced/test.png'
@@ -27,12 +29,10 @@ with torch.no_grad():
     data = LabeledImageData(img=image)
     with autocast(xm.xla_device()):
         latent_output = mae.encode(data)
-        latent = latent_output.zs
-        empty_cls_token = torch.ones(latent.shape[0], 1, latent.shape[-1]) * 0.
-        #replace the first token with empty token
-        #latent_output.zs = torch.cat([empty_cls_token, latent[:, 1:]], dim=1)
-        print(latent.shape)
-        recon_output = mae.decode(latent_output)
+        latent_output = connector.forward(latent_output)
+        reverse_output = connector.reverse(latent_output)
+        reverse_output.zs = reverse_output.zs + torch.randn_like(reverse_output.zs) * 13000.
+        recon_output = mae.decode(reverse_output)
     recon = recon_output.xs_recon
     loss = mae.compute_loss(recon_output, data)['loss_total']
     l1_loss = (recon.clamp(0,1) - image.clamp(0,1)).abs().mean()
