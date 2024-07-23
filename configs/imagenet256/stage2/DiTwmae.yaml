@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
@@ -22,6 +22,7 @@ arch:
       num_classes: 1000
       cfg: 0.0
       in_channels: 768
+      learn_sigma: false
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector
