@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet
   transforms:
     type: imagenet256x256
 
