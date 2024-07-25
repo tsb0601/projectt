@@ -14,9 +14,6 @@
 
 import logging
 import os
-
-from cv2 import merge
-from sentry_sdk import last_event_id
 import torch
 import torchvision
 from tqdm import tqdm
