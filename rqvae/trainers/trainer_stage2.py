@@ -116,9 +116,7 @@ class Trainer(TrainerTemplate):
             # try merge y w same x
             
             all_x = all_x.cpu().numpy()
-            all_y = all_y.cpu().numpy()
-            
-            all_indices = set(all_x)
+            all_y = all_y.float().cpu().numpy()
             merged = {}
             for x, y in zip(all_x, all_y):
                 if x not in merged:
@@ -127,6 +125,13 @@ class Trainer(TrainerTemplate):
             all_x = list(merged.keys())
             all_x.sort()
             all_y = [sum(merged[x]) / len(merged[x]) for x in all_x]
+            import numpy as np
+            npy_x = np.array(all_x)
+            npy_y = np.array(all_y)
+            torch.save({
+                "x": npy_x,
+                "y": npy_y
+            }, f"plot_{mode}.pt")
             plt.plot(all_x, all_y, label=f"{mode}")
             plt.legend()
             plt.savefig(f"plot_{mode}.png")

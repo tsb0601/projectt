@@ -15,8 +15,8 @@ import numpy as np
 import torch_xla.core.xla_model as xm
 from torchvision.transforms import ToTensor, ToPILImage
 from torchvision.utils import make_grid
-#config_root = '/home/bytetriper/VAE-enhanced/ckpt_gcs/aW_DiT_B_1_b256_lr1e-4_ep120/DiTwmae/23072024_084126/'
-config_root = '/home/bytetriper/VAE-enhanced/ckpt_gcs/aW_DiT_B_2_b4096_blr1e-4_ep120/DiTwklvae/21072024_214020/'
+config_root = '/home/bytetriper/VAE-enhanced/ckpt_gcs/aW_DiT_B_1_b256_lr1e-4_ep120/DiTwmae/23072024_084126/'
+#config_root = '/home/bytetriper/VAE-enhanced/ckpt_gcs/aW_DiT_B_2_b4096_blr1e-4_ep120/DiTwklvae/21072024_214020/'
 config_path = os.path.join(config_root, 'config.yaml')
 @torch.no_grad()
 def main():
