@@ -114,7 +114,6 @@ class Trainer(TrainerTemplate):
                 self.generate(last_input, epoch, mode)
             # logging x, y 
             # try merge y w same x
-            
             all_x = all_x.cpu().numpy()
             all_y = all_y.float().cpu().numpy()
             merged = {}

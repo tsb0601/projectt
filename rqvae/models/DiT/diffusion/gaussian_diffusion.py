@@ -12,7 +12,7 @@ import enum
 
 from .diffusion_utils import discretized_gaussian_log_likelihood, normal_kl
 import torch_xla.core.xla_model as xm
-
+MAXIMUM_DIFFUSION_STEP = 1000
 def mean_flat(tensor):
     """
     Take the mean over all non-batch dimensions.
@@ -170,7 +170,7 @@ class GaussianDiffusion:
         assert (betas > 0).all() and (betas <= 1).all()
 
         self.num_timesteps = int(betas.shape[0])
-
+        
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
@@ -460,7 +460,51 @@ class GaussianDiffusion:
         ):
             final = sample
         return final["sample"]
+    def sdedit(
+        self,
+        model,
+        shape,
+        z_0,
+        t,
+        clip_denoised=True,
+        denoised_fn=None,
+        cond_fn=None,
+        model_kwargs=None,
+        device=None,
+        progress=False,
+    ):
+        """
+        essentially the same as p_sample_loop, but start from z_t instead of z_T
+        """
+        if device is None:
+            device = next(model.parameters()).device
+        assert isinstance(shape, (tuple, list))
+        
+        indices = list(range(self.num_timesteps))[: t + 1][::-1]
+        t_span = th.Tensor([t] * shape[0]).to(device).long()
+        z_t = self.q_sample(z_0, t_span)
+        img = z_t
+        if progress:
+            # Lazy import so that we don't depend on tqdm.
+            from tqdm.auto import tqdm
 
+            indices = tqdm(indices)
+
+        for i in indices:
+            t = th.tensor([i] * shape[0], device=device)
+            with th.no_grad():
+                out = self.p_sample(
+                    model,
+                    img,
+                    t,
+                    clip_denoised=clip_denoised,
+                    denoised_fn=denoised_fn,
+                    cond_fn=cond_fn,
+                    model_kwargs=model_kwargs,
+                )
+                xm.mark_step()
+                img = out["sample"]
+        return img
     def p_sample_loop_progressive(
         self,
         model,
