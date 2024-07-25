@@ -13,7 +13,7 @@ def test_DiT():
     device = xm.xla_device()
     model = model.to(device)
     inputs = torch.randn(1, 768, 16, 16).to(device)
-    labels = torch.randint(0, 1000, (1,))
+    labels = torch.ones((1,)).long().to(device) * 1000 # drop label
     stage1_encodings = Stage1Encodings(zs=inputs)
     data = LabeledImageData(img=inputs, condition=labels)
     data._to(device)

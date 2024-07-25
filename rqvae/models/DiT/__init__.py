@@ -37,6 +37,8 @@ class DiT_Stage2(Stage2Model):
         loss = loss_dict["loss"].mean()
         return {
             "loss_total": loss,
+            "t": t,
+            'valid': (t, loss_dict["loss"]) if valid else None
         }
     def get_recon_imgs(self, xs_real, xs, **kwargs):
         return xs_real.clamp(0, 1), xs.clamp(0, 1)
