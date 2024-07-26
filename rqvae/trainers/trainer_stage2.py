@@ -121,16 +121,23 @@ class Trainer(TrainerTemplate):
             all_x = list(merged.keys())
             all_x.sort()
             all_y = [sum(merged[x]) / len(merged[x]) for x in all_x]
-            import numpy as np
-            npy_x = np.array(all_x)
-            npy_y = np.array(all_y)
-            torch.save({
-                "x": npy_x,
-                "y": npy_y
-            }, f"plot_{mode}.pt")
-            plt.plot(all_x, all_y, label=f"{mode}")
-            plt.legend()
-            plt.savefig(f"plot_{mode}.png")
+            # upload to tensorboard if use wandb
+            if self.use_wandb:
+                # log to tensorboard, which will then automatically log to wandb
+                mean_y = sum(all_y) / len(all_y)
+                self.writer.add_scalar(f"eval/log_{mode}_mean", mean_y, mode, epoch)
+            else:
+            # log to local
+                import numpy as np
+                npy_x = np.array(all_x)
+                npy_y = np.array(all_y)
+                torch.save({
+                    "x": npy_x,
+                    "y": npy_y
+                }, f"plot_{mode}.pt")
+                plt.plot(all_x, all_y, label=f"{mode}")
+                plt.legend()
+                plt.savefig(f"plot_{mode}.png")
         summary = accm.get_summary(n_inst)
         summary["input"] = last_input
 

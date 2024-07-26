@@ -11,6 +11,7 @@ class DiT_Stage2(Stage2Model):
         self.cfg = kwargs.pop("cfg", .0)
         learn_sigma = kwargs.pop("learn_sigma", True) # learn sigma is True by default and is a required argument in DiT
         noise_schedule = kwargs.pop("noise_schedule", "linear")
+        self.hidden_size = hidden_size
         self.model = DiT(num_classes=num_classes, input_size=input_size, hidden_size = hidden_size, depth=depth,learn_sigma=learn_sigma, **kwargs) 
         self.model.requires_grad_(True)
         # like DiT we only support square images
@@ -34,12 +35,21 @@ class DiT_Stage2(Stage2Model):
         labels = inputs.condition
         t = torch.randint(0, self.diffusion.num_timesteps, (zs.shape[0],), device=zs.device)
         model_kwargs = dict(y=labels)
-        loss_dict = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
-        loss = loss_dict["loss"].mean()
+        terms = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
+        loss = terms["loss"].mean()
+        if valid:
+            # we calculate the mse loss of zs and z_0_hat
+            z_t = terms["x_t"] # noised latent
+            model_output = terms["model_output"]
+            B, C = z_t.shape[:2]
+            if C == self.hidden_size * 2:
+                model_output, _ = torch.split(model_output, self.hidden_size, dim=1)
+            z_0_hat = self.diffusion._predict_xstart_from_eps(z_t, t, model_output)
+            mse_loss = ((z_0_hat - zs)**2).mean(dim=list(range(1, len(zs.shape))))
         return {
             "loss_total": loss,
             "t": t,
-            'valid': (t, loss_dict["mse"]) if valid else None
+            'valid': (t, mse_loss) if valid else None
         }
     def get_recon_imgs(self, xs_real, xs, **kwargs):
         return xs_real.clamp(0, 1), xs.clamp(0, 1)

@@ -42,8 +42,9 @@ def create_transforms(config, split='train', is_eval=False):
         if split == 'train' and not is_eval:
             #weak data augmentation
             transforms_ = [
-                transforms.Resize(resolution),
-                transforms.RandomCrop(resolution),
+                #transforms.Resize(resolution),
+                #transforms.RandomCrop(resolution),
+                lambda x: center_crop_arr(x, resolution), # following DiT
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])

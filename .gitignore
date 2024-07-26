@@ -140,3 +140,4 @@ test/
 logs/
 eval/linear_probe/~
 ckpt_gcs/
+tmp/

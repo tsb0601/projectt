@@ -6,8 +6,11 @@ import torch
 import torch.distributed as dist
 import torch_xla as xla
 import torch_xla.core.xla_model as xm
+import wandb
 from typing import *
-
+wandb_dir = os.environ.get("WANDB_DIR", None)
+wandb_id = os.environ.get("WANDB_ID", None)
+PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'VAE-enhanced')
 ## For saving and loading checkpoints ##
 CKPT_FOLDER = 'ep_{}-checkpoint/' # epoch
 OPT_NAME = '{}-optimizer.pt' # rank

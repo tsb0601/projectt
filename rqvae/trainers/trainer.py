@@ -55,9 +55,11 @@ class TrainerTemplate:
         use_autocast:bool = False,
     ):
         super().__init__()
-
+        global wandb_dir
         num_workers = 16
         self.model = model
+        self.use_wandb = wandb.run is not None
+        xm.master_print(f"[!]Trainer use_wandb: {self.use_wandb}")
         self.model_ema = model_ema
         self.model_woddp = model.module if use_ddp else model
         self.model_ema_woddp = model_ema.module if use_ddp and (model_ema is not None) else model_ema
@@ -176,7 +178,7 @@ class TrainerTemplate:
             summary_trn = self.train(optimizer, scheduler, scaler, epoch=i)
             xm.mark_step()
             if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
-                summary_val = self.eval(epoch=i)
+                summary_val = self.eval(epoch=i, valid=True, verbose=True)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i)
             if self.distenv.master:

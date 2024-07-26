@@ -9,11 +9,7 @@ from omegaconf import OmegaConf
 from .writer import Writer
 from .config import config_setup
 from .dist import initialize as dist_init
-wandb_dir = os.environ.get("WANDB_DIR", None)
-wandb_id = os.environ.get("WANDB_ID", None)
-PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'VAE-enhanced')
-if wandb_dir:
-    import wandb
+from header import wandb_dir, PROJECT_NAME, wandb_id, xm, wandb # import wandb related variables
 import torch_xla.core.xla_model as xm
 def logger_setup(log_path, eval=False):
     global wandb_dir, PROJECT_NAME
