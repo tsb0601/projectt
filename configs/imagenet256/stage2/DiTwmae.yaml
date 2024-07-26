@@ -23,6 +23,7 @@ arch:
       cfg: 0.0
       in_channels: 768
       learn_sigma: false
+      noise_schedule: 'squaredcos_cap_v2'
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector

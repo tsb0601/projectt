@@ -10,10 +10,11 @@ class DiT_Stage2(Stage2Model):
         self.timestep_respacing = str(kwargs.pop("timestep_respacing", ""))
         self.cfg = kwargs.pop("cfg", .0)
         learn_sigma = kwargs.pop("learn_sigma", True) # learn sigma is True by default and is a required argument in DiT
+        noise_schedule = kwargs.pop("noise_schedule", "linear")
         self.model = DiT(num_classes=num_classes, input_size=input_size, hidden_size = hidden_size, depth=depth,learn_sigma=learn_sigma, **kwargs) 
         self.model.requires_grad_(True)
         # like DiT we only support square images
-        self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma) # like DiT we set default 1000 timesteps
+        self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
         self.input_size = input_size
         
         self.use_cfg = self.cfg > 1.
