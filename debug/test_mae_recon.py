@@ -9,7 +9,7 @@ from rqvae.img_datasets.interfaces import LabeledImageData
 from torch_xla.amp import autocast
 import torch_xla.core.xla_model as xm
 from rqvae.models.connectors import MAE_Diffusion_connector
-ckpt_path = './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+ckpt_path = './ckpt_gcs/model_zoo/mae_base_256_ft'
 with torch.no_grad():
     mae = Stage1MAE(ckpt_path)
     connector = MAE_Diffusion_connector()
@@ -31,7 +31,7 @@ with torch.no_grad():
         latent_output = mae.encode(data)
         latent_output = connector.forward(latent_output)
         reverse_output = connector.reverse(latent_output)
-        reverse_output.zs = reverse_output.zs + torch.randn_like(reverse_output.zs) * 13000.
+        reverse_output.zs = reverse_output.zs
         recon_output = mae.decode(reverse_output)
     recon = recon_output.xs_recon
     loss = mae.compute_loss(recon_output, data)['loss_total']
