@@ -16,7 +16,7 @@ arch:
       # DiT B/1 Recipe
       hidden_size: 768
       input_size: 16
-      patch_size: 1
+      patch_size: 2
       depth: 12
       num_classes: 1000
       cfg: 0.0
