@@ -7,7 +7,7 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
     no_cls: true
   checkpointing: false
   ema: 0.114514

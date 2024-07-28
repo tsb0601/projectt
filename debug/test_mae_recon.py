@@ -9,9 +9,9 @@ from rqvae.img_datasets.interfaces import LabeledImageData
 from torch_xla.amp import autocast
 import torch_xla.core.xla_model as xm
 from rqvae.models.connectors import MAE_Diffusion_connector
-ckpt_path = './ckpt_gcs/model_zoo/mae_base_256_ft'
+ckpt_path = './ckpt_gcs/model_zoo/mae_base_256_ft_r'
 with torch.no_grad():
-    mae = Stage1MAE(ckpt_path)
+    mae = Stage1MAE(ckpt_path,no_cls=True)
     connector = MAE_Diffusion_connector()
     mae.eval()
     processor = ViTImageProcessor.from_pretrained(ckpt_path)
@@ -27,12 +27,11 @@ with torch.no_grad():
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
-    with autocast(xm.xla_device()):
-        latent_output = mae.encode(data)
-        latent_output = connector.forward(latent_output)
-        reverse_output = connector.reverse(latent_output)
-        reverse_output.zs = reverse_output.zs
-        recon_output = mae.decode(reverse_output)
+    latent_output = mae.encode(data)
+    #latent_output = connector.forward(latent_output)
+    #reverse_output = connector.reverse(latent_output)
+    #reverse_output.zs = reverse_output.zs
+    recon_output = mae.decode(latent_output)
     recon = recon_output.xs_recon
     loss = mae.compute_loss(recon_output, data)['loss_total']
     l1_loss = (recon.clamp(0,1) - image.clamp(0,1)).abs().mean()

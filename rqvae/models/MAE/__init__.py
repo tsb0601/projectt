@@ -82,12 +82,15 @@ class Stage1MAE(Stage1Model):
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         if no_cls:
             # add a learnable cls token
-            safetensor_path = os.path.join(ckpt_path, 'model.safetensors')
-            with safe_open(safetensor_path, framework='pt', device='cpu') as ckpt:
-                if 'decoder.trainable_cls_token' in ckpt.keys():
-                    self.model.decoder.trainable_cls_token = nn.Parameter(ckpt.get_tensor('decoder.trainable_cls_token'))
-                else:
-                    self.model.decoder.set_trainable_cls_token()
+            self.model.decoder.set_trainable_cls_token()
+            #safetensor_path = os.path.join(ckpt_path, 'model.safetensors')
+            #with safe_open(safetensor_path, framework='pt', device='cpu') as ckpt:
+            #    #print(ckpt.keys())
+            #    if 'decoder.trainable_cls_token' in ckpt.keys():
+            #        print('Loading trainable cls token', ckpt.get_tensor('decoder.trainable_cls_token'))
+            #        self.model.decoder.trainable_cls_token = nn.Parameter(ckpt.get_tensor('decoder.trainable_cls_token'))
+            #    else:
+            #        self.model.decoder.set_trainable_cls_token()
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
@@ -99,6 +102,10 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('image_std', torch.tensor(image_std).view(1, 3, 1, 1))
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
+        # get the final layernorm's affine parameters
+        layernorm = self.model.vit.layernorm
+        self.register_buffer('layernorm_mean', layernorm.weight)
+        self.register_buffer('layernorm_std', layernorm.bias)
         self.no_cls = no_cls
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
@@ -125,16 +132,18 @@ class Stage1MAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
+        # redo the final layernorm affine
+        latent = (latent - self.layernorm_mean) / self.layernorm_std
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
-                               'running_mean': self.batchnorm.running_mean,
-                                 'running_var': self.batchnorm.running_var
                             }
         )
         return encodings
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
+        # add the final layernorm affine
+        zs = zs * self.layernorm_std + self.layernorm_mean
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
