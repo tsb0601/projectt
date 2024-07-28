@@ -28,6 +28,7 @@ with torch.no_grad():
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
     latent_output = mae.encode(data)
+    print(latent_output.zs.std(dim=-1).mean(), latent_output.zs.mean(dim=-1).mean())
     #latent_output = connector.forward(latent_output)
     #reverse_output = connector.reverse(latent_output)
     #reverse_output.zs = reverse_output.zs

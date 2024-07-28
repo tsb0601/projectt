@@ -73,7 +73,7 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, norm_data_path: str = './rqvae/models/MAE/latent_data.pt')->None:
         super().__init__()
         self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
         self.model.config.mask_ratio = mask_ratio
@@ -104,9 +104,11 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         layernorm = self.model.vit.layernorm
-        self.register_buffer('layernorm_mean', layernorm.weight)
-        self.register_buffer('layernorm_std', layernorm.bias)
         self.no_cls = no_cls
+        if os.path.isfile(norm_data_path):
+            norm_data = torch.load(norm_data_path)
+            self.running_mean = norm_data['mean']
+            self.running_var = norm_data['var']
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -133,7 +135,7 @@ class Stage1MAE(Stage1Model):
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
         # redo the final layernorm affine
-        latent = (latent - self.layernorm_mean) / self.layernorm_std
+        latent = latent  / torch.sqrt(self.running_var)
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -143,7 +145,8 @@ class Stage1MAE(Stage1Model):
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
         # add the final layernorm affine
-        zs = zs * self.layernorm_std + self.layernorm_mean
+        zs = zs * torch.sqrt(self.running_var)
+        #zs = (zs - self.layernorm_mean) / self.layernorm_std
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
