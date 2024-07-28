@@ -135,8 +135,13 @@ def main(rank, args, extra_args):
         xm.master_print(f'[!]caching latent for valid dataset')
         trainer.cache_latent(feature_path=valid_save_path, valid = True)
     elif args.eval:
+        mean, var = trainer.encode_only(valid=True)
+        torch.save({
+            'mean': mean.float().cpu(),
+            'var': var.float().cpu()
+        }, os.path.join(args.result_path, 'latent_data.pt'))
         #trainer.eval(valid=True, verbose=True)
-        trainer.batch_infer(valid=True, save_root=args.result_path)
+        #trainer.batch_infer(valid=True, save_root=args.result_path)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
 

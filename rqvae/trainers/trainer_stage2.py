@@ -113,22 +113,22 @@ class Trainer(TrainerTemplate):
             # try merge y w same x
             all_x = all_x.cpu().numpy()
             all_y = all_y.float().cpu().numpy()
-            merged = {}
-            for x, y in zip(all_x, all_y):
-                if x not in merged:
-                    merged[x] = []
-                merged[x].append(y)
-            all_x = list(merged.keys())
-            all_x.sort()
-            all_y = [sum(merged[x]) / len(merged[x]) for x in all_x]
             # upload to tensorboard if use wandb
             if self.use_wandb:
                 # log to tensorboard, which will then automatically log to wandb
-                mean_y = sum(all_y) / len(all_y)
+                mean_y = all_y.mean()
                 self.writer.add_scalar(f"eval/log_{mode}_mean", mean_y, mode, epoch)
             else:
-            # log to local
+                # log to local
                 import numpy as np
+                merged = {}
+                for x, y in zip(all_x, all_y):
+                    if x not in merged:
+                        merged[x] = []
+                merged[x].append(y)
+                all_x = list(merged.keys())
+                all_x.sort()
+                all_y = [sum(merged[x]) / len(merged[x]) for x in all_x]
                 npy_x = np.array(all_x)
                 npy_y = np.array(all_y)
                 torch.save({

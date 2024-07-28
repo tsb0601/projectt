@@ -141,7 +141,24 @@ class Trainer(TrainerTemplate):
             logits_avg["logits_fake"] = logits_fake.detach().mean()
 
         return loss_gen, loss_disc, logits_avg
-
+    @torch.no_grad()
+    def encode_only(self, valid:bool= True):
+        """
+        This func is used to calculate the mean and variance of the latent space
+        The model should return a running mean and variance of the latent space
+        """
+        self.model.train() # to calculate the running mean and variance
+        loader = self.wrap_loader("valid" if valid else "train")
+        for it, inputs in tqdm(enumerate(loader)):
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_encodings: Stage1Encodings = self.model_woddp.encode(inputs)
+                running_mean = stage1_encodings.additional_attr['running_mean']
+                running_var = stage1_encodings.additional_attr['running_var']
+            xm.mark_step()
+        # save the running mean and variance
+        return running_mean, running_var
     @torch.no_grad()
     def cache_latent(self, feature_path:str, valid:bool= True):
         self.model.eval()
