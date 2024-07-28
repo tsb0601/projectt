@@ -38,34 +38,24 @@ with torch.no_grad():
     print(data.img.shape, data.condition)
     latent_output = mae.encode(data)
     latent_output = connector.forward(latent_output)
-    reverse_output = connector.reverse(latent_output)
-    zs = reverse_output.zs
-    scale = (.0, .2, .4, .6, .8, 1.)
+    zs = latent_output.zs
+    scale = (.0, .1, .2, .3, .4, .5, .6, .7, .8, .9,.92,.94,.96,.98,.99,.992,.994,.996,.998, 1.)
     zs_origin = zs[0]
     zs_add = zs[1]
     interpolated = []
+    random_noise = torch.rand_like(zs_origin)
+    from math import sqrt
     for s in scale:
-        zs_inter = s * zs_add + (1 - s) * zs_origin
+        zs_inter = sqrt(s) * zs_origin + sqrt(1 - s) * random_noise
         interpolated.append(zs_inter)
     interpolated = torch.stack(interpolated)
-    reverse_output.zs = interpolated
+    latent_output.zs = interpolated
+    reverse_output = connector.reverse(latent_output)
     recon_output = mae.decode(reverse_output)
     recon = recon_output.xs_recon
-    image_interpolated = []
-    for s in scale:
-        image_inter = s * second_image + (1 - s) * image
-        image_inter = image_inter.squeeze(0)
-        image_interpolated.append(image_inter)
-    image_interpolated = torch.stack(image_interpolated)
-    interpolated_data = LabeledImageData(img=image_interpolated)
-    interpolated_latent_output = mae.encode(interpolated_data)
-    interpolated_latent_output = connector.forward(interpolated_latent_output)
-    interpolated_reverse_output = connector.reverse(interpolated_latent_output)
-    interpolated_recon_output = mae.decode(interpolated_reverse_output)
-    interpolated_recon = interpolated_recon_output.xs_recon
     # recon : len(scale), 3, 256, 256
     from torchvision.utils import make_grid
     import matplotlib.pyplot as plt
-    recon = make_grid(torch.cat([image_interpolated, recon, interpolated_recon], dim=0), nrow=len(scale))
+    recon = make_grid(torch.cat([recon], dim=0), nrow=len(scale)//2)
     recon = ToPILImage()(recon)
-    recon.save('./visuals/interpolant_noise.png')
+    recon.save('./visuals/interpolant_latent_noise.png')

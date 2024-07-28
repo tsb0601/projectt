@@ -26,11 +26,6 @@ with torch.no_grad():
     #image = image.repeat(1, 1, 1, 1)
     image = ToTensor()(image).unsqueeze(0)
     second_image = ToTensor()(second_image).unsqueeze(0)
-    # set second image to random noise
-    second_image = torch.rand_like(second_image)
-    # normalize and clip to [0, 1]
-    second_image = (second_image + 1) / 2
-    second_image = torch.clamp(second_image, 0, 1)
     print(image.shape, image.min(), image.max())
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
@@ -40,21 +35,33 @@ with torch.no_grad():
     latent_output = connector.forward(latent_output)
     reverse_output = connector.reverse(latent_output)
     zs = reverse_output.zs
-    scale = (.0, .2, .4, .6, .8, 1.)
+    scale = (.0, .25, .5, .75, 1.)
     zs_origin = zs[0]
     zs_add = zs[1]
     interpolated = []
-    for s in scale:
-        zs_inter = s * zs_add + (1 - s) * zs_origin
+    rand_token_idx = torch.randint(0, zs_origin.shape[0] - 1, (len(scale),))
+    print(rand_token_idx, zs_origin.shape)
+    for s in range(len(scale)):
+        # randomly select only ONE token to be zs_add, the rest zs_origin
+        zs_inter = zs_origin.clone()
+        zs_inter[rand_token_idx[s] + 1] = zs_add[rand_token_idx[s] + 1] # take cls token into account
         interpolated.append(zs_inter)
     interpolated = torch.stack(interpolated)
     reverse_output.zs = interpolated
     recon_output = mae.decode(reverse_output)
     recon = recon_output.xs_recon
     image_interpolated = []
-    for s in scale:
-        image_inter = s * second_image + (1 - s) * image
-        image_inter = image_inter.squeeze(0)
+    for s in range(len(scale)):
+        image_inter = image.clone().squeeze(0) # 3, 256, 256
+        patch_size = image.shape[2] // int(zs_origin.shape[0] ** 0.5) # 16
+        patch_num_per_ax = int(zs_origin.shape[0] ** 0.5) # 16
+        token_idx = int(rand_token_idx[s])
+        x_idx = token_idx % patch_num_per_ax
+        y_idx = token_idx // patch_num_per_ax
+        x_st, x_ed = x_idx * patch_size, (x_idx + 1) * patch_size
+        y_st, y_ed = y_idx * patch_size, (y_idx + 1) * patch_size
+        print(x_st, x_ed, y_st, y_ed)
+        image_inter[:, y_st:y_ed, x_st:x_ed] = second_image.squeeze(0)[:, y_st:y_ed, x_st:x_ed]
         image_interpolated.append(image_inter)
     image_interpolated = torch.stack(image_interpolated)
     interpolated_data = LabeledImageData(img=image_interpolated)
@@ -68,4 +75,4 @@ with torch.no_grad():
     import matplotlib.pyplot as plt
     recon = make_grid(torch.cat([image_interpolated, recon, interpolated_recon], dim=0), nrow=len(scale))
     recon = ToPILImage()(recon)
-    recon.save('./visuals/interpolant_noise.png')
+    recon.save('./visuals/interpolant_extreme.png')

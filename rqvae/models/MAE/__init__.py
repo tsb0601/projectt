@@ -100,7 +100,6 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
         self.no_cls = no_cls
-        self.batchnorm = nn.BatchNorm1d(self.model.config.hidden_size, affine=False)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -126,8 +125,6 @@ class Stage1MAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
-        # apply batchnorm
-        latent = self.batchnorm(latent.permute(0, 2, 1)).permute(0, 2, 1)
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
