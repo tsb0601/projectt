@@ -103,7 +103,6 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('noise', noise)
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
-        layernorm = self.model.vit.layernorm
         self.no_cls = no_cls
         if os.path.isfile(norm_data_path):
             norm_data = torch.load(norm_data_path)
@@ -116,7 +115,7 @@ class Stage1MAE(Stage1Model):
         image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
         xs = (xs - image_mean) / image_std
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
-        outputs = self.model(xs, noise) if self.model.config.mask_ratio == 0. else self.model(xs)
+        outputs = self.model(xs, noise, drop_cls_token = self.no_cls) if self.model.config.mask_ratio == 0. else self.model(xs)
         logits = outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
