@@ -138,7 +138,7 @@ class Stage1MAE(Stage1Model):
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
-                            }
+        }
         )
         return encodings
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
