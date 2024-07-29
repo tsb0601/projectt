@@ -2,7 +2,6 @@ import torch
 from matplotlib import pyplot as plt
 import numpy as np
 import math
-
 def _warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac):
     betas = beta_end * np.ones(num_diffusion_timesteps, dtype=np.float64)
     warmup_time = int(num_diffusion_timesteps * warmup_frac)
@@ -118,6 +117,11 @@ if __name__ == '__main__':
     plt.savefig(f'./visuals/betas_{mode}.png')
     plt.clf()
     for i in range(len(modes)):
-        plt.plot(alphas_s[i], label=modes[i])
+        np_alpha = np.array(alphas_s[i])
+        log_alpha = np.log(np_alpha)
+        plt.plot(log_alpha, label=modes[i])
+    #print(alphas_s[0][::50], sep=', ')
+    for k in range(0, len(alphas_s[0]), 50):
+        print(alphas_s[0][k], end=', ')
     plt.legend()
     plt.savefig(f'./visuals/alphas_{mode}.png')

@@ -17,10 +17,10 @@ class DiT_Stage2(Stage2Model):
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
         self.input_size = input_size
-        
+        self.num_classes = num_classes
         self.use_cfg = self.cfg > 1.
         self.n_samples = kwargs.get("n_samples", 1)
-        xm.master_print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}')
+        print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}') 
     def forward(self, stage1_encodings: Stage1Encodings, inputs: LabeledImageData
     ) -> Stage2ModelOutput:
         zs = stage1_encodings.zs
@@ -33,6 +33,9 @@ class DiT_Stage2(Stage2Model):
     ) -> dict:
         zs = stage1_encodings.zs
         labels = inputs.condition
+        if labels is None:
+            # we set null labels to num_classes
+            labels = torch.tensor([self.num_classes] * zs.shape[0], device=zs.device).long()
         t = torch.randint(0, self.diffusion.num_timesteps, (zs.shape[0],), device=zs.device)
         model_kwargs = dict(y=labels)
         terms = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
@@ -59,10 +62,12 @@ class DiT_Stage2(Stage2Model):
         labels = inputs.condition
         if isinstance(labels, torch.Tensor):
             device = labels.device # sp hack
+        if isinstance(inputs.img, torch.Tensor):
+            device = inputs.img.device # sp hack
         n = self.n_samples
         cfg = self.cfg
         if labels is None:
-            labels = torch.randint(0, self.model.num_classes, (self.n_samples,), device=device)
+            labels = torch.randint(0, self.num_classes, (self.n_samples,), device=device)
         else:
             n = labels.shape[0]
         y = labels

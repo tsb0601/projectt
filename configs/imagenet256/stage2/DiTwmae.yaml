@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
     checkpointing: false
   stage_2:
@@ -16,17 +16,19 @@ arch:
     params:
       # DiT B/1 Recipe
       hidden_size: 768
-      input_size: 16
+      input_size: 32
       patch_size: 1
-      depth: 12
+      depth: 8
       num_classes: 1000
       cfg: 0.0
-      in_channels: 768
+      in_channels: 192
       learn_sigma: false
       noise_schedule: 'linear'
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector
+    params:
+      split: 4
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
@@ -37,19 +39,19 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 10  # 5% of total epochs
+    epoch: 8  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
     mode: fix
-    start_from_zero: true
+    start_from_zero: false
 
 experiment:
-  batch_size: 32
-  accu_step: 1
-  epochs: 120
-  save_ckpt_freq: 40
-  test_freq: 1
+  batch_size: 8
+  accu_step: 4
+  epochs: 60
+  save_ckpt_freq: 30
+  test_freq: 5
   amp: false
 
 gan:

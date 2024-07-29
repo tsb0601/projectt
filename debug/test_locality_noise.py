@@ -40,7 +40,7 @@ with torch.no_grad():
     latent_output = connector.forward(latent_output)
     reverse_output = connector.reverse(latent_output)
     zs = reverse_output.zs
-    scale = (.0, .1, .2, .3, .4, .5, .6, .7, .8, .9,.92,.94,.96,.98,.99,.992,.994,.996,.998, 1.)
+    scale = (0.009999999999999449, 0.17334505013109144, 0.32381848171848293, 0.4627234335700015, 0.5862192375559278, 0.6917925768476216, 0.7784528742811719, 0.8466507046831856, 0.8980133575472881, 0.9349658667561576, 0.9603141890209558, 0.9768643037237847, 0.9871334802014067, 0.9931816685497916, 0.9965599435606648, 0.9983485571875339, 0.9992459551783126, 0.9996726196438999, 0.9998648686099746, 0.999946977680244, 1.)
     zs_origin = zs[0]
     zs_add = zs[1]
     interpolated = []
@@ -48,7 +48,7 @@ with torch.no_grad():
     from math import sqrt
     for s in scale:
         empty_cls_token = zs_origin[0].clone() # 0
-        zs_inter = sqrt(s) * zs_origin + sqrt(1 - s) * random_noise
+        zs_inter = sqrt(1 - s) * zs_origin + sqrt(s) * random_noise
         zs_inter[0] = empty_cls_token
         interpolated.append(zs_inter)
     interpolated = torch.stack(interpolated)
