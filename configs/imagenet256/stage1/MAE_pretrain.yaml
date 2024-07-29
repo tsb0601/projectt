@@ -7,14 +7,15 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: '/home/bytetriper/model_zoo/mae_tiny'
-    no_cls: true
+    ckpt_path: './ckpt_gcs/model_zoo/mae_tiny'
+    mask_ratio: .75
+    train_encoder: true
   checkpointing: false
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.6e-4
+  init_lr: 1.6e-3
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
@@ -28,11 +29,11 @@ optimizer:
     start_from_zero: true
 
 experiment:
-  batch_size: 125 # so it can divide 50000
-  epochs: 1
-  accu_step: 1
-  save_ckpt_freq: 1000
-  test_freq: 1
+  batch_size: 32
+  accu_step: 1 # total bsz of 4096 on a 256 pod (128 cores)
+  epochs: 100
+  save_ckpt_freq: 20
+  test_freq: 5
   amp: false
 
 gan:
@@ -44,6 +45,20 @@ gan:
       ndf: 64
       spectral_norm: false
     optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adamw
+      init_lr: 1.0e-3
+      weight_decay: 0.0
+      betas: [0.9, 0.95]
+      max_gn: None
+      amp: true
+      warmup:
+        epoch: 5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 0.
+        mode: fix
+        start_from_zero: true
     experiment:
       test_freq: 1
       amp: false
@@ -51,5 +66,5 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: 0.0
-    disc_start: 0
+    perceptual_weight: 0.
+    disc_start: 100000

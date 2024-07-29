@@ -1,5 +1,5 @@
 from .modeling_vit_mae import ViTMAEForPreTraining, ViTMAEModel
-from transformers import ViTImageProcessor
+from transformers import ViTImageProcessor, AutoConfig
 import torch
 from rqvae.models.interfaces import *
 import torch_xla.core.xla_model as xm
@@ -73,9 +73,19 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, norm_data_path: str = './rqvae/models/MAE/latent_data.pt')->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, norm_data_path: str = '')->None:
         super().__init__()
-        self.model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
+        tensor_path = os.path.join(ckpt_path, 'model.safetensors')
+        if os.path.isfile(ckpt_path):
+            print(f'load pretrained model weights from {tensor_path}')
+            model = ViTMAEForPreTraining.from_pretrained(tensor_path)
+        else:
+            #read config & initialize model
+            config_path = os.path.join(ckpt_path, 'config.json')
+            print(f'init from scratch according to {config_path}')
+            config = AutoConfig.from_pretrained(config_path)
+            model = ViTMAEForPreTraining(config)
+        self.model = model
         self.model.config.mask_ratio = mask_ratio
         assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
@@ -83,14 +93,7 @@ class Stage1MAE(Stage1Model):
         if no_cls:
             # add a learnable cls token
             self.model.decoder.set_trainable_cls_token()
-            #safetensor_path = os.path.join(ckpt_path, 'model.safetensors')
-            #with safe_open(safetensor_path, framework='pt', device='cpu') as ckpt:
-            #    #print(ckpt.keys())
-            #    if 'decoder.trainable_cls_token' in ckpt.keys():
-            #        print('Loading trainable cls token', ckpt.get_tensor('decoder.trainable_cls_token'))
-            #        self.model.decoder.trainable_cls_token = nn.Parameter(ckpt.get_tensor('decoder.trainable_cls_token'))
-            #    else:
-            #        self.model.decoder.set_trainable_cls_token()
+
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
@@ -134,7 +137,8 @@ class Stage1MAE(Stage1Model):
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
         # redo the final layernorm affine
-        latent = latent  / torch.sqrt(self.running_var)
+        if hasattr(self, 'running_var'):
+            latent = latent  / torch.sqrt(self.running_var)
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -144,7 +148,8 @@ class Stage1MAE(Stage1Model):
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
         # add the final layernorm affine
-        zs = zs * torch.sqrt(self.running_var)
+        if hasattr(self, 'running_var'):
+            zs = zs * torch.sqrt(self.running_var)
         #zs = (zs - self.layernorm_mean) / self.layernorm_std
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)

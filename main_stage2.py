@@ -126,8 +126,8 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
     trainer: TrainerStage2
     if args.eval:
-        trainer.eval(valid=True, verbose=True)
-        #trainer.batch_infer(valid=True, save_root=args.result_path)
+        #trainer.eval(valid=True, verbose=True)
+        trainer.batch_infer(valid=True, save_root=args.result_path)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
 
@@ -136,7 +136,7 @@ def main(rank, args, extra_args):
         if wandb_dir:
             wandb.finish()
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
-    xm.mark_step(wait=True)
+    xm.rendezvous('done')
     if args.use_ddp:
         dist.destroy_process_group()
 if __name__ == '__main__':

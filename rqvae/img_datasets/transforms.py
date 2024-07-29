@@ -36,7 +36,7 @@ def center_crop_arr(pil_image, image_size):
     return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
 
 def create_transforms(config, split='train', is_eval=False):
-    if config.transforms.type.startswith('imagenet'):
+    if config.transforms.type.startswith('imagenetDiT'):
         # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
         resolution = int(config.transforms.type.split('x')[-1])
         if split == 'train' and not is_eval:
@@ -45,6 +45,48 @@ def create_transforms(config, split='train', is_eval=False):
                 #transforms.Resize(resolution),
                 #transforms.RandomCrop(resolution),
                 lambda x: center_crop_arr(x, resolution), # following DiT
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+        else:
+            transforms_ = [
+                lambda x: center_crop_arr(x, resolution),
+                #transforms.Resize(256),
+                #transforms.CenterCrop(256),
+                #transforms.Resize((resolution, resolution)),
+                transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+    elif config.transforms.type.startswith('imagenetweak'):
+        # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
+        resolution = int(config.transforms.type.split('x')[-1])
+        if split == 'train' and not is_eval:
+            #weak data augmentation
+            transforms_ = [
+                transforms.Resize(int(resolution * 1.1), interpolation=3),
+                transforms.RandomCrop(resolution),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+        else:
+            transforms_ = [
+                lambda x: center_crop_arr(x, resolution),
+                #transforms.Resize(256),
+                #transforms.CenterCrop(256),
+                #transforms.Resize((resolution, resolution)),
+                transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+    elif config.transforms.type.startswith('imagenet'):
+        # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
+        resolution = int(config.transforms.type.split('x')[-1])
+        if split == 'train' and not is_eval:
+            #weak data augmentation
+            transforms_ = [
+                transforms.RandomResizedCrop(resolution, scale=(0.2, 1.0), interpolation=3),  # following MAE pretraining
+                transforms.RandomCrop(resolution),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
