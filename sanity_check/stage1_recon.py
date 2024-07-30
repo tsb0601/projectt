@@ -32,7 +32,7 @@ with torch.no_grad():
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
     latent_output = stage1_model.encode(data)
-    print(latent_output.zs.std(dim=-1).mean(), latent_output.zs.mean(dim=-1).mean())
+    print('latent std, mean w.r.t last dimension:',latent_output.zs.std(dim=-1).mean(), latent_output.zs.mean(dim=-1).mean())
     #latent_output = connector.forward(latent_output)
     #reverse_output = connector.reverse(latent_output)
     #reverse_output.zs = reverse_output.zs
@@ -40,6 +40,7 @@ with torch.no_grad():
     recon = recon_output.xs_recon
     loss = stage1_model.compute_loss(recon_output, data)['loss_total']
     l1_loss = (recon.clamp(0,1) - image.clamp(0,1)).abs().mean()
-    print(recon.shape, recon.min(), recon.max(), loss, l1_loss)
+    print('reconstruction image shape, max min:',recon.shape, recon.min(), recon.max())
+    print('loss & L1 loss:',loss, l1_loss)
     recon_image = ToPILImage()(recon[0].clamp(0., 1.))
     recon_image.save('./visuals/sanity_recon.png')

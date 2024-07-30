@@ -76,9 +76,9 @@ class Stage1MAE(Stage1Model):
     def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, norm_data_path: str = '')->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
-        if os.path.isfile(ckpt_path):
+        if os.path.isfile(tensor_path):
             print(f'load pretrained model weights from {tensor_path}')
-            model = ViTMAEForPreTraining.from_pretrained(tensor_path)
+            model = ViTMAEForPreTraining.from_pretrained(ckpt_path)
         else:
             #read config & initialize model
             config_path = os.path.join(ckpt_path, 'config.json')

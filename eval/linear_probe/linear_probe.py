@@ -396,15 +396,15 @@ def main(rank, args):
     else:
         model_without_ddp = model
     optim_class = syncfree if args.use_ddp else torch.optim
-    optimizer = optim_class.AdamW(
-        model_without_ddp.head.parameters(),
-        betas=(0.9, 0.95),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    ) 
-    #optimizer = LARS(
-    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    #)
+    #optimizer = optim_class.AdamW(
+    #    model_without_ddp.head.parameters(),
+    #    betas=(0.9, 0.95),
+    #    lr=args.lr,
+    #    weight_decay=args.weight_decay,
+    #) 
+    optimizer = LARS(
+       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
     criterion = torch.nn.CrossEntropyLoss()

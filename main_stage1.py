@@ -119,7 +119,6 @@ def main(rank, args, extra_args):
                 xm.master_print(f'[!]model already trained complete, exit')
                 exit()
             epoch_st = int(epoch_st)  # actual epoch to start
-
         else:
             trainer._load_model_only(args.load_path,additional_attr_to_load= ())
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
