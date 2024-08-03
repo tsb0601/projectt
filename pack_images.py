@@ -6,7 +6,26 @@ from tqdm import tqdm
 import numpy as np
 from PIL import Image
 import os
-IM_SIZE = 256
+IM_SIZE = 224
+def center_crop_arr(pil_image, image_size):
+    """
+    Center cropping implementation from ADM.
+    https://github.com/openai/guided-diffusion/blob/8fb3ad9197f16bbc40620447b2742e13458d2831/guided_diffusion/image_datasets.py#L126
+    """
+    while min(*pil_image.size) >= 2 * image_size:
+        pil_image = pil_image.resize(
+            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
+        )
+
+    scale = image_size / min(*pil_image.size)
+    pil_image = pil_image.resize(
+        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
+    )
+
+    arr = np.array(pil_image)
+    crop_y = (arr.shape[0] - image_size) // 2
+    crop_x = (arr.shape[1] - image_size) // 2
+    return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
 def create_npz_from_sample_folder(sample_dir, num=50_000):
     """
     Builds a single .npz file from a folder of .png samples.
@@ -27,7 +46,8 @@ def create_npz_from_sample_folder(sample_dir, num=50_000):
     num = min(num, len(imgs))
     for i in tqdm(range(num), desc="Building .npz file from samples"):
         img_path = imgs[i]
-        sample_pil = Image.open(img_path).convert("RGB").resize((IM_SIZE, IM_SIZE), Image.BICUBIC)
+        sample_pil = Image.open(img_path).convert("RGB")
+        sample_pil = center_crop_arr(sample_pil, IM_SIZE)
         sample_np = np.asarray(sample_pil).astype(np.uint8)
         samples.append(sample_np)
     samples = np.stack(samples)
