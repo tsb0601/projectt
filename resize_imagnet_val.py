@@ -4,7 +4,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 from tqdm import tqdm
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
-IMAGE_SIZE = 256
+IMAGE_SIZE = 224
 def center_crop_arr(pil_image, image_size):
     """
     Center cropping implementation from ADM.
@@ -35,7 +35,7 @@ def get_all_image_under_dir(dir:str, img_ext: tuple = ('.png', '.jpg', '.jpeg'))
                 img_list.append(os.path.join(root, file))
     return img_list
 target_img_dir = '/mnt/disks/storage/datasets/ImageNet/val'
-save_dir = '/mnt/disks/storage/datasets/ImageNet/val_256'
+save_dir = f'/mnt/disks/storage/datasets/ImageNet/val_{IMAGE_SIZE}'
 def main():
     target_img_dir = '/mnt/disks/storage/datasets/ImageNet/val'
     save_dir = '/mnt/disks/storage/datasets/ImageNet/val_256'

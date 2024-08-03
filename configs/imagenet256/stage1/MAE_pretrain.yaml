@@ -7,7 +7,7 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: './ckpt_gcs/model_zoo/mae_tiny'
+    ckpt_path: './ckpt_gcs/model_zoo/mae_d12'
     mask_ratio: .75
     train_encoder: true
   checkpointing: false

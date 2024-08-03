@@ -38,9 +38,12 @@ with torch.no_grad():
     #reverse_output.zs = reverse_output.zs
     recon_output = stage1_model.decode(latent_output)
     recon = recon_output.xs_recon
+    
+    print('encode-decode image shape, max min:',recon.shape, recon.min(), recon.max())
+    print('reconstruction image')
+    recon_output = stage1_model(data) 
     loss = stage1_model.compute_loss(recon_output, data)['loss_total']
     l1_loss = (recon.clamp(0,1) - image.clamp(0,1)).abs().mean()
-    print('reconstruction image shape, max min:',recon.shape, recon.min(), recon.max())
     print('loss & L1 loss:',loss, l1_loss)
     recon_image = ToPILImage()(recon[0].clamp(0., 1.))
     recon_image.save('./visuals/sanity_recon.png')

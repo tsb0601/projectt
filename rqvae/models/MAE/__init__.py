@@ -3,7 +3,7 @@ from transformers import ViTImageProcessor, AutoConfig
 import torch
 from rqvae.models.interfaces import *
 import torch_xla.core.xla_model as xm
-from transformers.models.vit_mae.modeling_vit_mae import ViTMAEDecoderOutput
+from .modeling_vit_mae import ViTMAEDecoderOutput
 from torch import nn
 from header import *
 from safetensors import safe_open
