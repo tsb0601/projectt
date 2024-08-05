@@ -167,8 +167,8 @@ class Stage1MAE(Stage1Model):
         xs = inputs.img
         xs_recon = outputs.xs_recon
         MAE_outputs = outputs.additional_attr['outputs']
-        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
-        #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
+        #loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
+        loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
             'loss_total': loss_recon + loss_latent,
