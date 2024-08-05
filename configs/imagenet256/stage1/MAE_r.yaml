@@ -7,8 +7,8 @@ arch:
   stage: 1
   target: rqvae.models.MAE.Stage1MAE
   params:
-    ckpt_path: '/home/bytetriper/model_zoo/mae_tiny'
-    no_cls: true
+    ckpt_path: './ckpt_gcs/model_zoo/mae_d12_r'
+    #no_cls: true
   checkpointing: false
   ema: 0.114514
 optimizer:

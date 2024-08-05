@@ -8,6 +8,8 @@ arch:
   target: rqvae.models.MAE.Stage1MAE
   params:
     ckpt_path: './ckpt_gcs/model_zoo/mae_d12'
+    no_cls: true
+    mask_ratio: 0.
   checkpointing: false
   ema: 0.114514
 optimizer:
