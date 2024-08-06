@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from rqvae.models.MAE import Stage1MAE
 from transformers import ViTMAEForPreTraining, ViTImageProcessor
 import torch
-DEFAULT_PROCESSOR = ViTImageProcessor.from_pretrained('/home/bytetriper/model_zoo/mae_base_224')
+DEFAULT_PROCESSOR = ViTImageProcessor.from_pretrained('/home/bytetriper/model_zoo/mae_base_256')
 
 
 def convert(ckpt_path:str, load_path:str, save_path:str):

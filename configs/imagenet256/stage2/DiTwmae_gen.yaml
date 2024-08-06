@@ -6,10 +6,12 @@ dataset:
 arch:
   stage: 2
   stage_1:
-    target: rqvae.models.MAE.Stage1MAE
+    target: rqvae.models.MAE.Stage1MAEwBottleNeck
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_d12_r'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
+      mlp_layers: 4
+      bottleneck_ratio: 16
     checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
@@ -23,7 +25,8 @@ arch:
       in_channels: 12
       learn_sigma: false
       noise_schedule: 'linear'
-      cfg: 0.0
+      cfg: 4.0
+      timestep_respacing: 250
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector
@@ -47,10 +50,10 @@ optimizer:
     start_from_zero: false
 
 experiment:
-  batch_size: 32
+  batch_size: 125
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
+  epochs: 1
+  save_ckpt_freq: 100
   test_freq: 5
   amp: false
 
