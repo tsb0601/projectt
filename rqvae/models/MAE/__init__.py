@@ -236,7 +236,6 @@ class Stage1MAEwBottleNeck(Stage1Model):
         if os.path.isfile(tensor_path):
             keys = load_model(self.model, tensor_path, strict = False)
             print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
-        self.model.vit.requires_grad_(False)
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         self.model.compressor.requires_grad_(True)

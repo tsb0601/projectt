@@ -23,6 +23,7 @@ with torch.no_grad():
     else:
         stage1_model_config = config
     stage1_model:Stage1Model = instantiate_from_config(stage1_model_config)
+    print('stage1 model:',stage1_model)
     image_path = '/home/bytetriper/VAE-enhanced/test.png'
     image = Image.open(image_path).resize((im_size, im_size)).convert('RGB')
     #repeat 2 times to asssure model works with batch size > 1
