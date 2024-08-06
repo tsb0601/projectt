@@ -8,7 +8,7 @@ arch:
   target: rqvae.models.MAE.Stage1MAE
   params:
     ckpt_path: './ckpt_gcs/model_zoo/mae_d12_r'
-    #no_cls: true
+    no_cls: true
   checkpointing: false
   ema: 0.114514
 optimizer:

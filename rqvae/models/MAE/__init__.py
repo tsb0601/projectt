@@ -91,9 +91,15 @@ class Stage1MAE(Stage1Model):
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         if no_cls:
+            cls_token = None
             # add a learnable cls token
-            self.model.decoder.set_trainable_cls_token()
-
+            if os.path.isfile(tensor_path):
+                with safe_open(tensor_path, framework="pt") as ckpt:
+                    if 'decoder.trainable_cls_token' in ckpt.keys():
+                        cls_token = nn.Parameter(ckpt.get_tensor('decoder.trainable_cls_token'))
+                    else:
+                        print(f'no cls token found in {tensor_path}, use zero initialization')
+            self.model.decoder.set_trainable_cls_token(cls_token)
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)

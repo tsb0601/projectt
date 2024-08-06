@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_d12_r'
       no_cls: true
     checkpointing: false
   stage_2:
@@ -16,19 +16,19 @@ arch:
     params:
       # DiT B/1 Recipe
       hidden_size: 768
-      input_size: 32
+      input_size: 16
       patch_size: 1
-      depth: 8
+      depth: 12
       num_classes: 1000
       cfg: 0.0
-      in_channels: 192
+      in_channels: 12
       learn_sigma: false
       noise_schedule: 'linear'
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector
     params:
-      split: 4
+      split: 1
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
@@ -47,8 +47,8 @@ optimizer:
     start_from_zero: false
 
 experiment:
-  batch_size: 8
-  accu_step: 128
+  batch_size: 32
+  accu_step: 1
   epochs: 60
   save_ckpt_freq: 30
   test_freq: 5

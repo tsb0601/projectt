@@ -829,9 +829,10 @@ class ViTMAEDecoder(nn.Module):
         self.config = config
         self.initialize_weights(num_patches)
         self.decoder_config = decoder_config
-    def set_trainable_cls_token(self):
+    def set_trainable_cls_token(self, tensor: Optional[torch.Tensor] = None):
         # register a trainable CLS token
-        self.trainable_cls_token = nn.Parameter(torch.zeros(1, 1, self.decoder_config.hidden_size))
+        tensor = torch.zeros(1, 1, self.decoder_config.hidden_size) if tensor is None else tensor
+        self.trainable_cls_token = nn.Parameter(tensor)
     def interpolate_pos_encoding(self, embeddings: torch.Tensor) -> torch.Tensor:
         """
         This method is a modified version of the interpolation function for ViT-mae model at the deocder, that
