@@ -3,6 +3,7 @@ from torch import nn
 from timm.models.vision_transformer import PatchEmbed, DropPath
 import torch_xla
 import torch
+from utils import *
 from timm.models.vision_transformer import Mlp as MLP # Mlp ?? absoultely MLP
 norms = {
     'batch': nn.BatchNorm2d,
