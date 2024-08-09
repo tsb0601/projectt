@@ -402,8 +402,14 @@ def main(rank, args):
     #    lr=args.lr,
     #    weight_decay=args.weight_decay,
     #) 
-    optimizer = LARS(
-       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    #optimizer = LARS(
+    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    #)
+    optimizer = optim_class.SGD(
+        model_without_ddp.head.parameters(),
+        lr=args.lr,
+        momentum=0.9,
+        weight_decay=args.weight_decay,
     )
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
