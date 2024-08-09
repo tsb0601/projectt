@@ -1,6 +1,6 @@
 from functools import partial
 from torch import nn
-
+from rqvae.models.basicblocks.utils import zero_module
 class SimpleMLP(nn.Module):
     def __init__(self, input_dim:int, layers:int = 1, mlp_ratio: float = 4.0, bottleneck_ratio: float = 16.0):
         super(SimpleMLP, self).__init__()
@@ -41,7 +41,7 @@ class SimpleMLP(nn.Module):
                 act(),
             ))
             cur_dim = next_dim
-        self.linear_out = nn.Linear(cur_dim, input_dim)
+        self.linear_out = zero_module(nn.Linear(cur_dim, input_dim))
     def forward(self, x):
         for layer in self.down:
             x = layer(x)
