@@ -149,7 +149,7 @@ def main(rank, args, extra_args):
         if wandb_dir:
             wandb.finish()
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
-    xm.rendezvous('done')
+    xm.mark_step(wait=True)
     if args.use_ddp:
         dist.destroy_process_group()
 if __name__ == '__main__':
