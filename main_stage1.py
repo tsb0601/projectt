@@ -152,7 +152,6 @@ def main(rank, args, extra_args):
     else:
         time.sleep(10) # wait for other processes to finish
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
-    xm.mark_step(wait=True)
     if args.use_ddp:
         dist.destroy_process_group()
 if __name__ == '__main__':
