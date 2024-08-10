@@ -16,10 +16,10 @@ class SimpleMLP(nn.Module):
                 next_dim = bottle_dim
             hidden_dim = int(cur_dim * mlp_ratio)
             self.down.append(nn.Sequential(
-                nn.Linear(cur_dim, hidden_dim),
-                norm(hidden_dim),
-                act(),
-                nn.Linear(hidden_dim, next_dim),
+                nn.Linear(cur_dim, next_dim),
+                #norm(hidden_dim),
+                #act(),
+                #nn.Linear(hidden_dim, next_dim),
                 norm(next_dim),
                 act(),
             ))
@@ -33,10 +33,10 @@ class SimpleMLP(nn.Module):
                 next_dim = input_dim
             hidden_dim = int(cur_dim * mlp_ratio)
             self.up.append(nn.Sequential(
-                nn.Linear(cur_dim, hidden_dim),
-                norm(hidden_dim),
-                act(),
-                nn.Linear(hidden_dim, next_dim),
+                nn.Linear(cur_dim, next_dim),
+                #norm(hidden_dim),
+                #act(),
+                #nn.Linear(hidden_dim, next_dim),
                 norm(next_dim),
                 act(),
             ))
