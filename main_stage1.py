@@ -31,6 +31,7 @@ import wandb
 import torch_xla.runtime as xr
 import time
 import torch_xla.distributed.xla_multiprocessing as xmp
+import time
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)
@@ -148,6 +149,8 @@ def main(rank, args, extra_args):
         writer.close()  # may prevent from a file stable error in brain cloud..
         if wandb_dir:
             wandb.finish()
+    else:
+        time.sleep(10) # wait for other processes to finish
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     xm.mark_step(wait=True)
     if args.use_ddp:
