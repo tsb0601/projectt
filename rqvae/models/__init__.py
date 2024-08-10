@@ -19,6 +19,7 @@ import os
 import torch.distributed as dist
 from rqvae.models.interfaces import *
 from omegaconf import DictConfig
+from rqvae.models.utils import load_model_from_ckpt
 from typing import Optional, Tuple
 import torch
 DEBUGING = os.environ.get('DEBUG', False)
@@ -45,8 +46,16 @@ def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XL
         connector: Optional[base_connector]
         stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
         stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector) if use_ema else None # connector does not contains any trainable parameters so it's ok to use the same connector
+        if config.get('ckpt_path', False):
+            ckpt_path = config.ckpt_path
+            _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
+            xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
         return stage2model, stage2model_ema
     model = instantiate_from_config(config)
+    if config.get('ckpt_path', False):
+        ckpt_path = config.ckpt_path
+        _, keys = load_model_from_ckpt(model, ckpt_path, strict = False)
+        xm.master_print(f'[!]INFO: Loaded Stage{stage} model from {ckpt_path} with keys: {keys}')
     model_ema = instantiate_from_config(config) if use_ema else None
     if DEBUGING: # add xm_step for faster compilation and more reusable compilation cache
         if dist.is_initialized() and dist.get_rank() == 0:

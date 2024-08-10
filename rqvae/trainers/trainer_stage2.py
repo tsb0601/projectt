@@ -72,8 +72,6 @@ class Trainer(TrainerTemplate):
             enumerate(loader), total=len(loader), disable=not self.distenv.master
         )
         model.eval()
-        track_x = []
-        track_y = []
         last_input = None
         for it, inputs in pbar:
             inputs: LabeledImageData
@@ -90,54 +88,18 @@ class Trainer(TrainerTemplate):
                 )
                 xm.mark_step()
                 loss_gen = outputs["loss_total"]  # logging
-                x, y = outputs["valid"] # t, loss by default
-                track_x.append(x)
-                track_y.append(y)
             loss_total = loss_gen
             metrics = dict(loss_total=loss_total)
             accm.update(metrics, count=1, sync=True, distenv=self.distenv)
             line = accm.get_summary().print_line()
             pbar.set_description(line)
         line = accm.get_summary(n_inst).print_line()
-        track_x = torch.cat(track_x, 0)
-        track_y = torch.cat(track_y, 0)
-        all_x = xm.mesh_reduce("all_x", track_x, torch.cat)
-        all_y = xm.mesh_reduce("all_y", track_y, torch.cat)
         if self.distenv.master and verbose:
             mode = "valid" if valid else "train"
             mode = "%s_ema" % mode if ema else mode
             logger.info(f"""{mode:10s}, """ + line)
             with torch.no_grad():
                 self.generate(last_input, epoch, mode)
-            # logging x, y 
-            # try merge y w same x
-            all_x = all_x.cpu().numpy()
-            all_y = all_y.float().cpu().numpy()
-            # upload to tensorboard if use wandb
-            if self.use_wandb:
-                # log to tensorboard, which will then automatically log to wandb
-                mean_y = all_y.mean()
-                self.writer.add_scalar(f"eval/log_{mode}_mean", mean_y, mode, epoch)
-            else:
-                # log to local
-                import numpy as np
-                merged = {}
-                for x, y in zip(all_x, all_y):
-                    if x not in merged:
-                        merged[x] = []
-                merged[x].append(y)
-                all_x = list(merged.keys())
-                all_x.sort()
-                all_y = [sum(merged[x]) / len(merged[x]) for x in all_x]
-                npy_x = np.array(all_x)
-                npy_y = np.array(all_y)
-                torch.save({
-                    "x": npy_x,
-                    "y": npy_y
-                }, f"plot_{mode}.pt")
-                plt.plot(all_x, all_y, label=f"{mode}")
-                plt.legend()
-                plt.savefig(f"plot_{mode}.png")
         summary = accm.get_summary(n_inst)
         summary["input"] = last_input
 

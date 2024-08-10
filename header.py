@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch_xla as xla
 import torch_xla.core.xla_model as xm
 import wandb
+from torch import nn
 from typing import *
 wandb_dir = os.environ.get("WANDB_DIR", None)
 wandb_id = os.environ.get("WANDB_ID", None)

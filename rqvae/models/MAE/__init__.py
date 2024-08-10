@@ -9,6 +9,13 @@ from header import *
 from safetensors import safe_open
 from .blocks import SimpleMLP
 from safetensors.torch import load_model, save_model
+def load_model_from_ckpt(model:nn.Module, ckpt_path:str, strict:bool = True) -> nn.Module:
+    if ckpt_path.endswith('.pt'):
+        ckpt = torch.load(ckpt_path)
+        keys = model.load_state_dict(ckpt['model'], strict = strict)    
+    elif ckpt_path.endswith('.safetensors'):
+        keys = load_model(model, ckpt_path, strict = strict)
+    return model, keys
 def custom_forward(
     self,
     hidden_states,
@@ -80,6 +87,8 @@ class Stage1MAE(Stage1Model):
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
         if not os.path.isfile(tensor_path):
+            tensor_path = os.path.join(ckpt_path, 'model.pt') # try another name
+        if not os.path.isfile(tensor_path):
             print(f'init from scratch according to {config_path}')
         else:
             print(f'init from {tensor_path} according to {config_path}')
@@ -93,7 +102,7 @@ class Stage1MAE(Stage1Model):
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         if os.path.isfile(tensor_path):
-            keys = load_model(self.model, tensor_path, strict = False)
+            _, keys = load_model_from_ckpt(self.model, tensor_path, strict = False)
             print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
@@ -219,6 +228,8 @@ class Stage1MAEwBottleNeck(Stage1Model):
     def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, mlp_layers:int = 0, mlp_ratio:float = 4, bottleneck_ratio:float = 4)->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
+        if not os.path.isfile(tensor_path):
+            tensor_path = os.path.join(ckpt_path, 'model.pt') # try another name
         config_path = os.path.join(ckpt_path, 'config.json')
         if not os.path.isfile(tensor_path):
             print(f'init from scratch according to {config_path}')
@@ -234,7 +245,7 @@ class Stage1MAEwBottleNeck(Stage1Model):
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         if os.path.isfile(tensor_path):
-            keys = load_model(self.model, tensor_path, strict = False)
+            _, keys = load_model_from_ckpt(self.model, tensor_path, strict = False)
             print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained

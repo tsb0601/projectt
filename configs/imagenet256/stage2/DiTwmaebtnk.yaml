@@ -1,7 +1,7 @@
 dataset:
   type: imagenet
   transforms:
-    type: imagenet256x256
+    type: imagenetDiT256x256
 
 arch:
   stage: 2
@@ -13,6 +13,7 @@ arch:
       mask_ratio: 0.
       mlp_layers: 6
       bottleneck_ratio: 64
+    ckpt_path: './ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_025041/ep_last-checkpoint/0-model.pt'
     checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2

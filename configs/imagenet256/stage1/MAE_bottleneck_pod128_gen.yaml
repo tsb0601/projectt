@@ -12,6 +12,7 @@ arch:
     mask_ratio: 0.
     mlp_layers: 6
     bottleneck_ratio: 64
+  ckpt_path: './ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_025041/ep_last-checkpoint/0-model.pt'
   checkpointing: false
   ema: 0.114514
 

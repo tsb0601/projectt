@@ -31,6 +31,7 @@ import wandb
 import torch_xla.runtime as xr
 import time
 from rqvae.trainers import TrainerStage2
+from rqvae.models.interfaces import Stage2ModelWrapper
 import torch_xla.distributed.xla_multiprocessing as xmp
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
@@ -76,8 +77,9 @@ def main(rank, args, extra_args):
     xm.master_print(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
     model, model_ema = create_model(config.arch, ema=config.arch.ema, stage = 2)
     model = model.to(device)
+    model: Stage2ModelWrapper
     if model_ema:
-        model_ema = model_ema.to(device)
+        model_ema:Stage2ModelWrapper = model_ema.to(device)
     xm.master_print(f'[!]model created')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
@@ -106,7 +108,7 @@ def main(rank, args, extra_args):
     model = dist_utils.dataparallel_and_sync(distenv, model)
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
-    trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
+    trainer: TrainerStage2 = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
                       device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
     xm.master_print(f'[!]trainer created')
     if not args.load_path == '' and os.path.exists(args.load_path):
@@ -124,7 +126,6 @@ def main(rank, args, extra_args):
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
-    trainer: TrainerStage2
     if args.eval:
         #trainer.eval(valid=True, verbose=True)
         trainer.batch_infer(valid=True, save_root=args.result_path)
@@ -138,6 +139,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if args.use_ddp:
         dist.destroy_process_group()
+    exit()
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args), start_method='fork')

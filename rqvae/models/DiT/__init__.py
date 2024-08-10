@@ -40,19 +40,9 @@ class DiT_Stage2(Stage2Model):
         model_kwargs = dict(y=labels)
         terms = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
         loss = terms["loss"].mean()
-        if valid:
-            # we calculate the mse loss of zs and z_0_hat
-            z_t = terms["x_t"] # noised latent
-            model_output = terms["model_output"]
-            B, C = z_t.shape[:2]
-            if C == self.hidden_size * 2:
-                model_output, _ = torch.split(model_output, self.hidden_size, dim=1)
-            z_0_hat = self.diffusion._predict_xstart_from_eps(z_t, t, model_output)
-            mse_loss = ((z_0_hat - zs)**2).mean(dim=list(range(1, len(zs.shape))))
         return {
             "loss_total": loss,
             "t": t,
-            'valid': (t, mse_loss) if valid else None
         }
     def get_recon_imgs(self, xs_real, xs, **kwargs):
         return xs_real.clamp(0, 1), xs.clamp(0, 1)
