@@ -7,6 +7,8 @@ def load_model_from_ckpt(model:nn.Module, ckpt_path:str, strict:bool = True) -> 
         keys = model.load_state_dict(ckpt, strict = strict)    
     elif ckpt_path.endswith('.safetensors'):
         keys = load_model(model, ckpt_path, strict = strict)
+    else:
+        raise ValueError(f'[!]ERROR: ckpt_path should end with .pt or .safetensors, but got {ckpt_path}')
     return model, keys
 """partially modified from https://github.com/CompVis/latent-diffusion/blob/main/ldm/util.py"""
 def count_params(model, verbose=False):
