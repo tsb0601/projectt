@@ -24,7 +24,7 @@ arch:
       patch_size: 2
       depth: 12
       num_classes: 1000
-      in_channels: 48
+      in_channels: 192
       noise_schedule: 'linear'
       cfg: 0.0
     checkpointing: false
