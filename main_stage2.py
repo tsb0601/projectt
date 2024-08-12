@@ -85,6 +85,8 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]model created')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
+    if args.reload_batch_size:
+        config.experiment.batch_size = args.reload_batch_size
     actual_batch_size = config.experiment.batch_size * distenv.world_size * config.experiment.accu_step
     config.experiment.actual_batch_size = actual_batch_size
     train_epochs = config.experiment.epochs
@@ -133,14 +135,19 @@ def main(rank, args, extra_args):
         trainer.batch_infer(valid=True, save_root=args.result_path)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
-
+    xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
         if wandb_dir:
             wandb.finish()
-    xm.master_print(f'[!]finished in {time.time() - start} seconds')
-    if args.use_ddp:
-        dist.destroy_process_group()
+        dist.destroy_process_group() if args.use_ddp else None
+        exit()
+    else:
+        dist.destroy_process_group() if args.use_ddp else None
+        exit()
+    #xm.master_print(f'[!]finished in {time.time() - start} seconds')
+    #if args.use_ddp:
+    #    dist.destroy_process_group()
     #xm.rendezvous('main')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
