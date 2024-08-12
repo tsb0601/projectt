@@ -10,7 +10,8 @@ import logging
 import os
 import sys
 from typing import List, Optional
-
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../../')))
+print(sys.path)
 import torch
 from torch.nn.functional import one_hot, softmax
 
@@ -21,6 +22,8 @@ from dinov2.eval.metrics import AccuracyAveraging, build_topk_accuracy_metric
 from dinov2.eval.utils import ModelWithNormalize, evaluate, extract_features, instantiate_from_config, get_obj_from_str
 import torch_xla.core.xla_model as xm
 from torch_xla.amp import autocast
+import torch_xla.distributed.xla_multiprocessing as xmp
+import torchvision.datasets as datasets
 
 logger = logging.getLogger("dinov2")
 def get_base_args_parser(
@@ -72,6 +75,11 @@ def get_args_parser(
         help="Validation dataset",
     )
     parser.add_argument(
+        "--input-size",
+        type=int,
+        help="Input size",
+    )
+    parser.add_argument(
         "--nb_knn",
         nargs="+",
         type=int,
@@ -104,6 +112,12 @@ def get_args_parser(
         type=int,
         help="Number of tries",
     )
+    parser.add_argument(
+        "--autocast-dtype",
+        type=str,
+        default="torch.float",
+        help="Autocast dtype",
+    )
     parser.set_defaults(
         train_dataset_str="ImageNet:split=TRAIN",
         val_dataset_str="ImageNet:split=VAL",
@@ -112,6 +126,7 @@ def get_args_parser(
         batch_size=256,
         n_per_class_list=[-1],
         n_tries=1,
+        input_size=224,
     )
     return parser
 
@@ -278,9 +293,11 @@ def eval_knn(
     model = ModelWithNormalize(model)
 
     logger.info("Extracting features for train set...")
+    xm.master_print("Extracting features for train set...")
     train_features, train_labels = extract_features(
         model, train_dataset, batch_size, num_workers, gather_on_cpu=gather_on_cpu
-    )
+    )   
+    xm.master_print(f"Train features extracted, shape {train_features.shape}.")
     logger.info(f"Train features created, shape {train_features.shape}.")
 
     val_dataloader = make_data_loader(
@@ -351,20 +368,21 @@ def eval_knn_with_model(
     num_workers=5,
     n_per_class_list=[-1],
     n_tries=1,
+    input_size=224,
 ):
-    transform = transform or make_classification_eval_transform()
+    transform = transform or make_classification_eval_transform(crop_size=input_size)
 
-    train_dataset = make_dataset(
-        dataset_str=train_dataset_str,
+    train_dataset = datasets.ImageFolder(
+        root=train_dataset_str,
         transform=transform,
     )
-    val_dataset = make_dataset(
-        dataset_str=val_dataset_str,
+    val_dataset = datasets.ImageFolder(
+        root=val_dataset_str,
         transform=transform,
     )
-
+    xm.master_print(f"Train dataset: {train_dataset_str} with #samples: {len(train_dataset)}, Val dataset: {val_dataset_str} with #samples: {len(val_dataset)}")
     #with torch.cuda.amp.autocast(dtype=autocast_dtype):
-    with autocast(autocast_dtype):
+    with autocast(device=xm.xla_device(), dtype=autocast_dtype):
         results_dict_knn = eval_knn(
             model=model,
             train_dataset=train_dataset,
@@ -398,7 +416,11 @@ def eval_knn_with_model(
     return results_dict
 
 from omegaconf import OmegaConf
-def main(args):
+def main(rank, args):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '11451'
+    torch.distributed.init_process_group("xla", rank=rank, world_size=4) # 4 is the number of TPU cores
+    print(f"Rank {rank} initialized")
     #model, autocast_dtype = setup_and_build_model(args)
     config = args.config_file
     config = OmegaConf.load(config)
@@ -419,6 +441,7 @@ def main(args):
         num_workers=5,
         n_per_class_list=args.n_per_class_list,
         n_tries=args.n_tries,
+        input_size=args.input_size,
     )
     return 0
 
@@ -427,4 +450,5 @@ if __name__ == "__main__":
     description = "DINOv2 k-NN evaluation"
     args_parser = get_args_parser(description=description)
     args = args_parser.parse_args()
-    sys.exit(main(args))
+    xmp.spawn(main, args=(args,), start_method="fork")
+    #sys.exit(main(args))

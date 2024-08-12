@@ -9,12 +9,12 @@ from typing import Dict, Optional
 import torch
 from torch import nn
 from torchmetrics import MetricCollection
-
+from tqdm import tqdm
 from dinov2.data import DatasetWithEnumeratedTargets, SamplerType, make_data_loader
 import dinov2.distributed as distributed
 from dinov2.logging import MetricLogger
 import importlib
-
+import torch_xla.core.xla_model as xm
 logger = logging.getLogger("dinov2")
 def get_obj_from_str(string, reload=False):
     module, cls = string.rsplit(".", 1)
@@ -53,7 +53,7 @@ class ModelWithIntermediateLayers(nn.Module):
         return features
 
 
-@torch.inference_mode()
+@torch.no_grad()
 def evaluate(
     model: nn.Module,
     data_loader,
@@ -68,22 +68,26 @@ def evaluate(
 
     for metric in metrics.values():
         metric = metric.to(device)
-
+    xm.master_print(f"Metrics: {metrics}")
     metric_logger = MetricLogger(delimiter="  ")
     header = "Test:"
-
-    for samples, targets, *_ in metric_logger.log_every(data_loader, 10, header):
-        outputs = model(samples.to(device))
+    model = model.to(device)
+    xm.master_print(header)
+    xm.master_print("start evaluation")
+    for samples, targets, *_ in tqdm(metric_logger.log_every(data_loader, 10, header), desc='eval', total=len(data_loader), disable=xm.is_master_ordinal()):
+        xm.master_print(f"samples: {samples.shape}, targets: {targets.shape}")
+        samples = samples.to(device)
         targets = targets.to(device)
-
+        outputs = model(samples).float()
+        xm.master_print(f"outputs: {outputs.shape}, targets: {targets.shape}")
         if criterion is not None:
             loss = criterion(outputs, targets)
             metric_logger.update(loss=loss.item())
-
+        
         for k, metric in metrics.items():
             metric_inputs = postprocessors[k](outputs, targets)
             metric.update(**metric_inputs)
-
+        xm.mark_step()
     metric_logger.synchronize_between_processes()
     logger.info(f"Averaged stats: {metric_logger}")
 
@@ -115,20 +119,23 @@ def extract_features(model, dataset, batch_size, num_workers, gather_on_cpu=Fals
         drop_last=False,
         shuffle=False,
     )
+    xm.master_print(f"data_loader created with {len(data_loader)} batches")
     return extract_features_with_dataloader(model, data_loader, sample_count, gather_on_cpu)
 
 
 @torch.inference_mode()
 def extract_features_with_dataloader(model, data_loader, sample_count, gather_on_cpu=False):
-    gather_device = torch.device("cpu") if gather_on_cpu else torch.device("cuda")
+    gather_device = torch.device("cpu") if gather_on_cpu else xm.xla_device()
+    device = xm.xla_device()
     metric_logger = MetricLogger(delimiter="  ")
+    model = model.to(device)
     features, all_labels = None, None
-    for samples, (index, labels_rank) in metric_logger.log_every(data_loader, 10):
-        samples = samples.cuda(non_blocking=True)
-        labels_rank = labels_rank.cuda(non_blocking=True)
-        index = index.cuda(non_blocking=True)
+    xm.master_print(f"Extracting features from {sample_count} samples")
+    for samples, (index, labels_rank) in tqdm(metric_logger.log_every(data_loader, 10), desc='extract features', total=len(data_loader), disable=xm.is_master_ordinal()):
+        samples = samples.to(device)
+        labels_rank = labels_rank.to(device)
+        index = index.to(device)
         features_rank = model(samples).float()
-
         # init storage feature matrix
         if features is None:
             features = torch.zeros(sample_count, features_rank.shape[-1], device=gather_device)
@@ -136,7 +143,7 @@ def extract_features_with_dataloader(model, data_loader, sample_count, gather_on
             labels_shape[0] = sample_count
             all_labels = torch.full(labels_shape, fill_value=-1, device=gather_device)
             logger.info(f"Storing features into tensor of shape {features.shape}")
-
+        xm.mark_step()
         # share indexes, features and labels between processes
         index_all = all_gather_and_flatten(index).to(gather_device)
         features_all_ranks = all_gather_and_flatten(features_rank).to(gather_device)

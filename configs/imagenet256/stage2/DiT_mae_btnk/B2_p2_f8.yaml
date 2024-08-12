@@ -1,0 +1,91 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenetDiT256x256
+
+arch:
+  stage: 2
+  stage_1:
+    target: rqvae.models.MAE.Stage1MAEwBottleNeck
+    params:
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
+      no_cls: true
+      mask_ratio: 0.
+      mlp_layers: 3
+      bottleneck_ratio: 8
+    ckpt_path: './ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_143836/ep_last-checkpoint/0-model.pt'
+    checkpointing: false
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT B/1 Recipe
+      hidden_size: 768
+      input_size: 16
+      patch_size: 2
+      depth: 12
+      num_classes: 1000
+      in_channels: 48
+      noise_schedule: 'linear'
+      cfg: 0.0
+    checkpointing: false
+  connector:
+    target: rqvae.models.connectors.MAE_Diffusion_connector
+    params:
+      split: 1
+  ema: 0.114514
+optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+  type: adamw
+  init_lr: 2.0e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+  max_gn: None
+  amp: true
+  warmup:
+    epoch: 8  # 5% of total epochs
+    multiplier: 1
+    buffer_epoch: 0
+    min_lr: 0.
+    mode: fix
+    start_from_zero: false
+
+experiment:
+  batch_size: 32
+  accu_step: 1
+  epochs: 60
+  save_ckpt_freq: 30
+  test_freq: 5
+  amp: false
+
+gan:
+  disc:
+    arch:
+      in_channels: 3
+      num_layers: 2
+      use_actnorm: false
+      ndf: 64
+      spectral_norm: false
+      amp: true
+    optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adamw
+      init_lr: 1.0e-3
+      weight_decay: 0.0
+      betas: [0.9, 0.999]
+      max_gn: None
+      warmup:
+        epoch: 5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 0.
+        mode: fix
+        start_from_zero: true
+    experiment:
+      test_freq: 1
+      amp: false
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: .75
+    perceptual_weight: 0.
+    disc_start: 100000

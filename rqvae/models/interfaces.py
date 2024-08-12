@@ -14,11 +14,9 @@
 
 import abc
 
-from git import Optional
 from torch import nn
 import torch
-from typing import Tuple, Union
-
+from header import *
 # create a dataclass for ModelOutput
 from dataclasses import dataclass
 from rqvae.img_datasets.interfaces import LabeledImageData
