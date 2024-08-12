@@ -15,7 +15,8 @@ env | grep PJRT
 env | grep DEBUG
 model_config=$3
 world_size=$4
-load_ckpt=$5
+exp=$5
+load_ckpt=$6
 # if load_ckpt != '', add --resume to the command
 if [ -z "$load_ckpt" ]
 then
@@ -42,3 +43,4 @@ python main_stage1.py \
     --world_size=$world_size \
     --use_autocast \
     -l=$load_ckpt \
+    --exp=$exp

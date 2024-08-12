@@ -46,12 +46,14 @@ parser.add_argument('-e', '--test-epoch', type=int, default=-1)
 parser.add_argument('-p', '--postfix', type=str, default='')
 parser.add_argument('--seed', type=int, default=0)
 
+parser.add_argument('--reload-batch-size', type=int, default=None) # this will force to reload the dataset with the given batch size, should be used in inference
 parser.add_argument('--world_size', default=-1, type=int, help='number of nodes for distributed training')
 parser.add_argument('--local_rank', default=-1, type=int, help='local rank for distributed training')
 parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
 parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
 parser.add_argument('--eval', action='store_true')
+parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
@@ -139,7 +141,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if args.use_ddp:
         dist.destroy_process_group()
-    xm.rendezvous('main')
+    #xm.rendezvous('main')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args), start_method='fork')

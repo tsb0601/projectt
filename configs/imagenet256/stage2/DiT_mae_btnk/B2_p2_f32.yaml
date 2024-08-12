@@ -11,9 +11,9 @@ arch:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
       no_cls: true
       mask_ratio: 0.
-      mlp_layers: 6
-      bottleneck_ratio: 64
-    # ckpt_path: './ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_024931/ep_last-checkpoint/0-model.pt'
+      mlp_layers: 5
+      bottleneck_ratio: 32
+      ckpt_path: './ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_084623/ep_last-checkpoint'
     checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2

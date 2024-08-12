@@ -5,6 +5,7 @@ dataset:
 
 arch:
   stage: 2
+  stage_1:
     target: rqvae.models.MAE.Stage1MAEwBottleNeck
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
@@ -12,7 +13,6 @@ arch:
       mask_ratio: 0.
       mlp_layers: 6
       bottleneck_ratio: 64
-    ckpt_path: './ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_025041/ep_last-checkpoint/0-model.pt'
     checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
@@ -20,7 +20,7 @@ arch:
       # DiT B/1 Recipe
       hidden_size: 768
       input_size: 16
-      patch_size: 1
+      patch_size: 2
       depth: 12
       num_classes: 1000
       in_channels: 12

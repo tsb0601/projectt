@@ -55,7 +55,7 @@ def setup(args, extra_args=()):
     args.result_path = Path(args.result_path).absolute().as_posix()
     args.model_config = Path(args.model_config).absolute().resolve().as_posix()
 
-    now = datetime.now().strftime('%d%m%Y_%H%M%S')
+    now = datetime.now().strftime('%d%m%Y_%H%M%S') if args.exp is None else args.exp
     config_path = Path(args.model_config).absolute()
     if args.eval:
         log_path = Path('./logs/tmp').joinpath(now)

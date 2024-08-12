@@ -53,6 +53,7 @@ parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to 
 parser.add_argument('--eval', action='store_true')
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
+parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--use_autocast', action='store_true')
 parser.add_argument('--cache_latent', action='store_true')
 def main(rank, args, extra_args):
