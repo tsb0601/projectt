@@ -52,11 +52,10 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
-  test_freq: 5
+  epochs: 240
+  save_ckpt_freq: 60
+  test_freq: 10
   amp: false
-  total_batch_size: 4096
 gan:
   disc:
     arch:
