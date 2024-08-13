@@ -12,7 +12,7 @@ arch:
       mask_ratio: 0.0
       mlp_layers: 6
       bottleneck_ratio: 64
-    #ckpt_path: ./ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_025041/ep_last-checkpoint/0-model.pt
+    ckpt_path: ./ckpt_gcs/MAE_bottleneck_r/MAE_bottleneck_pod128/10082024_025041/ep_last-checkpoint/0-model.pt
     checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
@@ -24,7 +24,8 @@ arch:
       num_classes: 1000
       in_channels: 12
       noise_schedule: linear
-      cfg: 0.0
+      cfg: 4.0
+      #timestep_respacing: 50
     checkpointing: false
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector

@@ -9,7 +9,7 @@ mkdir -p $SAVE_DIR
 echo "Save dir: $SAVE_DIR"
 #export DEBUG=1
 export PJRT_DEVICE=TPU
-export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_ft_test'
+export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/stage2_DiT_infer'
 #echo "Running stage1 training"
 #echo "setting env vars"
 env | grep PJRT
