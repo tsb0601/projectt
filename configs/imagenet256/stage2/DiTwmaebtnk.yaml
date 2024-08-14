@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenetDiT256x256
 
@@ -24,7 +24,7 @@ arch:
       patch_size: 2
       depth: 12
       num_classes: 1000
-      in_channels: 6
+      in_channels: 12
       noise_schedule: 'linear'
       cfg: 0.0
     checkpointing: false
@@ -52,8 +52,8 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
+  epochs: 1
+  save_ckpt_freq: 10
   test_freq: 5
   amp: false
 
