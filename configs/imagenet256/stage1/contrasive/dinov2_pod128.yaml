@@ -1,7 +1,7 @@
 dataset:
   type: imagenet
   transforms:
-    type: imagenet256x256
+    type: imagenet224x224
 
 arch:
   stage: 1
