@@ -32,6 +32,7 @@ def logger_setup(log_path, eval=False):
     if wandb_dir:
         # find the parent directory of log_path
         resume = "allow" if wandb_id else None
+        wandb.tensorboard.patch(log_path)
         wandb.init(project=PROJECT_NAME, sync_tensorboard=True, dir=log_path, name=os.path.basename(log_path), id=wandb_id, resume=resume)
         xm.master_print(f'wandb initialized with project: {PROJECT_NAME}, log_path: {log_path}, {"resume from id: " + wandb_id if wandb_id else ""}')
     writer = Writer(log_path)
