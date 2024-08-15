@@ -7,9 +7,9 @@ class Writer:
     def __init__(self, result_path):
         self.result_path = result_path
 
-        self.writer_trn = SummaryWriter(os.path.join(result_path, 'train'))
-        self.writer_val = SummaryWriter(os.path.join(result_path, 'valid'))
-        self.writer_val_ema = SummaryWriter(os.path.join(result_path, 'valid_ema'))
+        self.writer_trn = SummaryWriter(str(os.path.join(result_path, 'train'))) # str is to fit wandb requirement
+        self.writer_val = SummaryWriter(str(os.path.join(result_path, 'valid')))
+        self.writer_val_ema = SummaryWriter(str(os.path.join(result_path, 'valid_ema')))
 
     def _get_writer(self, mode):
         if mode == 'train':

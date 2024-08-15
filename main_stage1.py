@@ -28,7 +28,7 @@ from rqvae.optimizer import create_optimizer, create_scheduler
 from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup , wandb_dir
 import wandb
-wandb.require('core')
+#wandb.require('core')
 
 import torch_xla.runtime as xr
 import time
@@ -150,8 +150,8 @@ def main(rank, args, extra_args):
 
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
-        if wandb_dir:
-            wandb.finish()
+        #if wandb_dir:
+        #    wandb.finish()
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if args.use_ddp:
         dist.destroy_process_group()
