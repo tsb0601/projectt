@@ -34,6 +34,7 @@ with torch.no_grad():
     data = LabeledImageData(img=image)
     latent_output = stage1_model.encode(data)
     print('latent std, mean w.r.t last dimension:',latent_output.zs.std(dim=-1).mean(), latent_output.zs.mean(dim=-1).mean())
+    print('latent shape:',latent_output.zs.shape)
     #latent_output = connector.forward(latent_output)
     #reverse_output = connector.reverse(latent_output)
     #reverse_output.zs = reverse_output.zs
