@@ -7,8 +7,8 @@ arch:
   stage: 1
   target: rqvae.models.Dec4Contrastive.ContrastiveModelwithDecoder
   params:
-    pretrained_encoder_path: '/home/bytetriper/model_zoo/dinov2_base'
-    general_decoder_config: '/home/bytetriper/model_zoo/general_decoder'
+    pretrained_encoder_path: 'ckpt_gcs/model_zoo/dinov2_base'
+    general_decoder_config: 'ckpt_gcs/model_zoo/general_decoder'
     num_patches: 256
   checkpointing: false
   ema: 0.114514
