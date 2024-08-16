@@ -1,5 +1,5 @@
 target: rqvae.models.FCMAE.Stage1FCMAE_forProbing
 params:
-  pretrained_model_path: '/home/bytetriper/model_zoo/fcmae_b/curated.pt'
+  pretrained_model_path: 'ckpt_gcs/model_zoo/fcmae_b/curated.pt'
   hidden_dim: 1024
 
