@@ -56,7 +56,7 @@ class TrainerTemplate:
     ):
         super().__init__()
         global wandb_dir
-        num_workers = 16
+        num_workers = 4
         self.model = model
         self.use_wandb = wandb.run is not None
         xm.master_print(f"[!]Trainer use_wandb: {self.use_wandb}")

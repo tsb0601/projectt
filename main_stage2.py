@@ -139,16 +139,12 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
-        if wandb_dir:
-            wandb.finish()
-        dist.destroy_process_group() if args.use_ddp else None
-        exit()
-    else:
-        dist.destroy_process_group() if args.use_ddp else None
-        exit()
+        #if wandb_dir:
+        #    wandb.finish()
+    #dist.destroy_process_group() if args.use_ddp else None
     #xm.master_print(f'[!]finished in {time.time() - start} seconds')
-    #if args.use_ddp:
-    #    dist.destroy_process_group()
+    if args.use_ddp:
+        dist.destroy_process_group()
     #xm.rendezvous('main')
     xm.rendezvous('done')
 if __name__ == '__main__':

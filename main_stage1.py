@@ -47,6 +47,7 @@ parser.add_argument('-e', '--test-epoch', type=int, default=-1)
 parser.add_argument('-p', '--postfix', type=str, default='')
 parser.add_argument('--seed', type=int, default=0)
 
+parser.add_argument('--reload-batch-size', type=int, default=None) # this will force to reload the dataset with the given batch size, should be used in inference
 parser.add_argument('--world_size', default=-1, type=int, help='number of nodes for distributed training')
 parser.add_argument('--local_rank', default=-1, type=int, help='local rank for distributed training')
 parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
@@ -85,6 +86,8 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]model created')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
+    if args.reload_batch_size:
+        config.experiment.batch_size = args.reload_batch_size
     actual_batch_size = config.experiment.batch_size * distenv.world_size * config.experiment.accu_step
     config.experiment.actual_batch_size = actual_batch_size
     train_epochs = config.experiment.epochs

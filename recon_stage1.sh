@@ -23,4 +23,5 @@ python main_stage1.py \
     -r=$SAVE_DIR \
     -l=$load_path \
     --world_size=$world_size  \
-    --use_autocast
+    --use_autocast \
+    --reload-batch-size 125 # default 125 for imagenet val

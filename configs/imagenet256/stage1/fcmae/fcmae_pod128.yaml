@@ -7,8 +7,8 @@ arch:
   stage: 1
   target: rqvae.models.FCMAE.Stage1FCMAE
   params:
-    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
-    no_cls: true
+    model_name: 'convnextv2_base'
+    pretrained_model_path: '/home/bytetriper/model_zoo/fcmae_b/curated.pt'
   checkpointing: false
   ema: 0.114514
 optimizer:
@@ -30,7 +30,7 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 100
+  epochs: 60
   save_ckpt_freq: 30
   test_freq: 1
   amp: false

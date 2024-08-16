@@ -74,12 +74,12 @@ def evaluate(
     model = model.to(device)
     xm.master_print(header)
     xm.master_print("start evaluation")
-    for samples, targets, *_ in tqdm(metric_logger.log_every(data_loader, 10, header), desc='eval', total=len(data_loader), disable=xm.is_master_ordinal()):
-        xm.master_print(f"samples: {samples.shape}, targets: {targets.shape}")
+    for samples, targets, *_ in tqdm(metric_logger.log_every(data_loader, 10, header), desc='eval', total=len(data_loader), disable=not xm.is_master_ordinal()):
+        #xm.master_print(f"samples: {samples.shape}, targets: {targets.shape}")
         samples = samples.to(device)
         targets = targets.to(device)
         outputs = model(samples).float()
-        xm.master_print(f"outputs: {outputs.shape}, targets: {targets.shape}")
+        #xm.master_print(f"outputs: {outputs.shape}, targets: {targets.shape}")
         if criterion is not None:
             loss = criterion(outputs, targets)
             metric_logger.update(loss=loss.item())
@@ -131,7 +131,7 @@ def extract_features_with_dataloader(model, data_loader, sample_count, gather_on
     model = model.to(device)
     features, all_labels = None, None
     xm.master_print(f"Extracting features from {sample_count} samples")
-    for samples, (index, labels_rank) in tqdm(metric_logger.log_every(data_loader, 10), desc='extract features', total=len(data_loader), disable=xm.is_master_ordinal()):
+    for samples, (index, labels_rank) in tqdm(metric_logger.log_every(data_loader, 10), desc='extract features', total=len(data_loader), disable=not xm.is_master_ordinal()):
         samples = samples.to(device)
         labels_rank = labels_rank.to(device)
         index = index.to(device)

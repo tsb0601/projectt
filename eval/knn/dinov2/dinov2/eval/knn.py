@@ -13,6 +13,7 @@ from typing import List, Optional
 
 import torch.distributed
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../../')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 print(sys.path)
 import torch
 from torch.nn.functional import one_hot, softmax
@@ -131,21 +132,15 @@ def get_args_parser(
         input_size=224,
     )
     return parser
-import threading
-def gather_with_timeout(tensor, output_tensor, dst, timeout):
-    def gather():
-        torch.distributed.gather(tensor, output_tensor, dst=dst)
-    
-    gather_thread = threading.Thread(target=gather)
-    gather_thread.start()
-    gather_thread.join(timeout)
-
-    if gather_thread.is_alive():
-        print("Gather operation timed out!")
-        # Optionally, you can kill the thread here, but it requires careful handling.
-        # Usually, you'd want to raise an exception or handle the timeout appropriately.
-        return False
-    return True
+def xm_gather_with_target_rank(tensor, output_list, dst):
+    global_rank = xm.get_ordinal()
+    xm.mark_step()
+    gathered_tensor = xm.all_gather(tensor, pin_layout=False)
+    if global_rank == dst:
+        #gather tensor is of shape n*gloabl_size x dim, split it into n tensors of shape global_size x dim
+        gathered_tensor = gathered_tensor.split(tensor.size(0), dim=0)
+        output_list[:] = gathered_tensor
+    return output_list
 class KnnModule(torch.nn.Module):
     """
     Gets knn of test features from all processes on a chunk of the train features
@@ -174,23 +169,22 @@ class KnnModule(torch.nn.Module):
     def _get_knn_sims_and_labels(self, similarity, train_labels):
         topk_sims, indices = similarity.topk(self.max_k, largest=True, sorted=True)
         neighbors_labels = torch.gather(train_labels, 1, indices)
-        print(f"topk_sims: {topk_sims.shape}, neighbors_labels: {neighbors_labels.shape}")
         return topk_sims, neighbors_labels
 
     def _similarity_for_rank(self, features_rank, source_rank):
         # Send the features from `source_rank` to all ranks
         broadcast_shape = torch.tensor(features_rank.shape).to(self.device)
-        torch.distributed.broadcast(broadcast_shape, source_rank)
-        print(f"rank {self.global_rank} broadcast_shape: {broadcast_shape}")
-        broadcasted = features_rank
+        #torch.distributed.broadcast(broadcast_shape, source_rank)
+        #broadcast_shape = xm.all_reduce("sum", broadcast_shape)
         if self.global_rank != source_rank:
             broadcasted = torch.zeros(*broadcast_shape, dtype=features_rank.dtype, device=self.device)
-        torch.distributed.broadcast(broadcasted, source_rank)
-        print(f"rank {self.global_rank} broadcasted: {broadcasted.shape}")
+        else:
+            broadcasted = features_rank
+        #torch.distributed.broadcast(broadcasted, source_rank)
+        broadcasted = xm.all_reduce("sum", broadcasted)
         # Compute the neighbors for `source_rank` among `train_features_rank_T`
         similarity_rank = torch.mm(broadcasted, self.train_features_rank_T)
         candidate_labels = self.candidates.expand(len(similarity_rank), -1)
-        print(f"rank {self.global_rank} similarity_rank: {similarity_rank.shape}, candidate_labels: {candidate_labels.shape}")
         return self._get_knn_sims_and_labels(similarity_rank, candidate_labels)
 
     def _gather_all_knn_for_rank(self, topk_sims, neighbors_labels, target_rank):
@@ -199,30 +193,32 @@ class KnnModule(torch.nn.Module):
         if self.global_rank == target_rank:
             topk_sims_rank = [torch.zeros_like(topk_sims) for _ in range(self.global_size)]
             retrieved_rank = [torch.zeros_like(neighbors_labels) for _ in range(self.global_size)]
-        print(f"rank {self.global_rank} topk_sims: {topk_sims.shape}, neighbors_labels: {neighbors_labels.shape}")
+        print(f"START GATHER: rank {self.global_rank} topk_sims: {topk_sims.shape},{topk_sims.device}, neighbors_labels: {neighbors_labels.shape},{neighbors_labels.device}")
         #torch.distributed.gather(topk_sims, topk_sims_rank, dst=target_rank)
-        gather_with_timeout(topk_sims, topk_sims_rank, dst=target_rank, timeout=10)
-        print(f"gather1: rank {self.global_rank} topk_sims_rank: {topk_sims_rank[0].shape}")
+        xm_gather_with_target_rank(topk_sims, topk_sims_rank, dst=target_rank)
+        print(f"GATHER1: rank {self.global_rank} ")
+        xm.rendezvous('knn-gather1')
         #torch.distributed.gather(neighbors_labels, retrieved_rank, dst=target_rank)
-        gather_with_timeout(neighbors_labels, retrieved_rank, dst=target_rank, timeout=10)
-        print(f"gather2: rank {self.global_rank} topk_sims_rank: {topk_sims_rank[0].shape}, retrieved_rank: {retrieved_rank[0].shape}")
+        print(f"GATHER2: rank {self.global_rank} ")
+        xm_gather_with_target_rank(neighbors_labels, retrieved_rank, dst=target_rank)
+        xm.rendezvous('knn-gather2')
         if self.global_rank == target_rank:
             # Perform a second top-k on the k * global_size retrieved neighbors
             topk_sims_rank = torch.cat(topk_sims_rank, dim=1)
             retrieved_rank = torch.cat(retrieved_rank, dim=1)
             results = self._get_knn_sims_and_labels(topk_sims_rank, retrieved_rank)
-            print(f"master rank {self.global_rank} topk_sims_rank: {topk_sims_rank.shape}, retrieved_rank: {retrieved_rank.shape}")
+            print(f"TARGET RANK: rank {self.global_rank} results: {results[0].shape},{results[0].device}, {results[1].shape},{results[1].device}")
             return results
         return None
 
     def compute_neighbors(self, features_rank):
         for rank in range(self.global_size):
+            xm.master_print(f"calculate knn for rank {rank}")
             topk_sims, neighbors_labels = self._similarity_for_rank(features_rank, rank)
-            xm.master_print(f"compute neighbour: rank {self.global_rank} topk_sims: {topk_sims.shape}, neighbors_labels: {neighbors_labels.shape}")
             results = self._gather_all_knn_for_rank(topk_sims, neighbors_labels, rank)
             if results is not None:
                 topk_sims_rank, neighbors_labels_rank = results
-            xm.mark_step()
+            xm.rendezvous('knn-compute')
         return topk_sims_rank, neighbors_labels_rank
 
     def forward(self, features_rank):
@@ -230,10 +226,10 @@ class KnnModule(torch.nn.Module):
         Compute the results on all values of `self.nb_knn` neighbors from the full `self.max_k`
         """
         assert all(k <= self.max_k for k in self.nb_knn)
-        xm.master_print(f"features_rank: {features_rank.shape}")
+        #xm.master_print(f"features_rank: {features_rank.shape}")
         topk_sims, neighbors_labels = self.compute_neighbors(features_rank)
         xm.mark_step()
-        xm.master_print(f"forward1: topk_sims: {topk_sims.shape}, neighbors_labels: {neighbors_labels.shape}")
+        #xm.master_print(f"forward1: topk_sims: {topk_sims.shape}, neighbors_labels: {neighbors_labels.shape}")
         batch_size = neighbors_labels.shape[0]
         topk_sims_transform = softmax(topk_sims / self.T, 1)
         matmul = torch.mul(
@@ -447,10 +443,19 @@ def eval_knn_with_model(
     return results_dict
 
 from omegaconf import OmegaConf
+def broadcast_test_tensor(tensor):
+    #tensor = tensor.to(xm.xla_device())
+    b_tensor = xm.all_reduce("sum", tensor)
+    return b_tensor
+def all_gather_test_tensor(tensor):
+    tensor = tensor.to(xm.xla_device())
+    g_tensor = xm.all_gather(tensor)
+    return g_tensor
 def main(rank, args):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '11451'
-    torch.distributed.init_process_group("xla", rank=rank, world_size=4) # 4 is the number of TPU cores
+    rank = int(os.environ.get('LOCAL_RANK', rank))
+    #os.environ['MASTER_ADDR'] = 'localhost'
+    #os.environ['MASTER_PORT'] = '11451'
+    torch.distributed.init_process_group("xla", init_method='xla://', rank=rank) # 4 is the number of TPU cores
     print(f"Rank {rank} initialized")
     #model, autocast_dtype = setup_and_build_model(args)
     config = args.config_file
@@ -481,5 +486,6 @@ if __name__ == "__main__":
     description = "DINOv2 k-NN evaluation"
     args_parser = get_args_parser(description=description)
     args = args_parser.parse_args()
-    xmp.spawn(main, args=(args,), start_method="fork")
+    main(None, args)
+    #xmp.spawn(main, args=(args,), start_method="fork")
     #sys.exit(main(args))
