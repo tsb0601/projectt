@@ -155,7 +155,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if args.use_ddp:
         dist.destroy_process_group()
-    exit()
+    xm.rendezvous('done')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args), start_method='fork')

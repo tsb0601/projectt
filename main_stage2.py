@@ -150,6 +150,7 @@ def main(rank, args, extra_args):
     #if args.use_ddp:
     #    dist.destroy_process_group()
     #xm.rendezvous('main')
+    xm.rendezvous('done')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     xmp.spawn(main, args=(args, extra_args), start_method='fork')
