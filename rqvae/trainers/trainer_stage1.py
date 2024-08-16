@@ -60,7 +60,7 @@ class Trainer(TrainerTemplate):
         disc_config = gan_config.disc
         self.gan_start_epoch = gan_config.loss.disc_start
         num_epochs_for_gan = self.config.experiment.epochs - self.gan_start_epoch
-
+        self.lpips_start_epoch = gan_config.loss.lpips_start
         disc_model, disc_optim, disc_sched = (
             create_discriminator_with_optimizer_scheduler(
                 disc_config,
@@ -267,6 +267,7 @@ class Trainer(TrainerTemplate):
         discriminator.train()
         discriminator.zero_grad(set_to_none=True)
         use_discriminator = True if epoch >= self.gan_start_epoch else False
+        use_lpips = True if epoch >= self.lpips_start_epoch and self.perceptual_weight > 0 else False
         xm.master_print(f"[!]use_discriminator: {use_discriminator}")
         accm = self.get_accm()
         loader = self.wrap_loader("train")
@@ -293,7 +294,7 @@ class Trainer(TrainerTemplate):
                 # generator loss
                 loss_pcpt = (
                     self.perceptual_loss(xs, xs_recon)
-                    if self.perceptual_weight > 0
+                    if use_lpips
                     else torch.zeros((), device=self.device, dtype=self.dtype)
                 )
                 p_weight = self.perceptual_weight
