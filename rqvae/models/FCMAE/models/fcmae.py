@@ -20,7 +20,7 @@ from timm.models.layers import trunc_normal_
 #from .convnextv2_sparse import SparseConvNeXtV2
 from .convnextv2 import ConvNeXtV2
 from .convnextv2 import Block
-
+from rqvae.models.basicblocks.utils import zero_module
 class FCMAE(nn.Module):
     """ Fully Convolutional Masked Autoencoder with ConvNeXtV2 backbone
     """
@@ -71,7 +71,8 @@ class FCMAE(nn.Module):
             kernel_size=1)
 
         self.apply(self._init_weights)
-
+        # zero_init pred
+        self.pred = zero_module(self.pred)
     def _init_weights(self, m):
         #if isinstance(m, MinkowskiConvolution):
         #    trunc_normal_(m.kernel, std=.02)
@@ -86,10 +87,10 @@ class FCMAE(nn.Module):
             w = m.weight.data
             trunc_normal_(w.view([w.shape[0], -1]))
             nn.init.constant_(m.bias, 0)
-        if isinstance(m, nn.LayerNorm):
+        elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-        if hasattr(self, 'mask_token'):    
+        elif hasattr(self, 'mask_token'):    
             torch.nn.init.normal_(self.mask_token, std=.02)
     
     def patchify(self, imgs):
