@@ -40,7 +40,7 @@ class Stage1FCMAE(Stage1Model):
         mse_loss = (xs_recon - inputs.img).square().mean()
         return {'loss_total': mse_loss,
                 'loss_recon': mse_loss,
-                'loss_latent': torch.tensor(0.),
+                'loss_latent': torch.tensor(0.).to(mse_loss.device)
         }
     def get_recon_imgs(self, x, xs, *args, **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
         return x.clamp(0, 1), xs.clamp(0, 1)
