@@ -11,7 +11,7 @@ arch:
       model_name: 'convnextv2_base'
       pretrained_model_path: 'ckpt_gcs/model_zoo/fcmae_b/curated.pt'
   connector:
-    target: rqvae.models.connectors.Downsample_with_MLP_Connector
+    target: rqvae.models.connectors.Downsample_with_Conv_Connector
     params:
       hidden_size: 1024
       layers: 4

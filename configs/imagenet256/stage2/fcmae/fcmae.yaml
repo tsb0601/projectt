@@ -10,14 +10,6 @@ arch:
     params:
       model_name: 'convnextv2_base'
       pretrained_model_path: 'ckpt_gcs/model_zoo/fcmae_b/curated.pt'
-  connector:
-    target: rqvae.models.connectors.Downsample_with_MLP_Connector
-    params:
-      hidden_size: 1024
-      layers: 4
-      bottleneck_ratio: 16
-      remove_cls: false
-      patch_as_input: true
   checkpointing: false
   ema: 0.114514
 optimizer:
@@ -29,7 +21,7 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 5  # 5% of total epochs
+    epoch: 20  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
@@ -39,8 +31,8 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
+  epochs: 200
+  save_ckpt_freq: 50
   test_freq: 1
   amp: false
 
@@ -76,4 +68,4 @@ gan:
     disc_weight: .75
     perceptual_weight: .01
     disc_start: 100000
-    lpips_start: 10
+    lpips_start: 50

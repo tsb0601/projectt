@@ -19,7 +19,7 @@ im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage2_model_wrapper, _  = create_model(config, stage=2)
+    stage2_model_wrapper, _  = create_model(config)
     stage2_model_wrapper:Stage2ModelWrapper
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
