@@ -31,7 +31,6 @@ class Stage1FCMAE(Stage1Model):
     def decode(self, encodings: Stage1Encodings) -> Stage1ModelOutput:
         logits = self.model.forward_decoder(encodings.zs)
         logits = self.model.patch_to_L(logits)
-        print('logits shape:',logits.shape)
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * self.image_std + self.image_mean
         return Stage1ModelOutput(xs_recon=xs_recon, additional_attr={})
