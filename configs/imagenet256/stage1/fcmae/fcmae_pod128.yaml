@@ -4,6 +4,7 @@ dataset:
     type: imagenet256x256
 
 arch:
+  stage: 1
   stage_1:
     target: rqvae.models.FCMAE.Stage1FCMAE
     params:
