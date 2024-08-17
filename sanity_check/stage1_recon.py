@@ -18,10 +18,7 @@ im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    if config.get('stage', 1) == 2:
-        stage1_model_config = config.stage_1
-    else:
-        stage1_model_config = config
+    stage1_model_config = config.stage_1
     stage1_model:Stage1Model = instantiate_from_config(stage1_model_config)
     print('stage1 model:',stage1_model)
     image_path = '/home/bytetriper/VAE-enhanced/test.png'

@@ -127,8 +127,38 @@ class Stage2Model(XLA_Model):
         """Inference the model."""
         pass
 
-
-class Stage2ModelWrapper(XLA_Model):
+class Stage1ModelWrapper(Stage1Model):
+    def __init__(self, stage_1_model: Stage1Model, connector: Optional[base_connector] = None):
+        super().__init__()
+        self.stage_1_model = stage_1_model
+        if connector is None:
+            connector = id_connector()
+        self.connector = connector
+        self.connector.requires_grad_(True) # train the connector
+    def forward(self, inputs: LabeledImageData) -> Stage1ModelOutput:
+        encodings = self.stage_1_model.encode(inputs)
+        encodings = self.connector.forward(encodings)
+        encodings = self.connector.reverse(encodings)
+        outputs = self.stage_1_model.decode(encodings)
+        return outputs
+    def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
+        encodings = self.stage_1_model.encode(inputs)
+        encodings = self.connector.forward(encodings)
+        return encodings
+    def decode(self, encodings: Stage1Encodings) -> Stage1ModelOutput:
+        encodings = self.connector.reverse(encodings)
+        return self.stage_1_model.decode(encodings)
+    def compute_loss(self, outputs: Stage1ModelOutput, inputs: LabeledImageData, **kwargs) -> dict:
+        return self.stage_1_model.compute_loss(outputs, inputs, **kwargs)
+    @torch.no_grad()
+    def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
+        return self.forward(inputs)
+    @torch.no_grad()
+    def get_recon_imgs(self, x, xs) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.stage_1_model.get_recon_imgs(x, xs)
+    def get_last_layer(self) -> torch.Tensor:
+        return self.stage_1_model.get_last_layer()
+class Stage2ModelWrapper(Stage2Model):
     """
     Wrap a Stage2 model with a Stage1 model.
     """
@@ -142,6 +172,7 @@ class Stage2ModelWrapper(XLA_Model):
         self.connector = connector 
         self.stage_1_model.requires_grad_(False)  # freeze the stage 1 model
         self.stage_2_model.requires_grad_(True)  # train the stage 2 model
+        self.connector.requires_grad_(False)  # freeze the connector
     def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(inputs)

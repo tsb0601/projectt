@@ -4,11 +4,20 @@ dataset:
     type: imagenet256x256
 
 arch:
+  stage: 1
   stage_1:
     target: rqvae.models.FCMAE.Stage1FCMAE
     params:
       model_name: 'convnextv2_base'
       pretrained_model_path: 'ckpt_gcs/model_zoo/fcmae_b/curated.pt'
+  connector:
+    target: rqvae.models.connectors.Downsample_with_MLP_Connector
+    params:
+      hidden_size: 1024
+      layers: 8
+      bottleneck_ratio: 256
+      remove_cls: false
+      patch_as_input: true
   checkpointing: false
   ema: 0.114514
 optimizer:

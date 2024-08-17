@@ -31,26 +31,8 @@ def xm_step_every_layer(model:nn.Module):
                 mm.register_forward_hook(lambda m, i, o: xm.mark_step())
         else:
             m.register_forward_hook(lambda m, i, o: xm.mark_step())
-def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
-    # config: OmegaConf.DictConfig
-    # config to dict for model init    
-    assert stage in (1, 2), f'[!]ERROR: Stage should be 1 or 2, but got {stage}'
-    use_ema = (ema != 0.114514)
-    if stage == 2:
-        stage_1_model,stage_1_ema = create_model(config.stage_1, ema=ema, stage=1) 
-        stage_2_model, stage_2_ema = create_model(config.stage_2, ema=ema, stage=1)
-        if hasattr(config, 'connector'):
-            connector = instantiate_from_config(config.connector)
-        else:
-            connector = None
-        connector: Optional[base_connector]
-        stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
-        stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector) if use_ema else None # connector does not contains any trainable parameters so it's ok to use the same connector
-        if config.get('ckpt_path', False):
-            ckpt_path = config.ckpt_path
-            _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
-            xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
-        return stage2model, stage2model_ema
+def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
+    assert stage in (0, 1, 2), f'[!]ERROR: Stage should be 0, 1 or 2 (0 is the connector), but got {stage}'
     model = instantiate_from_config(config)
     if config.get('ckpt_path', False):
         ckpt_path = config.ckpt_path
@@ -73,4 +55,51 @@ def create_model(config:DictConfig, ema:float=0.114514, stage:int = 1)->Tuple[XL
     model = model
     if use_ema:
         model_ema = model_ema
+    return model, model_ema
+def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
+    # config: OmegaConf.DictConfig
+    # config to dict for model init    
+    use_ema = (ema != 0.114514)
+    stage_1_model, stage_1_ema = _create_according_to_config(config.stage_1, use_ema, stage=1)
+    stage_1_model: Stage1Model
+    stage_1_ema: Optional[ExponentialMovingAverage]
+    if hasattr(config, 'connector'):
+        connector, connector_ema = _create_according_to_config(config.connector, use_ema, stage=0)
+    else:
+        connector = None
+    connector: Optional[base_connector]
+    if hasattr(config, 'stage_2'):
+        stage_2_model, stage_2_ema = _create_according_to_config(config.stage_2, use_ema, stage=2)
+        stage_2_model: Stage2Model
+        stage_2_ema: Optional[ExponentialMovingAverage]
+        stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
+        stage2ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector_ema) if use_ema else None
+        if config.get('ckpt_path', False):
+            ckpt_path = config.ckpt_path
+            _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
+            xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
+        return stage2model, stage2ema
+    else:
+        stage1model = Stage1ModelWrapper(stage_1_model, connector)
+        stage1ema = Stage1ModelWrapper(stage_1_ema, connector_ema) if use_ema else None
+        if config.get('ckpt_path', False):
+            ckpt_path = config.ckpt_path
+            _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
+            xm.master_print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
+        return stage1model, stage1ema
+    #if stage == 2:
+    #    stage_1_model,stage_1_ema = create_model(config.stage_1, ema=ema, stage=1) 
+    #    stage_2_model, stage_2_ema = create_model(config.stage_2, ema=ema, stage=1)
+    #    if hasattr(config, 'connector'):
+    #        connector = instantiate_from_config(config.connector)
+    #    else:
+    #        connector = None
+    #    connector: Optional[base_connector]
+    #    stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
+    #    stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector) if use_ema else None 
+    #    if config.get('ckpt_path', False):
+    #        ckpt_path = config.ckpt_path
+    #        _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
+    #        xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
+    #    return stage2model, stage2model_ema
     return model, model_ema

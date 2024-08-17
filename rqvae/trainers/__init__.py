@@ -23,6 +23,5 @@ STAGE1_ARCH_TYPE = [
 def create_trainer(config):
     if config.arch.stage == 1:
         return TrainerStage1
-
     else: 
         return TrainerStage2

@@ -19,11 +19,11 @@ im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage2_model_wrapper, _  = create_model(config, stage=2)
-    stage2_model_wrapper:Stage2ModelWrapper
-    stage1_model = stage2_model_wrapper.stage_1_model
-    connector = stage2_model_wrapper.connector
-    stage2_model = stage2_model_wrapper.stage_2_model
+    stage1_model_wrapper, _  = create_model(config)
+    stage1_model_wrapper:Stage1ModelWrapper
+    print('stage1 model:',stage1_model_wrapper)
+    stage1_model = stage1_model_wrapper.stage_1_model
+    connector = stage1_model_wrapper.connector
     image_path = '/home/bytetriper/VAE-enhanced/test.png'
     image = Image.open(image_path).resize((im_size, im_size)).convert('RGB')
     #repeat 2 times to asssure model works with batch size > 1
