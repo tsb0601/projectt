@@ -27,9 +27,10 @@ arch:
       patch_size: 1
       depth: 12
       num_classes: 1000
-      cfg: 0.0
+      cfg: 4.0
       in_channels: 48
       learn_sigma: false
+      timestep_respacing: 250
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514

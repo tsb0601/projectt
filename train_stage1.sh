@@ -26,7 +26,7 @@ else
     load_ckpt="${load_ckpt} --resume"
     echo "load from: $load_ckpt"
 fi
-wandb_id=$6
+wandb_id=$7
 if [ -z "$wandb_id" ]
 then
     echo "wandb_id is empty"

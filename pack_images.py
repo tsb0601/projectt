@@ -6,7 +6,7 @@ from tqdm import tqdm
 import numpy as np
 from PIL import Image
 import os
-IM_SIZE = 224
+IM_SIZE = 256
 def center_crop_arr(pil_image, image_size):
     """
     Center cropping implementation from ADM.
