@@ -59,7 +59,6 @@ class TrainerTemplate:
         num_workers = 4
         self.model = model
         self.use_wandb = wandb.run is not None
-        xm.master_print(f"[!]Trainer use_wandb: {self.use_wandb}")
         self.model_ema = model_ema
         self.model_woddp = model.module if use_ddp else model
         self.model_ema_woddp = model_ema.module if use_ddp and (model_ema is not None) else model_ema
