@@ -14,7 +14,7 @@ arch:
     target: rqvae.models.connectors.Downsample_with_MLP_Connector
     params:
       hidden_size: 768
-      layers: 8
+      layers: 4
       bottleneck_ratio: 256
       remove_cls: true
       patch_as_input: false
