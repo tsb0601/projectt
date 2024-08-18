@@ -4,7 +4,7 @@ dataset:
     type: imagenet256x256
 
 arch:
-  stage: 2
+  stage: 1
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
@@ -14,27 +14,12 @@ arch:
     target: rqvae.models.connectors.Downsample_with_Conv_Connector
     params:
       hidden_size: 768
-      layers: 4
-      bottleneck_ratio: 16
+      layers: 6
+      bottleneck_ratio: 64
       remove_cls: true
       patch_as_input: false
-  stage_2:
-    target: rqvae.models.DiT.DiT_Stage2
-    params:
-      # DiT B/1 Recipe
-      hidden_size: 768
-      input_size: 16
-      patch_size: 1
-      depth: 12
-      num_classes: 1000
-      cfg: 4.0
-      in_channels: 48
-      learn_sigma: false
-      timestep_respacing: 250
-      noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514
-  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/mae_conv_compress_ep60/f16/f16_blk4_b256_17082024_055411/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -58,7 +43,6 @@ experiment:
   save_ckpt_freq: 30
   test_freq: 1
   amp: false
-  actual_batch_size: 4096
 
 gan:
   disc:

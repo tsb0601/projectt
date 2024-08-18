@@ -88,7 +88,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]trainer created')
     if args.reload_batch_size:
         config.experiment.batch_size = args.reload_batch_size
-    if config.experiment.actual_batch_size is not None:
+    elif config.experiment.get('actual_batch_size', None) is not None:
         config.experiment.batch_size = config.experiment.actual_batch_size // (distenv.world_size * config.experiment.accu_step)
         assert config.experiment.batch_size * distenv.world_size * config.experiment.accu_step == config.experiment.actual_batch_size, f'actual_batch_size: {config.experiment.actual_batch_size} cannot be divided by world_size: {distenv.world_size} and accu_step: {config.experiment.accu_step}'
     else:
