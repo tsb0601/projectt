@@ -1,0 +1,4 @@
+opencv-python
+numpy
+pillow
+# install torch_xla yourself plz
