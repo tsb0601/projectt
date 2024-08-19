@@ -1,10 +1,10 @@
 dataset:
   type: imagenet
   transforms:
-    type: imagenet256x256
+    type: imagenetDiT256x256
 
 arch:
-  stage: 1
+  stage: 2
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
@@ -18,8 +18,24 @@ arch:
       bottleneck_ratio: 64
       remove_cls: true
       patch_as_input: false
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT B/1 Recipe
+      hidden_size: 1152
+      input_size: 16
+      patch_size: 1
+      depth: 12
+      num_classes: 1000
+      cfg: 4.0
+      num_heads: 16
+      in_channels: 28
+      learn_sigma: false
+      noise_schedule: 'linear'
+      timestep_respacing: 250
   checkpointing: false
   ema: 0.114514
+  ckpt_path: '/homek_b4096_18082024_152630/ep_last-checkpoint/0-model.pt' # must be modified
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -43,6 +59,7 @@ experiment:
   save_ckpt_freq: 30
   test_freq: 1
   amp: false
+  #actual_batch_size: 4096
 
 gan:
   disc:
