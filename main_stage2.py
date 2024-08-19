@@ -148,7 +148,8 @@ def main(rank, args, extra_args):
         #if wandb_dir:
         #    wandb.finish()
     #dist.destroy_process_group() if args.use_ddp else None
-    #xm.master_print(f'[!]finished in {time.time() - start} seconds')
+    xm.master_print(f'[!]finished in {time.time() - start} seconds')
+    xm.master_print(f'[!]Results saved in {args.result_path}')
     if args.use_ddp:
         dist.destroy_process_group()
     #xm.rendezvous('main')
