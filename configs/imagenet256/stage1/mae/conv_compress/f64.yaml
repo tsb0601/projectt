@@ -18,6 +18,7 @@ arch:
       bottleneck_ratio: 64
       remove_cls: true
       patch_as_input: false
+      final_norm: true
   checkpointing: false
   ema: 0.114514
 optimizer:

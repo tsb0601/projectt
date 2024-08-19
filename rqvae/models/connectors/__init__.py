@@ -167,12 +167,12 @@ class Downsample_with_MLP_Connector(base_connector):
         return stage1_encodings
 
 class Downsample_with_Conv_Connector(base_connector):
-    def __init__(self, split:int = 1, hidden_size:int = 512, layers:int = 1,  bottleneck_ratio: float = 16.0, remove_cls: bool = True, patch_as_input: bool = False, kernel_size:int = 3):
+    def __init__(self, split:int = 1, hidden_size:int = 512, layers:int = 1,  bottleneck_ratio: float = 16.0, remove_cls: bool = True, patch_as_input: bool = False, kernel_size:int = 3, final_norm: bool = False):
         super().__init__()
         self.split = split
         self.layers = layers
         self.hidden_size = hidden_size
-        self.conv = SimpleConv(hidden_size, layers, bottleneck_ratio, kernel_size)
+        self.conv = SimpleConv(hidden_size, layers, bottleneck_ratio, kernel_size, final_norm)
         self.remove_cls = remove_cls
         self.patch_as_input = patch_as_input
         assert patch_as_input & remove_cls == False, 'patch_as_input and remove_cls should not be true at the same time'
