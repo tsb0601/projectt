@@ -13,6 +13,7 @@ arch:
   connector:
     target: rqvae.models.connectors.MAE_Diffusion_connector
     params:
+      split: 1
   checkpointing: false
   ema: 0.114514
 optimizer:
