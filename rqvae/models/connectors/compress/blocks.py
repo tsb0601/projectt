@@ -67,9 +67,10 @@ def Normalize(in_channels, num_groups=32):
 
 class ConvResnetBlock(nn.Module):
     def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,
-                dropout, temb_channels=512):
+                dropout, kernel_size=3):
         super().__init__()
         self.in_channels = in_channels
+        padding = kernel_size // 2
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
@@ -77,23 +78,23 @@ class ConvResnetBlock(nn.Module):
         self.norm1 = Normalize(in_channels)
         self.conv1 = torch.nn.Conv2d(in_channels,
                                     out_channels,
-                                    kernel_size=3,
+                                    kernel_size=kernel_size,
                                     stride=1,
-                                    padding=1)
+                                    padding=padding)
         self.norm2 = Normalize(out_channels)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = torch.nn.Conv2d(out_channels,
                                     out_channels,
-                                    kernel_size=3,
+                                    kernel_size=kernel_size,
                                     stride=1,
-                                    padding=1)
+                                    padding=padding)
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
                 self.conv_shortcut = torch.nn.Conv2d(in_channels,
                                                     out_channels,
-                                                    kernel_size=3,
+                                                    kernel_size=kernel_size,
                                                     stride=1,
-                                                    padding=1)
+                                                    padding=padding)
             else:
                 self.nin_shortcut = torch.nn.Conv2d(in_channels,
                                                     out_channels,
@@ -119,29 +120,30 @@ class ConvResnetBlock(nn.Module):
 
         return x+h
 class SimpleConv(nn.Module):
-    def __init__(self, in_channels:int, layers:int = 1, bottleneck_ratio: float = 16.0):
+    def __init__(self, in_channels:int, layers:int = 1, bottleneck_ratio: float = 16.0, kernel_size: int = 3):
         super(SimpleConv, self).__init__()
         bottle_dim = int(in_channels // bottleneck_ratio)
+        padding = kernel_size // 2
         each_layer_downsample_ratio = int(bottleneck_ratio ** (1.0 / layers)) if layers > 1 else 1
         self.down = nn.ModuleList()
         cur_dim = in_channels
-        self.down_conv_in = torch.nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+        self.down_conv_in = torch.nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=padding)
         for i in range(layers):
             next_dim = int(cur_dim / each_layer_downsample_ratio)
             if i == layers - 1:
                 next_dim = bottle_dim
-            self.down.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0))
+            self.down.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size))
             cur_dim = next_dim
-        self.down_conv_out = torch.nn.Conv2d(bottle_dim, bottle_dim, kernel_size=3, stride=1, padding=1)
-        self.up_conv_in = torch.nn.Conv2d(bottle_dim, bottle_dim, kernel_size=3, stride=1, padding=1)
+        self.down_conv_out = torch.nn.Conv2d(bottle_dim, bottle_dim, kernel_size=kernel_size, stride=1, padding=padding)
+        self.up_conv_in = torch.nn.Conv2d(bottle_dim, bottle_dim, kernel_size=kernel_size, stride=1, padding=padding)
         self.up = nn.ModuleList()
         for i in range(layers):
             next_dim = int(cur_dim * each_layer_downsample_ratio)
             if i == layers - 1:
                 next_dim = in_channels
-            self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0))
+            self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size))
             cur_dim = next_dim
-        self.up_conv_out = zero_module(torch.nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1))
+        self.up_conv_out = zero_module(torch.nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=padding))
     def forward(self, x):
         for layer in self.down:
             x = layer(x)
