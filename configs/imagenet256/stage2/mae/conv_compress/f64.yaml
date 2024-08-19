@@ -10,6 +10,14 @@ arch:
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
       no_cls: true
+  connector:
+    target: rqvae.models.connectors.Downsample_with_Conv_Connector
+    params:
+      hidden_size: 768
+      layers: 6
+      bottleneck_ratio: 64
+      remove_cls: true
+      patch_as_input: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
@@ -20,11 +28,12 @@ arch:
       depth: 12
       num_classes: 1000
       cfg: 0.0
-      in_channels: 768
+      in_channels: 12
       learn_sigma: false
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514
+  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/mae_conv_compress_ep60/f64/f64_blk_b4096_18082024_152630/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -48,6 +57,7 @@ experiment:
   save_ckpt_freq: 30
   test_freq: 1
   amp: false
+  #actual_batch_size: 4096
 
 gan:
   disc:
