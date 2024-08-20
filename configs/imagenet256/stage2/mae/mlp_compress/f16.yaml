@@ -29,12 +29,13 @@ arch:
       depth: 12
       num_classes: 1000
       cfg: 0.0
+      num_heads: 12
       in_channels: 48
       learn_sigma: false
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_mlp_compress_ep60/f16/f16_blk4_b4096_conv1x1_19082024_062351/ep_last-checkpoint/0-model.pt'
+  ckpt_path: './ckpt_gcs/mae_mlp_compress_ep60/f16/f16_blk4_b4096_conv1x1_19082024_145211/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw

@@ -27,14 +27,14 @@ arch:
       patch_size: 1
       depth: 12
       num_classes: 1000
-      cfg: 4.0
+      cfg: 0.0
+      num_heads: 12
       in_channels: 12
       learn_sigma: false
       noise_schedule: 'linear'
-      timestep_respacing: 250
   checkpointing: false
   ema: 0.114514
-  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/mae_conv_compress_ep60/f64/f64_blk_b4096_18082024_152630/ep_last-checkpoint/0-model.pt'
+  ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f64/f64_blk6_b256_19082024_223304/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw

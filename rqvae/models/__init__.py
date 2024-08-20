@@ -85,7 +85,7 @@ def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Option
         stage1ema = Stage1ModelWrapper(stage_1_ema, connector_ema) if use_ema else None
         if config.get('ckpt_path', False):
             ckpt_path = config.ckpt_path
-            _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
+            _, keys = load_model_from_ckpt(stage1model, ckpt_path, strict = False)
             xm.master_print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
             assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
         return stage1model, stage1ema

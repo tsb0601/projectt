@@ -12,14 +12,16 @@ from rqvae.models.connectors import base_connector
 from rqvae.models.interfaces import *
 import sys
 import os
+from rqvae.models import create_model
 from omegaconf import OmegaConf
 config_path = sys.argv[1]
 im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage1_model_config = config.stage_1
-    stage1_model:Stage1Model = instantiate_from_config(stage1_model_config)
+    stage1_model_wrapper, _  = create_model(config)
+    stage1_model_wrapper:Stage1ModelWrapper
+    stage1_model = stage1_model_wrapper.stage_1_model
     print('stage1 model:',stage1_model)
     image_path = '/home/bytetriper/VAE-enhanced/test.png'
     image = Image.open(image_path).resize((im_size, im_size)).convert('RGB')

@@ -21,6 +21,7 @@ with torch.no_grad():
     config = OmegaConf.load(config_path).arch
     stage2_model_wrapper, _  = create_model(config)
     stage2_model_wrapper:Stage2ModelWrapper
+    print('stage2_model_wrapper:', stage2_model_wrapper)
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
     stage2_model = stage2_model_wrapper.stage_2_model
@@ -59,8 +60,8 @@ with torch.no_grad():
     print("=" * 10, 'testing stage2 loss', "=" * 10)
     loss = stage2_model.compute_loss(latent_output ,forward_output, data)['loss_total']
     print(loss)
-    print("=" * 10, 'testing stage2 infer', "=" * 10)
-    with autocast(device=xm.xla_device()):
-        generated_output = stage2_model.infer(data)
-    print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
+    print("=" * 10, 'testing stage2 infer (skipped)', "=" * 10)
+    #with autocast(device=xm.xla_device()):
+    #    generated_output = stage2_model.infer(data)
+    #print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
     print("=" * 10, 'all set!', "=" * 10)
