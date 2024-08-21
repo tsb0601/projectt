@@ -20,7 +20,6 @@ arch:
       patch_as_input: false
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f16/f16_blk4_b256_19082024_184612/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
