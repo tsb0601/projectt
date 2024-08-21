@@ -37,7 +37,7 @@ fi
 export WANDB_DIR=$SAVE_DIR
 export WANDB_PROJECT=$EXP_NAME
 #env | grep WANDB
-numactl --cpunodebind=0 python main_stage2.py \
+python main_stage2.py \
     -m=$model_config \
     -r=$SAVE_DIR \
     --world_size=$world_size \
