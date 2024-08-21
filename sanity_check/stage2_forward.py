@@ -55,8 +55,11 @@ with torch.no_grad():
     recon = recon_output.xs_recon
     print(recon.shape, recon.min(), recon.max())
     print("=" * 10, 'testing stage1 loss', "=" * 10)
-    loss = stage1_model.compute_loss(recon_output, data)['loss_total']
-    print(loss)
+    try:
+        loss = stage1_model.compute_loss(recon_output, data)['loss_total']
+        print(loss)
+    except NotImplementedError:
+        print('loss not implemented')
     print("=" * 10, 'testing stage2 loss', "=" * 10)
     loss = stage2_model.compute_loss(latent_output ,forward_output, data)['loss_total']
     print(loss)
