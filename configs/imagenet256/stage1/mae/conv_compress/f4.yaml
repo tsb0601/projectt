@@ -4,7 +4,7 @@ dataset:
     type: imagenetDiT256x256
 
 arch:
-  stage: 2
+  stage: 1
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
