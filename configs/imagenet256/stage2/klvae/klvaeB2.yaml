@@ -42,12 +42,13 @@ optimizer:
     start_from_zero: false
 
 experiment:
-  batch_size: 1
+  batch_size: 32
   accu_step: 1
   epochs: 60
   save_ckpt_freq: 40
   test_freq: 1
   amp: false
+  actual_batch_size: 4096
 
 gan:
   disc:
