@@ -21,7 +21,7 @@ arch:
       num_classes: 1000
       cfg: 0.0
       in_channels: 4
-      learn_sigma: false
+      learn_sigma: true
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514

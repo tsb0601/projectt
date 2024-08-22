@@ -60,6 +60,7 @@ class DiT_Stage2(Stage2Model):
             labels = torch.randint(0, self.num_classes, (self.n_samples,), device=device)
         else:
             n = labels.shape[0]
+            labels = torch.randint(0, self.num_classes, (n,), device=device) # we still do random label sampling
         y = labels
         z = torch.randn(n, self.model.in_channels, self.input_size, self.input_size, device=device)
         if self.use_cfg: # this means we use cfg
@@ -69,7 +70,8 @@ class DiT_Stage2(Stage2Model):
             model_kwargs = dict(y=y, cfg_scale=cfg)
             sample_fn = self.model.forward_with_cfg
         else:
-            model_kwargs = dict(y=y)
+            #y_null = torch.tensor([1000] * labels.shape[0], device=device)
+            model_kwargs = dict(y=y)# do unconditional sampling
             sample_fn = self.model.forward
         # Sample images:
         samples = self.diffusion.p_sample_loop(
