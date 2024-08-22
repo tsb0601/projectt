@@ -1,0 +1,95 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenetDiT256x256
+
+arch:
+  stage: 2
+  stage_1:
+    target: rqvae.models.MAE.Stage1MAE
+    params:
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
+      no_cls: true
+  connector:
+    target: rqvae.models.connectors.Downsample_with_Conv_Connector
+    params:
+      hidden_size: 768
+      layers: 8
+      bottleneck_ratio: 256
+      remove_cls: true
+      patch_as_input: false
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT B/1 Recipe
+      hidden_size: 768
+      input_size: 16
+      patch_size: 1
+      depth: 12
+      num_classes: 1000
+      cfg: 0.0
+      num_heads: 12
+      in_channels: 3
+      learn_sigma: false
+      noise_schedule: 'linear'
+  checkpointing: false
+  ema: 0.114514
+  ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f256/f256_blk8_b256_19082024_003338/ep_last-checkpoint/0-model.pt'
+optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+  type: adamw
+  init_lr: 1.6e-3
+  weight_decay: 0.0
+  betas: [0.9, 0.95]
+  max_gn: None
+  amp: true
+  warmup:
+    epoch: 5  # 5% of total epochs
+    multiplier: 1
+    buffer_epoch: 0
+    min_lr: 0.
+    mode: fix
+    start_from_zero: true
+
+experiment:
+  batch_size: 32
+  accu_step: 1
+  epochs: 60
+  save_ckpt_freq: 30
+  test_freq: 1
+  amp: false
+  #actual_batch_size: 4096
+
+gan:
+  disc:
+    arch:
+      in_channels: 3
+      num_layers: 2
+      use_actnorm: false
+      ndf: 64
+      spectral_norm: false
+    optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adamw
+      init_lr: 1.0e-3
+      weight_decay: 0.0
+      betas: [0.9, 0.95]
+      max_gn: None
+      amp: true
+      warmup:
+        epoch: 5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 0.
+        mode: fix
+        start_from_zero: true
+    experiment:
+      test_freq: 1
+      amp: false
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: .75
+    perceptual_weight: .01
+    disc_start: 100000
+    lpips_start: 10
