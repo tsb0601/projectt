@@ -29,7 +29,7 @@ arch:
       num_classes: 1000
       cfg: 0.0
       num_heads: 12
-      in_channels: 768
+      in_channels: 384
       learn_sigma: false
       noise_schedule: 'linear'
   checkpointing: false
