@@ -34,7 +34,7 @@ arch:
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514
-  ckpt_path: ./ckpt_gcs/mae_conv_compress_ep60/f2/f2_blk1_b256_21082024_200834/ep_last-checkpoint/0-model.pt'
+  ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f2/f2_blk1_b256_21082024_200834/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
