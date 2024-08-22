@@ -16,6 +16,7 @@ arch:
       hidden_size: 768
       layers: 2
       bottleneck_ratio: 4
+      kernel_size: 1
       remove_cls: true
       patch_as_input: false
   checkpointing: false
@@ -43,7 +44,6 @@ experiment:
   save_ckpt_freq: 30
   test_freq: 1
   amp: false
-  actual_batch_size: 4096
 
 gan:
   disc:

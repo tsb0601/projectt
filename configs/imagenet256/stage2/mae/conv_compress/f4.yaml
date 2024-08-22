@@ -32,6 +32,7 @@ arch:
       in_channels: 192
       learn_sigma: false
       noise_schedule: 'linear'
+      timestep_respacing: 250
   checkpointing: false
   ema: 0.114514
   ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f4/f4_blk4_b256_21082024_200717/ep_last-checkpoint/0-model.pt'
