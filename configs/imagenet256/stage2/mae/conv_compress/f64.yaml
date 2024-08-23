@@ -30,8 +30,7 @@ arch:
       cfg: 0.0
       num_heads: 12
       in_channels: 12
-      learn_sigma: false
-      timestep_respacing: 250
+      learn_sigma: true
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514
