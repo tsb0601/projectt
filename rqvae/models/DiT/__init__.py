@@ -4,6 +4,7 @@ from ..interfaces import *
 from .diffusion import create_diffusion
 from typing import List, Optional
 import torch_xla.core.xla_model as xm
+from .blocks import SimpleConv
 class DiT_Stage2(Stage2Model):
     def __init__(self,hidden_size:int, input_size:int, num_classes:int, depth:int, **kwargs):
         super().__init__()
@@ -91,3 +92,74 @@ class DiT_Stage2(Stage2Model):
     def requires_grad_(self, requires_grad: bool = True):
         super().requires_grad_(requires_grad)
         #self.model.pos_embed.requires_grad_(False) # always freeze positional embeddings
+
+class DiTwConv_Stage2(Stage2Model):
+    def __init__(self, downsample_ratio:int, 
+        layers:int, 
+        input_size=32,
+        patch_size=2,
+        in_channels=4,
+        hidden_size=1152,
+        depth=28,
+        num_heads=16,
+        mlp_ratio=4.0,
+        class_dropout_prob=0.1,
+        num_classes=1000,
+        learn_sigma=True,
+        timestep_respacing:str= "", 
+        noise_schedule:str="linear", 
+        cfg:float = .0,
+        n_samples:int = 125): 
+        super().__init__()
+        self.timestep_respacing = timestep_respacing
+        self.cfg = cfg
+        noise_schedule = noise_schedule
+        self.hidden_size = hidden_size
+        assert in_channels % downsample_ratio == 0, f'[!]DiTwConv_Stage2: in_channels: {in_channels} must be divisible by downsample_ratio: {downsample_ratio}'
+        downsampled_channels = in_channels // downsample_ratio
+        self.compressor = SimpleConv(in_channels=in_channels, layers=layers, bottleneck_ratio=downsample_ratio, kernel_size=1) # we use 1x1 conv to down-upsample
+        self.model = DiT(
+            input_size=input_size,
+            patch_size=patch_size,
+            in_channels=downsampled_channels,
+            hidden_size=hidden_size,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            class_dropout_prob=class_dropout_prob,
+            num_classes=num_classes,
+            learn_sigma=learn_sigma
+        )
+        self.model.requires_grad_(True)
+        self.compressor.requires_grad_(True) # jointly train compressor
+        # like DiT we only support square images
+        self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
+        self.input_size = input_size
+        self.num_classes = num_classes
+        self.use_cfg = self.cfg > 1.
+        self.n_samples = n_samples
+        print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}') 
+    def forward(self, stage1_encodings: Stage1Encodings, inputs: LabeledImageData
+    ) -> Stage2ModelOutput:
+        zs = stage1_encodings.zs
+        return Stage2ModelOutput(
+            zs_pred = zs,
+            zs_degraded= zs, # no degradation this time 
+            additional_attr = {}
+        )
+        
+    def compute_loss(self, stage1_encodings: Stage1Encodings, stage2_output: Stage2ModelOutput, inputs: LabeledImageData, valid:bool = False, **kwargs
+    ) -> dict:
+        zs = stage1_encodings.zs
+        labels = inputs.condition
+        if labels is None:
+            # we set null labels to num_classes
+            labels = torch.tensor([self.num_classes] * zs.shape[0], device=zs.device).long()
+        t = torch.randint(0, self.diffusion.num_timesteps, (zs.shape[0],), device=zs.device)
+        model_kwargs = dict(y=labels)
+        terms = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
+        loss = terms["loss"].mean()
+        return {
+            "loss_total": loss,
+            "t": t,
+        }

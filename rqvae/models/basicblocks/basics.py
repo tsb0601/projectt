@@ -127,3 +127,62 @@ class MlpResBlock(nn.Module):
             h = h + emb_out
         h = self.out_layers(h)
         return x + h
+def Normalize(in_channels, num_groups=32):
+    num_groups = in_channels // 32 # adaptive number of groups
+    if num_groups == 0: # avoid zero division
+        num_groups = 1 
+    return nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+class ConvResnetBlock(nn.Module):
+    def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,
+                dropout, kernel_size=3):
+        super().__init__()
+        self.in_channels = in_channels
+        padding = kernel_size // 2
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.use_conv_shortcut = conv_shortcut
+        self.act = nn.SiLU()
+        self.norm1 = Normalize(in_channels)
+        self.conv1 = torch.nn.Conv2d(in_channels,
+                                    out_channels,
+                                    kernel_size=kernel_size,
+                                    stride=1,
+                                    padding=padding)
+        self.norm2 = Normalize(out_channels)
+        self.dropout = torch.nn.Dropout(dropout)
+        self.conv2 = torch.nn.Conv2d(out_channels,
+                                    out_channels,
+                                    kernel_size=kernel_size,
+                                    stride=1,
+                                    padding=padding)
+        if self.in_channels != self.out_channels:
+            if self.use_conv_shortcut:
+                self.conv_shortcut = torch.nn.Conv2d(in_channels,
+                                                    out_channels,
+                                                    kernel_size=kernel_size,
+                                                    stride=1,
+                                                    padding=padding)
+            else:
+                self.nin_shortcut = torch.nn.Conv2d(in_channels,
+                                                    out_channels,
+                                                    kernel_size=1,
+                                                    stride=1,
+                                                    padding=0)
+    def forward(self, x):
+        h = x
+        h = self.norm1(h)
+        h = self.act(h)
+        h = self.conv1(h)
+
+        h = self.norm2(h)
+        h = self.act(h)
+        h = self.dropout(h)
+        h = self.conv2(h)
+
+        if self.in_channels != self.out_channels:
+            if self.use_conv_shortcut:
+                x = self.conv_shortcut(x)
+            else:
+                x = self.nin_shortcut(x)
+
+        return x+h

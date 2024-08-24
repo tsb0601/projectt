@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.klvae.Stage1_KLVAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/klvae/ema'
+      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
@@ -22,34 +22,33 @@ arch:
       cfg: 0.0
       in_channels: 4
       learn_sigma: true
-      timestep_respacing: 250
       noise_schedule: 'linear'
   checkpointing: false
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.6e-3
+  init_lr: 1.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
   amp: true
   warmup:
-    epoch: 5
+    epoch: 40
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
     mode: fix
-    start_from_zero: true
+    start_from_zero: false
 
 experiment:
-  batch_size: 32
+  batch_size: 2
   accu_step: 1
-  epochs: 60
+  epochs: 80
   save_ckpt_freq: 40
   test_freq: 1
   amp: false
-  actual_batch_size: 4096
+  actual_batch_size: 256
 
 gan:
   disc:
