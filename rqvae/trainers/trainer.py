@@ -281,6 +281,7 @@ class TrainerTemplate:
     def save_ckpt(self, optimizer, scheduler, epoch, additional_attr_to_save:tuple = (), master_only:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
         rank = self.distenv.local_rank
+        ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
         if master_only and not self.distenv.master:
             # still save rng
             rng_state = {
@@ -289,11 +290,10 @@ class TrainerTemplate:
                 'random': random.getstate(),
                 'xm': xm.get_rng_state()
             }
-            rng_path = os.path.join(self.config.result_path, RNG_NAME.format(rank))
+            rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
             torch.save(rng_state, rng_path)
             return
         epoch = 'last' if epoch == -1 else epoch
-        ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
