@@ -19,7 +19,7 @@ class DiT_Stage2(Stage2Model):
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
         self.input_size = input_size
         self.num_classes = num_classes
-        self.use_cfg = self.cfg > 1.
+        self.use_cfg = self.cfg >= 1.
         self.n_samples = kwargs.get("n_samples", 1)
         print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}') 
     def forward(self, stage1_encodings: Stage1Encodings, inputs: LabeledImageData

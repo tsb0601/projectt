@@ -228,7 +228,9 @@ class TrainerTemplate:
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
-        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
+        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(self.distenv.local_rank)) # rng state is per core
+        if not os.path.exists(rng_path):
+            rng_path = os.path.join(ckpt_folder, RNG_NAME.format(0)) # load from master
         model_weight = torch.load(model_path)
         optimizer_weight = torch.load(opt_path)
         scheduler_weight = torch.load(sch_path)
@@ -278,10 +280,19 @@ class TrainerTemplate:
         return state_dict
     def save_ckpt(self, optimizer, scheduler, epoch, additional_attr_to_save:tuple = (), master_only:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
+        rank = self.distenv.local_rank
         if master_only and not self.distenv.master:
+            # still save rng
+            rng_state = {
+                'torch': torch.get_rng_state(),
+                'numpy': np.random.get_state(),
+                'random': random.getstate(),
+                'xm': xm.get_rng_state()
+            }
+            rng_path = os.path.join(self.config.result_path, RNG_NAME.format(rank))
+            torch.save(rng_state, rng_path)
             return
         epoch = 'last' if epoch == -1 else epoch
-        rank = self.distenv.local_rank
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
@@ -310,5 +321,5 @@ class TrainerTemplate:
             torch.save(additional_attr_ckpt, additional_path)
         if self.model_ema:
             ema_model_path = os.path.join(ckpt_folder, EMA_MODEL_NAME.format(rank))
-            ema_model_weight = self.model_ema.state_dict()
+            ema_model_weight = self.sync_and_to_cpu(self.model_ema.state_dict())
             torch.save(ema_model_weight, ema_model_path)

@@ -340,6 +340,8 @@ class Trainer(TrainerTemplate):
                     self.disc_scheduler.step()
                     # discriminator.zero_grad(set_to_none=True)
                     self.model.zero_grad(set_to_none=True)
+                    if self.model_ema_woddp is not None:
+                        self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             else:
                 loss_disc = torch.zeros((), device=self.device)
                 logits = {}
@@ -359,12 +361,6 @@ class Trainer(TrainerTemplate):
                 **logits,
             }
             accm.update(metrics, count=1)
-            if it == 2 and DEBUG:
-                xm.mark_step()
-                en_compile_time = time.time()
-                xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
-                # make sure every process is in sync
-                exit()
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += (

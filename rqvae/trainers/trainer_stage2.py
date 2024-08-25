@@ -144,6 +144,8 @@ class Trainer(TrainerTemplate):
                     xm.optimizer_step(optimizer) # else we use xm.optimizer_step
                 scheduler.step()
                 self.model.zero_grad(set_to_none=True)
+                if self.model_ema_woddp is not None:
+                    self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             xm.mark_step()
             # logging
             loss_total = loss.detach()
@@ -151,12 +153,6 @@ class Trainer(TrainerTemplate):
                 "loss_total": loss_total,
             }
             accm.update(metrics, count=1)
-            if it == 2 and DEBUG:
-                xm.mark_step()
-                en_compile_time = time.time()
-                xm.master_print(f"[!]compile time: {en_compile_time - it_st_time}s")
-                # make sure every process is in sync
-                exit()
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()

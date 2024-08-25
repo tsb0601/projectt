@@ -31,30 +31,29 @@ def xm_step_every_layer(model:nn.Module):
                 mm.register_forward_hook(lambda m, i, o: xm.mark_step())
         else:
             m.register_forward_hook(lambda m, i, o: xm.mark_step())
+def assert_all_close(model_1, model_2)-> bool:
+    model_1_dict = model_1.state_dict()
+    model_2_dict = model_2.state_dict()
+    for key in model_1_dict.keys():
+        if not torch.allclose(model_1_dict[key], model_2_dict[key], atol=1e-6):
+            print(f'[!]ERROR: Key {key} is not close')
+            return False
+    return True
 def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
     assert stage in (0, 1, 2), f'[!]ERROR: Stage should be 0, 1 or 2 (0 is the connector), but got {stage}'
     model = instantiate_from_config(config)
+    model_ema = instantiate_from_config(config) if use_ema else None
     if config.get('ckpt_path', False):
         ckpt_path = config.ckpt_path
         _, keys = load_model_from_ckpt(model, ckpt_path, strict = False)
         xm.master_print(f'[!]INFO: Loaded Stage{stage} model from {ckpt_path} with keys: {keys}')
-    model_ema = instantiate_from_config(config) if use_ema else None
-    if DEBUGING: # add xm_step for faster compilation and more reusable compilation cache
-        if dist.is_initialized() and dist.get_rank() == 0:
-            print('[!]DEBUGGING: Adding xm_step to every layer. This will slow down the training.')
-        xm_step_every_layer(model)
-        if use_ema:
-            xm_step_every_layer(model_ema)
-    if use_ema:
-        raise NotImplementedError('Exponential Moving Average is not implemented yet.')
-        model_ema = ExponentialMovingAverage(model_ema, config.ema)
-        model_ema.eval()
-        model_ema.update(model, step=-1)
+    #if use_ema:
+    #    model_ema = ExponentialMovingAverage(model_ema, config.ema)
+    #    model_ema.eval()
+    #    model_ema.update(model, step=-1)
+    #    assert assert_all_close(model, model_ema), f'[!]ERROR: Model and EMA are not the same'
     model: XLA_Model
     model_ema: Optional[ExponentialMovingAverage]
-    model = model
-    if use_ema:
-        model_ema = model_ema
     return model, model_ema
 def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
     # config: OmegaConf.DictConfig
@@ -67,6 +66,7 @@ def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Option
         connector, connector_ema = _create_according_to_config(config.connector, use_ema, stage=0)
     else:
         connector = None
+        connector_ema = None
     connector: Optional[base_connector]
     if hasattr(config, 'stage_2'):
         stage_2_model, stage_2_ema = _create_according_to_config(config.stage_2, use_ema, stage=2)
@@ -79,7 +79,12 @@ def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Option
             _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
             xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
             assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
-        return stage2model, stage2ema
+        if use_ema:
+            stage2model_ema = ExponentialMovingAverage(stage2ema, ema)
+            stage2model_ema.eval()
+            stage2model_ema.update(stage2model, step=-1)
+            assert assert_all_close(stage2model, stage2model_ema.module), f'[!]ERROR: Model and EMA are not the same'
+        return stage2model, stage2model_ema
     else:
         stage1model = Stage1ModelWrapper(stage_1_model, connector)
         stage1ema = Stage1ModelWrapper(stage_1_ema, connector_ema) if use_ema else None
@@ -88,7 +93,12 @@ def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Option
             _, keys = load_model_from_ckpt(stage1model, ckpt_path, strict = False)
             xm.master_print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
             assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
-        return stage1model, stage1ema
+        if use_ema:
+            stage1model_ema = ExponentialMovingAverage(stage1ema, ema)
+            stage1model_ema.eval()
+            stage1model_ema.update(stage1model, step=-1)
+            assert assert_all_close(stage1model, stage1model_ema), f'[!]ERROR: Model and EMA are not the same'
+        return stage1model, stage1model_ema
     #if stage == 2:
     #    stage_1_model,stage_1_ema = create_model(config.stage_1, ema=ema, stage=1) 
     #    stage_2_model, stage_2_ema = create_model(config.stage_2, ema=ema, stage=1)
