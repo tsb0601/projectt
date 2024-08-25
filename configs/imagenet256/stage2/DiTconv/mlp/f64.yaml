@@ -10,34 +10,23 @@ arch:
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
       no_cls: true
-  connector:
-    target: rqvae.models.connectors.Downsample_with_Conv_Connector
-    params:
-      hidden_size: 768
-      layers: 6
-      bottleneck_ratio: 64
-      kernel_size: 1
-      remove_cls: true
-      patch_as_input: false
   stage_2:
-    target: rqvae.models.DiT.DiT_Stage2
+    target: rqvae.models.DiT.DiTwConv_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 768
+      downsample_ratio: 64
+      layers: 6
       input_size: 16
       patch_size: 1
+      in_channels: 768
+      hidden_size: 768
       depth: 12
-      num_classes: 1000
-      cfg: 0.0
       num_heads: 12
-      in_channels: 12
+      cfg: 0.0
       learn_sigma: true
       noise_schedule: 'linear'
-      timestep_respacing: 250
-
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_mlp_compress_ep60/f64/f64_blk6_b4096_conv1x1_19082024_224604/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -61,8 +50,6 @@ experiment:
   save_ckpt_freq: 30
   test_freq: 1
   amp: false
-  actual_batch_size: 4096
-
 
 gan:
   disc:

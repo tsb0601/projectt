@@ -46,7 +46,7 @@ def create_dataset(config, is_eval=False, logger=None):
         #dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:1024])
         # choose the first image and repeat it for 1024 time for training
         dataset_trn = Subset(dataset_trn, [0]*512) # lets get a bit more samples
-        dataset_val = Subset(dataset_val, [0]*512)
+        dataset_val = Subset(dataset_val, list(range(16)))
     elif config.dataset.type == 'imagenet_u':
         root = root if root else 'data/imagenet'
         dataset_trn = ImageNet_Fake(root, split='train', transform=transforms_trn)

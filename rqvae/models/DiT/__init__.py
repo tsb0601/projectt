@@ -61,7 +61,7 @@ class DiT_Stage2(Stage2Model):
             labels = torch.randint(0, self.num_classes, (self.n_samples,), device=device)
         else:
             n = labels.shape[0]
-            labels = torch.randint(0, self.num_classes, (n,), device=device) # we still do random label sampling
+            #labels = torch.randint(0, self.num_classes, (n,), device=device) # we still do random label sampling
         y = labels
         z = torch.randn(n, self.model.in_channels, self.input_size, self.input_size, device=device)
         if self.use_cfg: # this means we use cfg
@@ -96,14 +96,14 @@ class DiT_Stage2(Stage2Model):
 class DiTwConv_Stage2(Stage2Model):
     def __init__(self, downsample_ratio:int, 
         layers:int, 
-        input_size=32,
-        patch_size=2,
-        in_channels=4,
-        hidden_size=1152,
-        depth=28,
-        num_heads=16,
-        mlp_ratio=4.0,
-        class_dropout_prob=0.1,
+        input_size:int,
+        patch_size:int,
+        in_channels:int,
+        hidden_size:int,
+        depth:int,
+        num_heads:int,
+        mlp_ratio:float = 4.0,
+        class_dropout_prob:float=0.1,
         num_classes=1000,
         learn_sigma=True,
         timestep_respacing:str= "", 

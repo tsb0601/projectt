@@ -6,7 +6,7 @@ import torch
 
 from tqdm import tqdm
 from torch.nn import functional as F
-
+import torch_xla.core.xla_model as xm
 import torch_xla as xla
 def save_pickle(fname, data):
     with open(fname, 'wb') as fp:
@@ -44,6 +44,7 @@ def set_seed(seed=None):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    xm.set_rng_state(seed)
     #torch.cuda.manual_seed_all(seed)       
     return seed
 
