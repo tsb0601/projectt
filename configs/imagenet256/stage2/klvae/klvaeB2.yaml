@@ -29,7 +29,7 @@ arch:
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 4.0e-4
+  init_lr: 3.2e-3
   weight_decay: 0.0
   betas: [0.9, 0.999]
   max_gn: None
@@ -49,7 +49,7 @@ experiment:
   save_ckpt_freq: 40
   test_freq: 5
   amp: false
-  actual_batch_size: 1024
+  actual_batch_size: 4096
 
 gan:
   disc:
