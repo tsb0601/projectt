@@ -283,6 +283,9 @@ class TrainerTemplate:
         rank = self.distenv.local_rank
         epoch = 'last' if epoch == -1 else epoch
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
+        if self.distenv.master:
+            os.makedirs(ckpt_folder, exist_ok=True)
+        xm.rendezvous("save_ckpt")
         if master_only and not self.distenv.master:
             # still save rng
             rng_state = {
@@ -299,7 +302,6 @@ class TrainerTemplate:
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
         rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
         additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
-        os.makedirs(ckpt_folder, exist_ok=True)
         model_weight = self.sync_and_to_cpu(self.model_woddp.state_dict())
         optimizer_weight = self.sync_and_to_cpu(optimizer.state_dict())
         scheduler_weight = self.sync_and_to_cpu(scheduler.state_dict())
