@@ -87,14 +87,14 @@ def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Option
         return stage2model, stage2model_ema
     else:
         stage1model = Stage1ModelWrapper(stage_1_model, connector)
-        stage1ema = Stage1ModelWrapper(stage_1_ema, connector_ema) if use_ema else None
+        stage1model_ema = Stage1ModelWrapper(stage_1_ema, connector_ema) if use_ema else None
         if config.get('ckpt_path', False):
             ckpt_path = config.ckpt_path
             _, keys = load_model_from_ckpt(stage1model, ckpt_path, strict = False)
             xm.master_print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
             assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
         if use_ema:
-            stage1model_ema = ExponentialMovingAverage(stage1ema, ema)
+            stage1model_ema = ExponentialMovingAverage(stage1model_ema, ema)
             stage1model_ema.eval()
             stage1model_ema.update(stage1model, step=-1)
             assert assert_all_close(stage1model, stage1model_ema), f'[!]ERROR: Model and EMA are not the same'

@@ -34,12 +34,14 @@ else
     echo "wanb_id: $wandb_id"
     export WANDB_ID=$wandb_id
 fi
-export WANDB_DIR=$SAVE_DIR
-export WANDB_PROJECT=$EXP_NAME
+#export WANDB_DIR=$SAVE_DIR
+#export WANDB_PROJECT=$EXP_NAME
 #env | grep WANDB
+export XLA_DISABLE_FUNCTIONALIZATION=1
 python main_stage2.py \
     -m=$model_config \
     -r=$SAVE_DIR \
     --world_size=$world_size \
     -l=$load_ckpt \
-    --exp=$EXP
+    --exp=$EXP \
+    --use_autocast

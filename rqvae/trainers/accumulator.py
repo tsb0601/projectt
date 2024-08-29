@@ -208,17 +208,19 @@ class AccmStage1WithGAN:
 
     @torch.no_grad()
     def update(self, metrics_to_add, count=None, sync=False, distenv=None):
-
         if sync:
             for name, value in metrics_to_add.items():
-                gathered_value = dist_utils.all_gather_cat(distenv, value.unsqueeze(0))
-                gathered_value = gathered_value.sum().detach()
-                metrics_to_add[name] = gathered_value
+                #gathered_value = dist_utils.all_gather_cat(distenv, value.unsqueeze(0))
+                #gathered_value = gathered_value.sum().detach()
+                #value = value.clone() # to avoid the in-place operation error
+                gathered_sum_value = xm.mesh_reduce(None, value, lambda x: sum(x)/len(x))
+                metrics_to_add[name] = gathered_sum_value.detach()
+                xm.mark_step(wait=True)
         for name, value in metrics_to_add.items():
             if name not in self.metrics_sum:
                 raise KeyError(f"unexpected metric name: {name}")
             self.metrics_sum[name] += value
-        self.counter += count if not sync else count * distenv.world_size
+        self.counter += count
 
     @torch.no_grad()
     def get_summary(self, n_samples=None):

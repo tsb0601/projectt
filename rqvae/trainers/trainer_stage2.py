@@ -26,12 +26,10 @@ from header import *
 import torch_xla.core.xla_model as xm
 from torch_xla.amp import autocast
 from contextlib import nullcontext
-from matplotlib import pyplot as plt
 logger = logging.getLogger(__name__)
 import os
 
 DEBUG = bool(os.environ.get("DEBUG", 0))
-import time  # for debugging
 from typing import *
 from rqvae.models.interfaces import (
     Stage1ModelOutput,
@@ -91,16 +89,18 @@ class Trainer(TrainerTemplate):
             loss_total = loss_gen
             metrics = dict(loss_total=loss_total)
             accm.update(metrics, count=1, sync=True, distenv=self.distenv)
-            line = accm.get_summary().print_line()
+            line = f"""(epoch {epoch} / iter {it}) """
+            for metric_name, value in metrics.items():
+                line += f""", {metric_name}: {value:4f}"""
             pbar.set_description(line)
-        line = accm.get_summary(n_inst).print_line()
+        line = accm.get_summary().print_line()
         if self.distenv.master and verbose:
             mode = "valid" if valid else "train"
             mode = "%s_ema" % mode if ema else mode
             logger.info(f"""{mode:10s}, """ + line)
             with torch.no_grad():
                 self.generate(last_input, epoch, mode)
-        summary = accm.get_summary(n_inst)
+        summary = accm.get_summary()
         summary["input"] = last_input
 
         return summary
@@ -117,10 +117,6 @@ class Trainer(TrainerTemplate):
             pbar = tqdm(enumerate(loader), total=len(loader))
         else:
             pbar = enumerate(loader)
-        if DEBUG:
-            xm.mark_step()
-            it_st_time = time.time()
-            xm.master_print(f"[!]start time: {it_st_time}s")
         last_input = None
         for it, inputs in pbar:
             inputs: LabeledImageData
@@ -135,7 +131,7 @@ class Trainer(TrainerTemplate):
                 zs_pred = stage2_output.zs_pred
                 outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
                 xm.mark_step()
-                loss = outputs["loss_total"]
+            loss = outputs["loss_total"].float() # always use float for loss
             loss.backward()
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
@@ -152,10 +148,12 @@ class Trainer(TrainerTemplate):
             metrics = {
                 "loss_total": loss_total,
             }
-            accm.update(metrics, count=1)
+            accm.update(metrics, count=1, sync=True, distenv=self.distenv) # in training we only monitor master process for logging
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
-                line += accm.get_summary().print_line()
+                #line += accm.get_summary().print_line()
+                for metric_name, value in metrics.items():
+                    line += f""", {metric_name}: {value.item():4f}"""
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
                 pbar.set_description(line)
                 # per-step logging
@@ -188,7 +186,6 @@ class Trainer(TrainerTemplate):
                             "generation_step", grid, "train", global_iter
                         )
                     self.model.train()
-            xm.mark_step() # wait for main process to finish logging
         
         summary = accm.get_summary()
         summary["input"] =  last_input

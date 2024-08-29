@@ -79,11 +79,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
     xm.master_print(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
     model, model_ema = create_model(config.arch, ema=config.arch.ema)
-    model = model.to(device)
-    model: Stage2ModelWrapper
-    if model_ema:
-        model_ema:Stage2ModelWrapper = model_ema.to(device)
-    xm.master_print(f'[!]model created')
+    xm.master_print(f'[!]model created, use_ema: {model_ema is not None}, ema_decay: {config.arch.ema if model_ema is not None else None}, use_ddp: {args.use_ddp}')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
     if args.reload_batch_size:
@@ -102,7 +98,10 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!] micro_batch_size_per_core: {config.experiment.batch_size}, accu_step: {config.experiment.accu_step}, actual_batch_size: {actual_batch_size}, steps_per_epoch: {steps_per_epoch}')
     if distenv.master:
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
-
+    model.to(device) # let try moving the model to the device after optimizer creation
+    model: Stage2ModelWrapper
+    if model_ema:
+        model_ema.to(device)
     if not args.eval:
         optimizer = create_optimizer(model, config)
         scheduler = create_scheduler(

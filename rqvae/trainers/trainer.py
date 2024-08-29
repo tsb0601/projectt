@@ -179,7 +179,7 @@ class TrainerTemplate:
             if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
                 summary_val = self.eval(epoch=i, valid=True, verbose=True)
                 if self.model_ema is not None:
-                    summary_val_ema = self.eval(ema=True, epoch=i)
+                    summary_val_ema = self.eval(ema=True, epoch=i, valid=True, verbose=True)
             if self.distenv.master:
                 self.logging(
                     summary_trn, scheduler=scheduler, epoch=i + 1, mode="train"
