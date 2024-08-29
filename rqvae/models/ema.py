@@ -30,6 +30,8 @@ class ExponentialMovingAverage(torch.nn.Module):
 
     def forward(self, x, *args, **kwargs):
         return self.module(x, *args, **kwargs)
+    def infer(self, *args, **kwargs):
+        return self.module.infer(*args, **kwargs)
     @torch.no_grad()
     def update(self, module, step=None):
         if step is None:

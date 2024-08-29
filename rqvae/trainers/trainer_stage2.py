@@ -48,6 +48,7 @@ class Trainer(TrainerTemplate):
     def get_accm(self):
         metric_names = [
             "loss_total",
+            "loss_total_ema",
         ]
         accm = AccmStage1WithGAN(
             metric_names,
@@ -133,6 +134,18 @@ class Trainer(TrainerTemplate):
                 xm.mark_step()
             loss = outputs["loss_total"].float() # always use float for loss
             loss.backward()
+            # logging
+            loss_total = loss.detach()
+            metrics = {
+                "loss_total": loss_total,
+            }
+            if self.model_ema is not None: # if ema exist we also track an ema loss
+                with torch.no_grad():
+                    with autocast(self.device) if self.use_autocast else nullcontext():
+                        stage1_encodings, stage2_output = self.model_ema(inputs)
+                        outputs = self.model_ema_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
+                        loss_gen = outputs["loss_total"]
+                metrics.update({"loss_total_ema": loss_gen})
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
@@ -143,11 +156,6 @@ class Trainer(TrainerTemplate):
                 if self.model_ema_woddp is not None:
                     self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             xm.mark_step()
-            # logging
-            loss_total = loss.detach()
-            metrics = {
-                "loss_total": loss_total,
-            }
             accm.update(metrics, count=1, sync=True, distenv=self.distenv) # in training we only monitor master process for logging
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """

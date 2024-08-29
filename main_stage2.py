@@ -137,7 +137,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
     if args.eval:
         #trainer.eval(valid=True, verbose=True)
-        trainer.batch_infer(valid=True, save_root=args.result_path)
+        trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
