@@ -66,7 +66,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]XLACACHE_PATH: {cache_path}')
     os.makedirs(cache_path, exist_ok=True)
     if not xla._XLAC._xla_computation_cache_is_initialized(): # only initialize once
-        # add a lock to prevent multiple processes from initializing the cache
+        # TODO: add a lock to prevent multiple processes from initializing the cache
         xr.initialize_cache(cache_path, readonly=False)
     distenv = config.runtime.distenv
     if distenv.master and wandb_dir:

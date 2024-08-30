@@ -92,10 +92,21 @@ class DiT_Stage2(Stage2Model):
     def requires_grad_(self, requires_grad: bool = True):
         super().requires_grad_(requires_grad)
         #self.model.pos_embed.requires_grad_(False) # always freeze positional embeddings
-
+class simplewrapper(nn.Module):
+    def __init__(self, compressor:SimpleConv, model:DiT):
+        super(simplewrapper, self).__init__()
+        self.compressor = compressor
+        self.model = model
+    def forward(self, x):
+        x = self.compressor.encode(x)
+        x = self.model(x)
+        x = self.compressor.decode(x)
+        return x
 class DiTwConv_Stage2(Stage2Model):
-    def __init__(self, downsample_ratio:int, 
+    def __init__(self, 
+        downsample_ratio:int, 
         layers:int, 
+        kernel_size:int,
         input_size:int,
         patch_size:int,
         in_channels:int,
@@ -115,10 +126,11 @@ class DiTwConv_Stage2(Stage2Model):
         self.cfg = cfg
         noise_schedule = noise_schedule
         self.hidden_size = hidden_size
+        assert kernel_size in [1,3], f'[!]DiTwConv_Stage2: kernel_size: {kernel_size} must be 1 or 3'
         assert in_channels % downsample_ratio == 0, f'[!]DiTwConv_Stage2: in_channels: {in_channels} must be divisible by downsample_ratio: {downsample_ratio}'
         downsampled_channels = in_channels // downsample_ratio
-        self.compressor = SimpleConv(in_channels=in_channels, layers=layers, bottleneck_ratio=downsample_ratio, kernel_size=1) # we use 1x1 conv to down-upsample
-        self.model = DiT(
+        compressor = SimpleConv(in_channels=in_channels, layers=layers, bottleneck_ratio=downsample_ratio, kernel_size=kernel_size) 
+        model = DiT(
             input_size=input_size,
             patch_size=patch_size,
             in_channels=downsampled_channels,
@@ -130,8 +142,10 @@ class DiTwConv_Stage2(Stage2Model):
             num_classes=num_classes,
             learn_sigma=learn_sigma
         )
-        self.model.requires_grad_(True)
-        self.compressor.requires_grad_(True) # jointly train compressor
+        compressor.requires_grad_(True)
+        model.requires_grad_(True)
+        self.model = simplewrapper(compressor, model)
+        self.model.requires_grad_(True) # joint training
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
         self.input_size = input_size
