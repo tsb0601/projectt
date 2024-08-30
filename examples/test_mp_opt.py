@@ -27,7 +27,7 @@ import torch_xla.debug.metrics as met
 from torch_xla.debug.profiler import trace
 import torch.autograd.profiler as profiler
 profile_log_path = './profile' 
-tracing = True
+tracing = False
 os.makedirs(profile_log_path, exist_ok=True) 
 class RandomDataset(Dataset):
     def __init__(self, size, length):

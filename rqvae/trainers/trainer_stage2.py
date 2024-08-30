@@ -131,9 +131,9 @@ class Trainer(TrainerTemplate):
                 zs = stage1_encodings.zs
                 zs_pred = stage2_output.zs_pred
                 outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
-                xm.mark_step()
                 loss = outputs["loss_total"] # always use float for loss
             loss.backward()
+            xm.mark_step()
             # logging
             loss_total = loss.detach()
             metrics = {
@@ -156,7 +156,7 @@ class Trainer(TrainerTemplate):
                 if self.model_ema_woddp is not None:
                     self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             xm.mark_step()
-            accm.update(metrics, count=1, sync=True, distenv=self.distenv) # in training we only monitor master process for logging
+            accm.update(metrics, count=1, sync=False, distenv=self.distenv) # in training we only monitor master process for logging
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 #line += accm.get_summary().print_line()
