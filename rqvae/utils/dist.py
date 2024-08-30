@@ -107,6 +107,16 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     else:
         broadcast_master_param(model) # significantly slower than dist.broadcast before first compilation, so caching is really important
         #model = torch.nn.DataParallel(model)
+    # do a check to see all models are the same
+    test_param = next(model.parameters())
+    test_param = test_param.detach().clone()
+    if not distenv.use_ddp:
+        test_params = [torch.zeros_like(test_param) for _ in range(distenv.world_size)]
+        all_params = xm.all_gather(test_param, dim=0)
+        for i, param in enumerate(all_params):
+            test_params[i] = param
+        for i, param in enumerate(test_params):
+            assert torch.allclose(param, test_param), f'[dist] model not equal at {i}'
     xm.mark_step() # mark step for sync
     return model
 
