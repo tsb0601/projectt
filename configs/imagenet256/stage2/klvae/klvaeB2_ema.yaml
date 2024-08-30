@@ -33,14 +33,14 @@ optimizer:
   weight_decay: 0.0
   betas: [0.9, 0.999]
   max_gn: None
-  amp: false
+  amp: true
   warmup:
-    epoch: 80
+    epoch: 5
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 0.
+    min_lr: 1.0e-4
     mode: fix
-    start_from_zero: false
+    start_from_zero: true
 
 experiment:
   batch_size: 4
