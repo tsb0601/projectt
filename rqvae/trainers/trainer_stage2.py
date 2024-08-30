@@ -132,7 +132,7 @@ class Trainer(TrainerTemplate):
                 zs_pred = stage2_output.zs_pred
                 outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
                 xm.mark_step()
-            loss = outputs["loss_total"].float() # always use float for loss
+                loss = outputs["loss_total"] # always use float for loss
             loss.backward()
             # logging
             loss_total = loss.detach()
@@ -151,6 +151,7 @@ class Trainer(TrainerTemplate):
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
                 else:
                     xm.optimizer_step(optimizer) # else we use xm.optimizer_step
+                self.model.zero_grad(set_to_none=True)
                 scheduler.step()
                 self.model.zero_grad(set_to_none=True)
                 if self.model_ema_woddp is not None:

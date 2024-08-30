@@ -40,10 +40,10 @@ optimizer:
     buffer_epoch: 0
     min_lr: 1.0e-4
     mode: fix
-    start_from_zero: true
+    start_from_zero: false
 
 experiment:
-  batch_size: 32
+  batch_size: 4
   accu_step: 1
   epochs: 80
   save_ckpt_freq: 40

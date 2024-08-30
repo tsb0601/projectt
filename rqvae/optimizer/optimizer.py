@@ -40,10 +40,6 @@ def create_resnet_optimizer(model, config):
         optimizer = optim_class.SGD(
             trainable_params, lr=config.init_lr, weight_decay=config.weight_decay, momentum=0.9
         )
-    elif optimizer_type == 'cpuadam':
-        optimizer = DeepSpeedCPUAdam(
-            trainable_params, lr=config.init_lr, weight_decay=config.weight_decay, betas=config.betas
-        )
     else:
         raise ValueError(f'{optimizer_type} invalid..')
     return optimizer
