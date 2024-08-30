@@ -113,7 +113,7 @@ def main(rank, args, extra_args):
     disc_state_dict = None
     xm.master_print(f'[!]model loaded')
     if distenv.master:
-        xm.master_print(model)
+        print(model)
         compute_model_size(model, logger)
     if distenv.master and use_optim:
         logger.info(optimizer.__repr__())

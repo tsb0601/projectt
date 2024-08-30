@@ -153,7 +153,6 @@ class Trainer(TrainerTemplate):
                     xm.optimizer_step(optimizer) # else we use xm.optimizer_step
                 self.model.zero_grad(set_to_none=True)
                 scheduler.step()
-                self.model.zero_grad(set_to_none=True)
                 if self.model_ema_woddp is not None:
                     self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             xm.mark_step()
