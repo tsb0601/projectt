@@ -254,7 +254,7 @@ class Trainer(TrainerTemplate):
             self.reconstruct(xs, epoch=0, mode=mode)
 
         summary = accm.get_summary(n_inst)
-        summary["xs"] = xs
+        summary["input"] = xs
 
         return summary
 
@@ -321,8 +321,9 @@ class Trainer(TrainerTemplate):
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
                 else:
                     xm.optimizer_step(optimizer) # else we use xm.optimizer_step
-                scheduler.step()
                 self.model.zero_grad(set_to_none=True)
+                scheduler.step()
+                
             xm.mark_step()
             # discriminator loss
 
@@ -392,6 +393,7 @@ class Trainer(TrainerTemplate):
                         )
 
                 if (global_iter + 1) % 500 == 0:
+                    self.model.eval()
                     bsz = xs.size(0)
                     if bsz == 1:  # need to be handle properly
                         continue
@@ -417,15 +419,15 @@ class Trainer(TrainerTemplate):
                     self.writer.add_image(
                         "reconstruction_step", grid, "train", global_iter
                     )
-
+                    self.model.train()
         summary = accm.get_summary()
-        summary["xs"] = xs
+        summary["input"] = xs
 
         return summary
 
     def logging(self, summary, scheduler=None, epoch=0, mode="train"):
         if epoch % 10 == 1 or epoch % self.config.experiment.test_freq == 0:
-            self.reconstruct(summary["xs"], epoch, mode)
+            self.reconstruct(summary["input"], epoch, mode)
         for key, value in summary.metrics.items():
             self.writer.add_scalar(f"loss/{key}", summary[key], mode, epoch)
         if mode == "train":

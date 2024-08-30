@@ -144,8 +144,8 @@ class Trainer(TrainerTemplate):
                     with autocast(self.device) if self.use_autocast else nullcontext():
                         stage1_encodings, stage2_output = self.model_ema(inputs)
                         outputs = self.model_ema_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
-                        loss_gen = outputs["loss_total"]
-                metrics.update({"loss_total_ema": loss_gen})
+                        loss_total_ema = outputs["loss_total"]
+                metrics.update({"loss_total_ema": loss_total_ema})
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
