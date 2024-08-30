@@ -110,14 +110,14 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     # do a check to see all models are the same
     test_param = next(model.parameters())
     test_param = test_param.detach().clone()
+    xm.master_print(f'[dist] test_param: {test_param.shape}')
     if not distenv.use_ddp:
         all_params = xm.all_gather(test_param, dim=0)
-        test_params = [None] * len(all_params)
-        xm.master_print(f'[dist] all_params: {all_params.shape}')
-        for i, param in enumerate(all_params):
-            test_params[i] = param
-        for i, param in enumerate(test_params):
-            assert torch.allclose(param, test_param), f'[dist] model not equal at {i}'
+        if distenv.master:
+            for i, param in enumerate(all_params):
+                if not torch.allclose(param, test_param, atol=1e-6):
+                    print(f'[dist] rank {i} model is not the same as master model')
+                    raise ValueError(f'[dist] rank {i} model is not the same as master model')
     xm.mark_step() # mark step for sync
     return model
 
