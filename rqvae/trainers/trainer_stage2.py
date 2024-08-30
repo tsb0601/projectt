@@ -156,7 +156,7 @@ class Trainer(TrainerTemplate):
                 if self.model_ema_woddp is not None:
                     self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             xm.mark_step()
-            accm.update(metrics, count=1, sync=False, distenv=self.distenv) # in training we only monitor master process for logging
+            accm.update(metrics, count=1, sync=True, distenv=self.distenv) # in training we only monitor master process for logging
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 #line += accm.get_summary().print_line()
@@ -166,7 +166,7 @@ class Trainer(TrainerTemplate):
                 pbar.set_description(line)
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
-                if it % (len(loader) // 2) == 0: # log at the beginning and middle of the epoch
+                if (global_iter + 1) % 100 == 0: # log at the beginning and middle of the epoch
                     for key, value in metrics.items():
                         if isinstance(value, torch.Tensor):
                             value = value.to(
@@ -178,7 +178,7 @@ class Trainer(TrainerTemplate):
                     self.writer.add_scalar(
                         "lr_step", scheduler.get_last_lr()[0], "train", global_iter
                     )
-                if (global_iter + 1) % 500 == 0:
+                if it % (len(loader) // 2) == 0:
                     self.model.eval()
                     with torch.no_grad():
                         bsz = xs.size(0)
