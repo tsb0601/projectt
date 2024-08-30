@@ -81,7 +81,6 @@ def initialize(args: argparse.Namespace , logger =None):
         logger.info(distenv)
 
     return distenv
-
 def broadcast_master_param(model: torch.nn.Module) -> None:
   """
   Broadcast the model parameters from master process to other processes
@@ -105,7 +104,8 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
         # xm.broadcast_master_param(model.parameters(), 0)
         #dist.barrier()
     else:
-        broadcast_master_param(model) # significantly slower than dist.broadcast before first compilation, so caching is really important
+        xm.broadcast_master_param(model)
+        #broadcast_master_param(model) # significantly slower than dist.broadcast before first compilation, so caching is really important
         #model = torch.nn.DataParallel(model)
     # do a check to see all models are the same
     test_param = next(model.parameters())
@@ -113,11 +113,10 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     xm.master_print(f'[dist] test_param: {test_param.shape}')
     if not distenv.use_ddp:
         all_params = xm.all_gather(test_param, dim=0)
-        if distenv.master:
-            for i, param in enumerate(all_params):
-                if not torch.allclose(param, test_param, atol=1e-6):
-                    print(f'[dist] rank {i} model is not the same as master model')
-                    raise ValueError(f'[dist] rank {i} model is not the same as master model')
+        for i, param in enumerate(all_params):
+            if not torch.allclose(param, test_param, atol=1e-6):
+                raise ValueError(f'[dist] rank {i} model is not the same as master model')
+    xm.master_print(f'[dist] model is the same across all processes')
     xm.mark_step() # mark step for sync
     return model
 
