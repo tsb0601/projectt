@@ -111,8 +111,9 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     test_param = next(model.parameters())
     test_param = test_param.detach().clone()
     if not distenv.use_ddp:
-        test_params = [torch.zeros_like(test_param) for _ in range(distenv.world_size)]
         all_params = xm.all_gather(test_param, dim=0)
+        test_params = [None] * len(all_params)
+        xm.master_print(f'[dist] all_params: {all_params.shape}')
         for i, param in enumerate(all_params):
             test_params[i] = param
         for i, param in enumerate(test_params):
