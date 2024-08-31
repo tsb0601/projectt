@@ -25,7 +25,7 @@ arch:
       noise_schedule: 'linear'
       #timestep_respacing: 250
   checkpointing: false
-  ema: 0.9999
+  ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -43,7 +43,7 @@ optimizer:
     start_from_zero: false
 
 experiment:
-  batch_size: 2
+  batch_size: 4
   accu_step: 1
   epochs: 80
   save_ckpt_freq: 40

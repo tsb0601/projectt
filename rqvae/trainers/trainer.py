@@ -146,7 +146,7 @@ class TrainerTemplate:
         self.model.eval() 
         if self.model_ema is not None:
             self.model_ema.eval()
-        model = self.model_ema_woddp if not ema or self.model_ema is None else self.model_ema_woddp
+        model = self.model_woddp if not ema or self.model_ema is None else self.model_ema_woddp
         loader = self.wrap_loader('valid' if valid else 'train')
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
         for it, inputs in pbar:
