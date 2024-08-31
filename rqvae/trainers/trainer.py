@@ -146,11 +146,10 @@ class TrainerTemplate:
         self.model.eval() 
         if self.model_ema is not None:
             self.model_ema.eval()
-        model = self.model_ema_woddp if not ema and self.model_ema is not None else self.model_ema_woddp
+        model = self.model_ema_woddp if not ema or self.model_ema is None else self.model_ema_woddp
         loader = self.wrap_loader('valid' if valid else 'train')
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
         for it, inputs in pbar:
-            model.zero_grad()
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             img_paths = inputs.img_path
@@ -324,5 +323,5 @@ class TrainerTemplate:
             torch.save(additional_attr_ckpt, additional_path)
         if self.model_ema:
             ema_model_path = os.path.join(ckpt_folder, EMA_MODEL_NAME.format(rank))
-            ema_model_weight = self.sync_and_to_cpu(self.model_ema.state_dict())
+            ema_model_weight = self.sync_and_to_cpu(self.model_ema_woddp.state_dict())
             torch.save(ema_model_weight, ema_model_path)
