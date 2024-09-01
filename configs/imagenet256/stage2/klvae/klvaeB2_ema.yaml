@@ -29,21 +29,21 @@ arch:
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.6e-3
+  init_lr: 1.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.999]
   max_gn: None
   amp: true
   warmup:
-    epoch: 5
+    epoch: 80
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.6e-3
+    min_lr: 1.0e-4
     mode: fix
-    start_from_zero: false
+    start_from_zero: true
 
 experiment:
-  batch_size: 32
+  batch_size: 2
   accu_step: 1
   epochs: 80
   save_ckpt_freq: 40
