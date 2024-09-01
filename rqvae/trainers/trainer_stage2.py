@@ -91,8 +91,9 @@ class Trainer(TrainerTemplate):
             metrics = dict(loss_total=loss_total)
             accm.update(metrics, count=1, sync=True, distenv=self.distenv)
             line = f"""(epoch {epoch} / iter {it}) """
-            for metric_name, value in metrics.items():
-                line += f""", {metric_name}: {value:4f}"""
+            line += accm.get_summary().print_line()
+            #for metric_name, value in metrics.items():
+            #    line += f""", {metric_name}: {value:4f}"""
             pbar.set_description(line)
         line = accm.get_summary().print_line()
         if self.distenv.master and verbose:
@@ -159,9 +160,9 @@ class Trainer(TrainerTemplate):
             accm.update(metrics, count=1, sync=True, distenv=self.distenv) # in training we only monitor master process for logging
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
-                #line += accm.get_summary().print_line()
-                for metric_name, value in metrics.items():
-                    line += f""", {metric_name}: {value.item():4f}"""
+                line += accm.get_summary().print_line()
+                #for metric_name, value in metrics.items():
+                #    line += f""", {metric_name}: {value.item():4f}"""
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
                 pbar.set_description(line)
                 # per-step logging
