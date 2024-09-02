@@ -155,6 +155,8 @@ class DiTwConv_Stage2(Stage2Model):
         self.downsampled_out_channels = model.out_channels
         conv_decoder = ConvDecoder(bottle_dim=self.downsampled_out_channels, layers=layers, upsample_ratio=downsample_ratio, kernel_size=kernel_size)
         model.requires_grad_(True)
+        conv_decoder.requires_grad_(True)
+        conv_encoder.requires_grad_(True)
         self.model = simplewrapper(conv_encoder,conv_decoder, model)
         self.model.requires_grad_(True) # joint training
         # like DiT we only support square images

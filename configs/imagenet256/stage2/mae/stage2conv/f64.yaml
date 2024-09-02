@@ -19,8 +19,8 @@ arch:
     target: rqvae.models.DiT.DiTwConv_Stage2
     params:
       # DiT B/1 Recipe
-      downsample_ratio: 64
-      layers: 6
+      downsample_ratio: 1
+      layers: 0
       kernel_size: 1
       input_size: 16
       patch_size: 1
