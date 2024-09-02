@@ -14,6 +14,8 @@ from rqvae.models.interfaces import *
 import sys
 import os
 from omegaconf import OmegaConf
+def count_params(model: torch.nn.Module):
+    return sum(p.numel() for p in model.parameters()), sum(p.numel() for p in model.parameters() if p.requires_grad)
 config_path = sys.argv[1]
 im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
@@ -22,6 +24,8 @@ with torch.no_grad():
     stage2_model_wrapper, _  = create_model(config)
     stage2_model_wrapper:Stage2ModelWrapper
     print('stage2_model_wrapper:', stage2_model_wrapper)
+    param, trainable_param = count_params(stage2_model_wrapper)
+    print(f"Total params: {param/1e6:.2f}M, Trainable params: {trainable_param/1e6:.2f}M")
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
     stage2_model = stage2_model_wrapper.stage_2_model
@@ -33,6 +37,12 @@ with torch.no_grad():
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
+    print("=" * 10, 'testing stage1 get last layer', "=" * 10)
+    last_layer = stage1_model.get_last_layer()
+    print(last_layer.shape, last_layer.dtype)
+    print("=" * 10, 'testing stage2 get last layer', "=" * 10)
+    last_layer = stage2_model_wrapper.get_last_layer()
+    print(last_layer.shape, last_layer.dtype)
     print("=" * 10, 'testing encoding', "=" * 10)
     latent_output = stage1_model.encode(data)
     print('encoded zs:', latent_output.zs.shape, latent_output.zs.min(), latent_output.zs.max())
@@ -64,7 +74,7 @@ with torch.no_grad():
     loss = stage2_model.compute_loss(latent_output ,forward_output, data)['loss_total']
     print(loss)
     print("=" * 10, 'testing stage2 infer (skipped)', "=" * 10)
-    #with autocast(device=xm.xla_device()):
-    #    generated_output = stage2_model.infer(data)
-    #print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
+    with autocast(device=xm.xla_device()):
+        generated_output = stage2_model.infer(data)
+    print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
     print("=" * 10, 'all set!', "=" * 10)

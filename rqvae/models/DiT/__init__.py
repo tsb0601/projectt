@@ -1,10 +1,11 @@
+from rqvae.models.basicblocks.utils import zero_module
 from .models import DiT
 import torch
 from ..interfaces import *
 from .diffusion import create_diffusion
 from typing import List, Optional
 import torch_xla.core.xla_model as xm
-from .blocks import SimpleConv
+from .blocks import ConvEncoder, ConvDecoder
 class DiT_Stage2(Stage2Model):
     def __init__(self,hidden_size:int, input_size:int, num_classes:int, depth:int, **kwargs):
         super().__init__()
@@ -93,15 +94,20 @@ class DiT_Stage2(Stage2Model):
         super().requires_grad_(requires_grad)
         #self.model.pos_embed.requires_grad_(False) # always freeze positional embeddings
 class simplewrapper(nn.Module):
-    def __init__(self, compressor:SimpleConv, model:DiT):
+    def __init__(self, conv_encoder: ConvEncoder,conv_decoder: ConvDecoder, model:DiT):
         super(simplewrapper, self).__init__()
-        self.compressor = compressor
+        self.conv_encoder = conv_encoder
         self.model = model
-    def forward(self, x):
-        x = self.compressor.encode(x)
-        x = self.model(x)
-        x = self.compressor.decode(x)
-        return x
+        self.conv_decoder = conv_decoder
+        #assert self.conv_encoder.in_channels == self.conv_decoder.out_channels, f'[!]simplewrapper: conv_encoder.in_channels: {self.conv_encoder.#in_channels} must be equal to conv_out.out_channels: {self.conv_decoder.out_channels}'
+        channels = self.conv_decoder.out_channels
+        #self.conv_out = zero_module(torch.nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0)) # zero out the output
+    def forward(self, x_t, t, **model_kwargs): # follow the calling convention of diffusion
+        x_t = self.conv_encoder(x_t)
+        pred = self.model(x_t, t, **model_kwargs)
+        pred = self.conv_decoder(pred)
+        #pred = self.conv_out(pred)
+        return pred
 class DiTwConv_Stage2(Stage2Model):
     def __init__(self, 
         downsample_ratio:int, 
@@ -129,7 +135,11 @@ class DiTwConv_Stage2(Stage2Model):
         assert kernel_size in [1,3], f'[!]DiTwConv_Stage2: kernel_size: {kernel_size} must be 1 or 3'
         assert in_channels % downsample_ratio == 0, f'[!]DiTwConv_Stage2: in_channels: {in_channels} must be divisible by downsample_ratio: {downsample_ratio}'
         downsampled_channels = in_channels // downsample_ratio
-        compressor = SimpleConv(in_channels=in_channels, layers=layers, bottleneck_ratio=downsample_ratio, kernel_size=kernel_size) 
+        self.in_channels = in_channels
+        self.downsample_ratio = downsample_ratio
+        self.downsampled_channels = downsampled_channels
+        #compressor = SimpleConv(in_channels=in_channels, layers=layers, bottleneck_ratio=downsample_ratio, kernel_size=kernel_size) 
+        conv_encoder = ConvEncoder(in_channels=in_channels, layers=layers, bottleneck_ratio=downsample_ratio, kernel_size=kernel_size)
         model = DiT(
             input_size=input_size,
             patch_size=patch_size,
@@ -142,9 +152,10 @@ class DiTwConv_Stage2(Stage2Model):
             num_classes=num_classes,
             learn_sigma=learn_sigma
         )
-        compressor.requires_grad_(True)
+        self.downsampled_out_channels = model.out_channels
+        conv_decoder = ConvDecoder(bottle_dim=self.downsampled_out_channels, layers=layers, upsample_ratio=downsample_ratio, kernel_size=kernel_size)
         model.requires_grad_(True)
-        self.model = simplewrapper(compressor, model)
+        self.model = simplewrapper(conv_encoder,conv_decoder, model)
         self.model.requires_grad_(True) # joint training
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
@@ -177,3 +188,47 @@ class DiTwConv_Stage2(Stage2Model):
             "loss_total": loss,
             "t": t,
         }
+    def get_last_layer(self):
+        return self.model.conv_decoder.up[-1].conv2.weight
+    def get_recon_imgs(self, xs_real, xs, **kwargs):
+        return xs_real.clamp(0, 1), xs.clamp(0, 1)
+    @torch.no_grad()
+    def infer(self, inputs: LabeledImageData) -> Stage2ModelOutput:
+        device = xm.xla_device() # default to TPU
+        labels = inputs.condition
+        if isinstance(labels, torch.Tensor):
+            device = labels.device # sp hack
+        if isinstance(inputs.img, torch.Tensor):
+            device = inputs.img.device # sp hack
+        n = self.n_samples
+        cfg = self.cfg
+        if labels is None:
+            labels = torch.randint(0, self.num_classes, (self.n_samples,), device=device)
+        else:
+            n = labels.shape[0]
+            #labels = torch.randint(0, self.num_classes, (n,), device=device) # we still do random label sampling
+        y = labels
+        z = torch.randn(n, self.in_channels, self.input_size, self.input_size, device=device)
+        if self.use_cfg: # this means we use cfg
+            z = torch.cat([z, z], 0)
+            y_null = torch.tensor([1000] * labels.shape[0], device=device)
+            y = torch.cat([y, y_null], 0)
+            model_kwargs = dict(y=y, cfg_scale=cfg)
+            sample_fn = self.model.forward_with_cfg
+        else:
+            #y_null = torch.tensor([1000] * labels.shape[0], device=device)
+            model_kwargs = dict(y=y)# do unconditional sampling
+            sample_fn = self.model.forward
+        # Sample images:
+        samples = self.diffusion.p_sample_loop(
+            sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=device
+        )
+        if self.use_cfg:
+            samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+        return Stage2ModelOutput(
+            zs_pred = samples,
+            zs_degraded = None,
+            additional_attr = {
+                "labels": labels,
+            }
+        )

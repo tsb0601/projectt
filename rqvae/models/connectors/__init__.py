@@ -79,17 +79,19 @@ def P_to_P(zs:torch.Tensor, split:float = 1)-> torch.Tensor:
     # then reshape to bsz, hidden_size, split_pn, split_pn
     zs = zs.view(batch_size, split_c, split_pn, split_pn)
     return zs.contiguous()
-class MAE_Diffusion_connector(base_connector):
-    def __init__(self, split:int = 1):
+class ReshapeAndSplit_connector(base_connector):
+    def __init__(self, split:int = 1, remove_cls:bool = True):
         super().__init__()
         #self.forward_norm = nn.BatchNorm1d(hidden_size, affine=False)
         #self.reverse_norm = nn.BatchNorm1d(hidden_size, affine=True)
         self.split = split
+        self.remove_cls = remove_cls
         assert int(split**0.5) == split**0.5, 'split should be a square number'
     def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
         zs = encodings.zs # zs : [batch_size, num_patches + 1, hidden_size]
         # remove cls
-        zs = zs[:,1:]
+        if self.remove_cls:
+            zs = zs[:,1:]
         zs = L_to_P(zs, self.split)
         """# reshape it to square
         batch_size, num_patches, hidden_size = zs.shape

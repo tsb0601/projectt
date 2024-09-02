@@ -7,6 +7,7 @@ class ConvEncoder(nn.Module):
         super(ConvEncoder, self).__init__()
         bottle_dim = int(in_channels // bottleneck_ratio)
         each_layer_downsample_ratio = int(bottleneck_ratio ** (1.0 / layers)) if layers > 1 else 1
+        self.in_channels = in_channels
         self.down = nn.ModuleList()
         cur_dim = in_channels
         for i in range(layers):
@@ -32,6 +33,7 @@ class ConvDecoder(nn.Module):
                 next_dim = in_channels
             self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size))
             cur_dim = next_dim
+        self.out_channels = in_channels
     def forward(self, x):
         for layer in self.up:
             x = layer(x)

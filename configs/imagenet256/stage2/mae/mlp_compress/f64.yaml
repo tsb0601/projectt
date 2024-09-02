@@ -87,7 +87,7 @@ gan:
         mode: fix
         start_from_zero: true
     experiment:
-      test_freq: 1
+      test_freq: 10
       amp: false
   loss:
     disc_loss: hinge
