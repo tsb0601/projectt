@@ -191,6 +191,8 @@ class DiTwConv_Stage2(Stage2Model):
             "t": t,
         }
     def get_last_layer(self):
+        if len(self.model.conv_decoder.up) == 0:
+            return self.model.model.final_layer.linear.weight
         return self.model.conv_decoder.up[-1].conv2.weight
     def get_recon_imgs(self, xs_real, xs, **kwargs):
         return xs_real.clamp(0, 1), xs.clamp(0, 1)
