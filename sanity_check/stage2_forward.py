@@ -73,8 +73,10 @@ with torch.no_grad():
     print("=" * 10, 'testing stage2 loss', "=" * 10)
     loss = stage2_model.compute_loss(latent_output ,forward_output, data)['loss_total']
     print(loss)
-    print("=" * 10, 'testing stage2 infer (skipped)', "=" * 10)
-    with autocast(device=xm.xla_device()):
-        generated_output = stage2_model.infer(data)
-    print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
+    do_infer = sys.argv[3] if len(sys.argv) > 3 else False
+    print("=" * 10, f'testing stage2 infer {"(skipped)" if not do_infer else ""}', "=" * 10)
+    if do_infer:
+        with autocast(device=xm.xla_device()):
+            generated_output = stage2_model.infer(data)
+        print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
     print("=" * 10, 'all set!', "=" * 10)
