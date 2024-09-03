@@ -7,21 +7,49 @@ from typing import List, Optional
 import torch_xla.core.xla_model as xm
 from .blocks import ConvEncoder, ConvDecoder
 class DiT_Stage2(Stage2Model):
-    def __init__(self,hidden_size:int, input_size:int, num_classes:int, depth:int, **kwargs):
+    def __init__(self,
+        input_size:int,
+        patch_size:int,
+        in_channels:int,
+        hidden_size:int,
+        depth:int,
+        num_heads:int,
+        mlp_ratio:float = 4.0,
+        class_dropout_prob:float=0.1,
+        num_classes=1000,
+        learn_sigma=True,
+        timestep_respacing:str= "", 
+        noise_schedule:str="linear", 
+        cfg:float = .0,
+        inference_step:int = 250,
+        n_samples:int = 125): 
         super().__init__()
-        self.timestep_respacing = str(kwargs.pop("timestep_respacing", ""))
-        self.cfg = kwargs.pop("cfg", .0)
-        learn_sigma = kwargs.pop("learn_sigma", True) # learn sigma is True by default and is a required argument in DiT
-        noise_schedule = kwargs.pop("noise_schedule", "linear")
+        self.timestep_respacing = str(timestep_respacing)
+        self.cfg = cfg
+        #learn_sigma = kwargs.pop("learn_sigma", True) # learn sigma is True by default and is a required argument in DiT
+        #noise_schedule = kwargs.pop("noise_schedule", "linear")
         self.hidden_size = hidden_size
-        self.model = DiT(num_classes=num_classes, input_size=input_size, hidden_size = hidden_size, depth=depth,learn_sigma=learn_sigma, **kwargs) 
+        self.model = DiT(
+            input_size=input_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
+            hidden_size=hidden_size,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            class_dropout_prob=class_dropout_prob,
+            num_classes=num_classes,
+            learn_sigma=learn_sigma
+        )
         self.model.requires_grad_(True)
+        self.inference_step = inference_step
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
+        self.infer_diffusion = create_diffusion(timestep_respacing=str(self.inference_step),learn_sigma= learn_sigma, noise_schedule=noise_schedule)
         self.input_size = input_size
         self.num_classes = num_classes
         self.use_cfg = self.cfg >= 1.
-        self.n_samples = kwargs.get("n_samples", 1)
+        self.n_samples = n_samples
         print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}') 
     def forward(self, stage1_encodings: Stage1Encodings, inputs: LabeledImageData
     ) -> Stage2ModelOutput:
@@ -67,7 +95,7 @@ class DiT_Stage2(Stage2Model):
         z = torch.randn(n, self.model.in_channels, self.input_size, self.input_size, device=device)
         if self.use_cfg: # this means we use cfg
             z = torch.cat([z, z], 0)
-            y_null = torch.tensor([1000] * labels.shape[0], device=device)
+            y_null = torch.tensor([self.num_classes] * labels.shape[0], device=device)
             y = torch.cat([y, y_null], 0)
             model_kwargs = dict(y=y, cfg_scale=cfg)
             sample_fn = self.model.forward_with_cfg
@@ -76,7 +104,7 @@ class DiT_Stage2(Stage2Model):
             model_kwargs = dict(y=y)# do unconditional sampling
             sample_fn = self.model.forward
         # Sample images:
-        samples = self.diffusion.p_sample_loop(
+        samples = self.infer_diffusion.p_sample_loop(
             sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=device
         )
         if self.use_cfg:
@@ -126,9 +154,10 @@ class DiTwConv_Stage2(Stage2Model):
         timestep_respacing:str= "", 
         noise_schedule:str="linear", 
         cfg:float = .0,
+        inference_step:int = 250,
         n_samples:int = 125): 
         super().__init__()
-        self.timestep_respacing = timestep_respacing
+        self.timestep_respacing = str(timestep_respacing)
         self.cfg = cfg
         noise_schedule = noise_schedule
         self.hidden_size = hidden_size
@@ -161,6 +190,8 @@ class DiTwConv_Stage2(Stage2Model):
         self.model.requires_grad_(True) # joint training
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
+        self.inferencing_step = inference_step
+        self.infer_diffusion = create_diffusion(timestep_respacing=str(self.inferencing_step),learn_sigma= learn_sigma, noise_schedule=noise_schedule)
         self.input_size = input_size
         self.num_classes = num_classes
         self.use_cfg = self.cfg > 1.
@@ -224,7 +255,7 @@ class DiTwConv_Stage2(Stage2Model):
             model_kwargs = dict(y=y)# do unconditional sampling
             sample_fn = self.model.forward
         # Sample images:
-        samples = self.diffusion.p_sample_loop(
+        samples = self.infer_diffusion.p_sample_loop(
             sample_fn, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=False, device=device
         )
         if self.use_cfg:
