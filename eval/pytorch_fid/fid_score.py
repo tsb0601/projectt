@@ -292,7 +292,7 @@ def calculate_fid_given_paths(paths, batch_size, device, dims, num_workers=1):
 def main():
     args = parser.parse_args()
 
-    device = xm.xla_device()
+    device = xm.xla_device() if not torch.cuda.is_available() else torch.device("cuda") # use cuda if available
 
     if args.num_workers is None:
         try:
