@@ -57,10 +57,15 @@ def P_to_L(zs:torch.Tensor, split:float = 1) -> torch.Tensor:
     aggregated_c = c * split
     sqrt_split = int(split ** 0.5)
     split_pn = int(pn // sqrt_split)
-    zs = zs.view(batch_size, c, sqrt_split, split_pn, sqrt_split, split_pn)
-    zs = zs.permute(0,1,3,5,2,4).contiguous()       
+    #zs = zs.view(batch_size, c, sqrt_split, split_pn, sqrt_split, split_pn)
+    zs = zs.reshape(batch_size, c, split_pn, sqrt_split, split_pn, sqrt_split)
+    #try reshape back to see diff
+    # do a reverse permute to (0,1,4,2,5,3)
+    zs = zs.permute(0,1,3,5,2,4).contiguous()
     zs = zs.view(batch_size, aggregated_c, split_pn, split_pn)
-    zs = zs.view(batch_size, aggregated_c, split_pn*split_pn).permute(0,2,1).contiguous()
+    zs = zs.permute(0,2,3,1).contiguous()
+    zs = zs.view(batch_size, split_pn, split_pn, aggregated_c)
+    zs = zs.view(batch_size, split_pn*split_pn, aggregated_c)
     return zs.contiguous()
 def P_to_P(zs:torch.Tensor, split:float = 1)-> torch.Tensor:
     """

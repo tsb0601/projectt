@@ -135,7 +135,8 @@ def get_activations(
     #dataset = ImagePathDataset(files, transforms=TF.ToTensor())
     # files is a npz file
     def data_transforms(img):
-        return torch.tensor(img).permute(2, 0, 1).float() / 255.0 # hand-crafted transform for speed
+        return TF.ToTensor()(img)
+        #return torch.tensor(img).permute(2, 0, 1).float() / 255.0 # hand-crafted transform for speed
     dataset = npzDataset(file, transforms=data_transforms)
     dataloader = torch.utils.data.DataLoader(
         dataset,

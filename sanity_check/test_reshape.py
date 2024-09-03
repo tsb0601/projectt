@@ -39,7 +39,6 @@ def L_to_P(zs:torch.Tensor, split:float = 1)-> torch.Tensor:
     zs = zs.view(batch_size, split_c, sqrt_split, sqrt_split, pn, pn)
     # then permute to split_c, split_pn, sqrt_split, split_pn, sqrt_split
     zs = zs.permute(0,1,4,2,5,3).contiguous()
-    print('zs after permute:', zs.shape)
     # then reshape to bsz, hidden_size, split_pn, split_pn
     zs = zs.reshape(batch_size, split_c, split_pn, split_pn)
     return zs.contiguous()
@@ -52,23 +51,15 @@ def P_to_L(zs:torch.Tensor, split:float = 1) -> torch.Tensor:
     aggregated_c = c * split
     sqrt_split = int(split ** 0.5)
     split_pn = int(pn // sqrt_split)
-    print('zs:', zs.shape)
-    print_square(zs[0,0])
     #zs = zs.view(batch_size, c, sqrt_split, split_pn, sqrt_split, split_pn)
     zs = zs.reshape(batch_size, c, split_pn, sqrt_split, split_pn, sqrt_split)
-    print('zs after view:', zs.shape)
     #try reshape back to see diff
-    #reshape_back_zs = zs.reshape(batch_size, c, pn, pn)
-    #print('diff:', torch.mean(torch.abs(reshape_back_zs - original_zs).float()).item())
     # do a reverse permute to (0,1,4,2,5,3)
     zs = zs.permute(0,1,3,5,2,4).contiguous()
     zs = zs.view(batch_size, aggregated_c, split_pn, split_pn)
-    print('zs after view1:', zs.shape)
     zs = zs.permute(0,2,3,1).contiguous()
     zs = zs.view(batch_size, split_pn, split_pn, aggregated_c)
-    print('zs after view2:', zs.shape)
     zs = zs.view(batch_size, split_pn*split_pn, aggregated_c)
-    print('zs after view3:', zs.shape)
     return zs.contiguous()
 def P_to_P(zs:torch.Tensor, split:float = 1)-> torch.Tensor:
     """
@@ -85,7 +76,6 @@ def P_to_P(zs:torch.Tensor, split:float = 1)-> torch.Tensor:
     zs = zs.view(batch_size, split_c, sqrt_split, sqrt_split, pn, pn)
     #try reshape back to see diff
     reshape_back_zs = zs.view(batch_size, hidden_size, pn, pn)
-    print('diff:', torch.mean(torch.abs(original_zs - reshape_back_zs)).item())
     # then permute to split_c, split_pn, sqrt_split, split_pn, sqrt_split
     zs = zs.permute(0,1,4,2,5,3).contiguous()
     # then reshape to bsz, hidden_size, split_pn, split_pn
