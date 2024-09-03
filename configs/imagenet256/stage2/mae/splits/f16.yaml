@@ -13,7 +13,7 @@ arch:
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
-      split: 16
+      split: 1
       remove_cls: true
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
