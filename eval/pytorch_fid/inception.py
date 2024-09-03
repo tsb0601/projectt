@@ -146,11 +146,11 @@ class InceptionV3(nn.Module):
 
         if self.resize_input:
             x = F.interpolate(x, size=(299, 299), mode="bilinear", align_corners=False)
-        image_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-        image_std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        image_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(x.device)
+        image_std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(x.device)
         if self.normalize_input:
-            #x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1)
-            x = (x - image_mean) / image_std
+            #x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1) !!WRONG!!
+            x = (x - image_mean) / image_std # use imagenet mean and std for normalization
         for idx, block in enumerate(self.blocks):
             x = block(x)
             if idx in self.output_blocks:
