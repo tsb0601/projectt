@@ -42,11 +42,13 @@ import torchvision.transforms as TF
 from PIL import Image
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
-import torch_xla.core.xla_model as xm
-import torch_xla.runtime as xr
-# do a compilation cache
-cache_path = "/home/bytetriper/.cache/xla_compile/fid"
-xr.initialize_cache(cache_path, readonly=False)
+use_TPU = os.path.exists('/dev/accel0') # if not then there is no TPU
+if use_TPU:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    # do a compilation cache
+    cache_path = "/home/bytetriper/.cache/xla_compile/fid"
+    xr.initialize_cache(cache_path, readonly=False)
 try:
     from tqdm import tqdm
 except ImportError:
@@ -163,7 +165,7 @@ def get_activations(
         pred_arr[start_idx : start_idx + pred.shape[0]] = pred
 
         start_idx = start_idx + pred.shape[0]
-        xm.mark_step()
+        xm.mark_step() if use_TPU else None
     return pred_arr
 
 
@@ -292,7 +294,7 @@ def calculate_fid_given_paths(paths, batch_size, device, dims, num_workers=1):
 def main():
     args = parser.parse_args()
 
-    device = xm.xla_device() if not torch.cuda.is_available() else torch.device("cuda") # use cuda if available
+    device = xm.xla_device() if use_TPU else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if args.num_workers is None:
         try:
