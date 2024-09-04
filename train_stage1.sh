@@ -34,8 +34,8 @@ else
     echo "wanb_id: $wandb_id"
     export WANDB_ID=$wandb_id
 fi
-#export WANDB_DIR=$SAVE_DIR
-#export WANDB_PROJECT=$EXP_NAME
+export WANDB_DIR=$SAVE_DIR
+export WANDB_PROJECT=$EXP_NAME
 env | grep WANDB
 export XLA_DISABLE_FUNCTIONALIZATION=1
 python main_stage1.py \
