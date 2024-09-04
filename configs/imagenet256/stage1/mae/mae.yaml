@@ -11,8 +11,10 @@ arch:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
       no_cls: true
   connector:
-    target: rqvae.models.connectors.MAE_Diffusion_connector
+    target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
+      split: 1
+      remove_cls: true
   checkpointing: false
   ema: 0.114514
 optimizer:
@@ -34,10 +36,11 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
+  epochs: 100
+  save_ckpt_freq: 50
   test_freq: 1
   amp: false
+  #actual_batch_size: 4096
 
 gan:
   disc:
@@ -69,5 +72,6 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: .1
+    perceptual_weight: .75
     disc_start: 100000
+    lpips_start: 0

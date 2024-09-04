@@ -42,6 +42,6 @@ python main_stage1.py \
     -m=$model_config \
     -r=$SAVE_DIR \
     --world_size=$world_size \
-    --use_autocast \
     -l=$load_ckpt \
-    --exp=$exp
+    --exp=$exp \
+    --use_autocast \

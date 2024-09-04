@@ -54,9 +54,9 @@ parser.add_argument('--node_rank', default=-1, type=int, help='node rank for dis
 parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
 parser.add_argument('--eval', action='store_true')
+parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
-parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--use_autocast', action='store_true')
 parser.add_argument('--cache_latent', action='store_true')
 def main(rank, args, extra_args):
@@ -67,7 +67,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]XLACACHE_PATH: {cache_path}')
     os.makedirs(cache_path, exist_ok=True)
     if not xla._XLAC._xla_computation_cache_is_initialized(): # only initialize once
-        # add a lock to prevent multiple processes from initializing the cache
+        # TODO: add a lock to prevent multiple processes from initializing the cache
         xr.initialize_cache(cache_path, readonly=False)
     distenv = config.runtime.distenv
     if distenv.master and wandb_dir:
@@ -80,10 +80,10 @@ def main(rank, args, extra_args):
     xm.master_print(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
     xm.master_print(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
     model, model_ema = create_model(config.arch, ema=config.arch.ema)
-    model = model.to(device)
+    model.to(device)
     if model_ema:
-        model_ema = model_ema.to(device)
-    xm.master_print(f'[!]model created')
+        model_ema.to(device)
+    xm.master_print(f'[!]model created, use_ema: {model_ema is not None}, ema_decay: {config.arch.ema if model_ema is not None else None}, use_ddp: {args.use_ddp}')
     trainer = create_trainer(config)
     xm.master_print(f'[!]trainer created')
     if args.reload_batch_size:
@@ -131,7 +131,7 @@ def main(rank, args, extra_args):
             if epoch_st == 'last':
                 xm.master_print(f'[!]model already trained complete, exit')
                 exit()
-            epoch_st = int(epoch_st)  # actual epoch to start
+            epoch_st = int(epoch_st) # actual epoch to start
         else:
             trainer._load_model_only(args.load_path,additional_attr_to_load= ())
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
@@ -156,7 +156,7 @@ def main(rank, args, extra_args):
         trainer.batch_infer(valid=True, save_root=args.result_path)
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
-
+    xm.master_print(f'[!]finished in {time.time() - start} seconds')
     if distenv.master:
         writer.close()  # may prevent from a file stable error in brain cloud..
         #if wandb_dir:

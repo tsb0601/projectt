@@ -146,12 +146,10 @@ def main(rank, args, extra_args):
         writer.close()  # may prevent from a file stable error in brain cloud..
         #if wandb_dir:
         #    wandb.finish()
-    #dist.destroy_process_group() if args.use_ddp else None
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
     xm.master_print(f'[!]Results saved in {args.result_path}')
     if args.use_ddp:
         dist.destroy_process_group()
-    #xm.rendezvous('main')
     xm.rendezvous('done')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
