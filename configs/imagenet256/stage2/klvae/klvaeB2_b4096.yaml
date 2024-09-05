@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenetDiT256x256
 
@@ -23,9 +23,10 @@ arch:
       in_channels: 4
       learn_sigma: true
       noise_schedule: 'linear'
+      inference_step: 250
       #timestep_respacing: 250
   checkpointing: false
-  ema: 0.99
+  ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -49,7 +50,7 @@ experiment:
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  actual_batch_size: 4096
+  #actual_batch_size: 4096
 
 gan:
   disc:

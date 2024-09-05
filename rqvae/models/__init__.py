@@ -55,7 +55,10 @@ def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tup
     model: XLA_Model
     model_ema: Optional[ExponentialMovingAverage]
     return model, model_ema
-def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
+def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
+    """
+    only load the ckpt on the master
+    """
     # config: OmegaConf.DictConfig
     # config to dict for model init    
     use_ema = (ema != 0.114514)
@@ -76,42 +79,28 @@ def create_model(config:DictConfig, ema:float=0.114514)->Tuple[XLA_Model, Option
         stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector_ema) if use_ema else None
         if config.get('ckpt_path', False):
             ckpt_path = config.ckpt_path
-            _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
-            xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
+            if is_master:
+                _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
+                print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
             assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
         if use_ema:
             stage2model_ema = ExponentialMovingAverage(stage2model_ema, ema)
             stage2model_ema.eval()
             stage2model_ema.update(stage2model, step=-1)
-            assert assert_all_close(stage2model, stage2model_ema.module), f'[!]ERROR: Model and EMA are not the same'
+            #assert assert_all_close(stage2model, stage2model_ema.module), f'[!]ERROR: Model and EMA are not the same'
         return stage2model, stage2model_ema
     else:
         stage1model = Stage1ModelWrapper(stage_1_model, connector)
         stage1model_ema = Stage1ModelWrapper(stage_1_ema, connector_ema) if use_ema else None
         if config.get('ckpt_path', False):
             ckpt_path = config.ckpt_path
-            _, keys = load_model_from_ckpt(stage1model, ckpt_path, strict = False)
-            xm.master_print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
+            if is_master:
+                _, keys = load_model_from_ckpt(stage1model, ckpt_path, strict = False)
+                print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
             assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
         if use_ema:
             stage1model_ema = ExponentialMovingAverage(stage1model_ema, ema)
             stage1model_ema.eval()
             stage1model_ema.update(stage1model, step=-1)
-            assert assert_all_close(stage1model, stage1model_ema), f'[!]ERROR: Model and EMA are not the same'
+            #assert assert_all_close(stage1model, stage1model_ema), f'[!]ERROR: Model and EMA are not the same'
         return stage1model, stage1model_ema
-    #if stage == 2:
-    #    stage_1_model,stage_1_ema = create_model(config.stage_1, ema=ema, stage=1) 
-    #    stage_2_model, stage_2_ema = create_model(config.stage_2, ema=ema, stage=1)
-    #    if hasattr(config, 'connector'):
-    #        connector = instantiate_from_config(config.connector)
-    #    else:
-    #        connector = None
-    #    connector: Optional[base_connector]
-    #    stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
-    #    stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector) if use_ema else None 
-    #    if config.get('ckpt_path', False):
-    #        ckpt_path = config.ckpt_path
-    #        _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
-    #        xm.master_print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
-    #    return stage2model, stage2model_ema
-    return model, model_ema

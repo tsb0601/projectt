@@ -18,7 +18,7 @@ if int(sys.version.split('.')[1]) < 8:
     import pickle5 as pickle
 else:
     import pickle
-
+import torch_xla.core.xla_model as xm
 
 class InceptionWrapper(InceptionV3):
 
@@ -33,9 +33,12 @@ class InceptionWrapper(InceptionV3):
         return pred
 
     def get_logits(self, inp):
-        _, logits = super().forward(inp, return_logits=True)
-
-        return logits
+        pred, logits = super().forward(inp, return_logits=True)
+        pred = pred[0]
+        if pred.size(2) != 1 or pred.size(3) != 1:
+            pred = F.adaptive_avg_pool2d(pred, output_size=(1, 1))
+        pred = pred.reshape(pred.shape[0], -1)
+        return pred, logits
 
 
 def get_inception_model(dims=2048):
@@ -114,7 +117,21 @@ def frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     return (diff.dot(diff) + np.trace(sigma1) +
             np.trace(sigma2) - 2 * tr_covmean)
 
-
+def Inception_Score(logits_arr:torch.Tensor, splits=10):
+    scores = []
+    ps = logits_arr
+    num_samples = ps.shape[0]
+    for j in range(splits):
+        part = ps[(j * num_samples // splits):((j + 1) * num_samples // splits), :]
+        kl = part * (torch.log(part) - torch.log(torch.unsqueeze(torch.mean(part, 0), 0)))
+        kl = torch.mean(torch.sum(kl, 1))
+        kl = torch.exp(kl)
+        scores.append(kl.unsqueeze(0))
+        xm.mark_step()
+    scores = torch.cat(scores, 0)
+    m_scores = torch.mean(scores).detach().cpu().numpy()
+    m_std = torch.std(scores).detach().cpu().numpy()
+    return m_scores, m_std
 @torch.no_grad()
 def compute_statistics_dataset(dataset,
                                batch_size=500,

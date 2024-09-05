@@ -59,6 +59,7 @@ parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
 parser.add_argument('--cache_latent', action='store_true')
+parser.add_argument('--do_online_eval', action='store_true') # if we want to do online eval for FID
 def main(rank, args, extra_args):
     start = time.time()
     global cache_path

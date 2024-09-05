@@ -39,7 +39,6 @@ from rqvae.models.interfaces import (
 )
 from rqvae.img_datasets.interfaces import LabeledImageData
 
-
 class Trainer(TrainerTemplate):
 
     def __init__(self, *args, **kwargs):

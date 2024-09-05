@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from enum import auto
+from math import ceil
 import os
 import logging
 import random
@@ -32,6 +33,7 @@ from rqvae.img_datasets.interfaces import LabeledImageData
 from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput, XLA_Model
 from torch_xla.amp import autocast
 from contextlib import nullcontext
+from rqvae.metrics.fid import InceptionWrapper, frechet_distance, Inception_Score, InceptionV3
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
@@ -53,6 +55,8 @@ class TrainerTemplate:
         eval:bool = False,
         use_ddp:bool = False,
         use_autocast:bool = False,
+        do_online_eval:bool = False,
+        fid_gt_act_path:str = None,
     ):
         super().__init__()
         global wandb_dir
@@ -75,6 +79,11 @@ class TrainerTemplate:
         self.actual_batch_size = config.experiment.actual_batch_size
         self.dataset_trn = dataset_trn
         self.dataset_val = dataset_val
+        self.do_online_eval = do_online_eval
+        self.fid_gt_act_path = fid_gt_act_path
+        if do_online_eval:
+            assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for do_online_eval"
+            self.inception_model = InceptionWrapper([InceptionV3.BLOCK_INDEX_BY_DIM[2048]]).to(self.device)
         self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
             self.dataset_trn,
             num_replicas=self.distenv.world_size,
@@ -106,7 +115,7 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
-            drop_last=False, # in validation, we need to make sure all data is used
+            drop_last=True, # drop_last=True to avoid dynamic shape
             collate_fn=self.dataset_val.collate_fn if hasattr(self.dataset_val, 'collate_fn') else None
         )
         if self.distenv.master:
@@ -133,66 +142,114 @@ class TrainerTemplate:
         assert split in ['train', 'valid'], f"split should be either 'train' or 'valid', but got {split}"
         loader = self.loader_trn if split == 'train' else self.loader_val
         if self.distenv.TPU:
-            if self.distenv.master:
-                print(f"[!] TPU: using per_device_loader for validation")
             loader = ParallelLoader(loader, [self.device]).per_device_loader(self.device)
-        else:
-            if self.distenv.master:
-                print(f"[!] NO TPU: using normal loader for validation")
         return loader
     @torch.no_grad()
-    def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None):
-        assert os.path.exists(save_root), f"save_root {save_root} does not exist"
+    def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False, fid_gt_act_path:str=None):
+        #assert os.path.exists(save_root), f"save_root {save_root} does not exist"
+        if save_root is not None and self.distenv.master:
+            assert os.path.exists(save_root), f"save_root {save_root} does not exist"
         self.model.eval() 
         if self.model_ema is not None:
             self.model_ema.eval()
         model = self.model_woddp if not ema or self.model_ema is None else self.model_ema_woddp
         loader = self.wrap_loader('valid' if valid else 'train')
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
+        if test_fid:
+            if self.distenv.master:
+                assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for test_fid"
+                fid_gt_act = np.load(fid_gt_act_path)['act'] # (N, 2048)
+            inception_model = self.inception_model
+            dataset = self.dataset_val if valid else self.dataset_trn
+            per_device_len = len(dataset) // self.distenv.world_size # per device length, we use drop_last=False so if the data cannot be divided by world_size, all device will have a bit more replica data 
+            inception_acts = []
+            inception_logits = []
+            st_idx = 0
         for it, inputs in pbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             img_paths = inputs.img_path
             with autocast(device=self.device) if self.use_autocast else nullcontext():
-                outputs:Stage1ModelOutput = model.infer(inputs) # no autocast here
-            xs_recon_or_gen = outputs.xs_recon
-            xm.mark_step()
-            for i, img_path in enumerate(img_paths):
-                img_name = os.path.basename(img_path)
-                # change the suffix to png
-                img_name = img_name.split('.')[0] + '.png'
-                save_path = os.path.join(save_root, img_name)
-                img = xs_recon_or_gen[i].to(torch.float32).cpu().clamp(0, 1).numpy() 
-                img = (img * 255).astype('uint8').transpose(1, 2, 0)
-                img = Image.fromarray(img)
-                img.save(save_path)
+                outputs:Stage1ModelOutput = model.infer(inputs) 
+                xs_recon_or_gen = outputs.xs_recon.detach().clone().float() # destroy the graph
+                xm.mark_step()
+            if test_fid: # we want float32
+                incep_act, incep_logits = inception_model.get_logits(xs_recon_or_gen.clamp(0, 1).float()) # (B, 2048)
+                inception_acts.append(incep_act)
+                inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
+                st_idx += len(incep_act)
+            if save_root is not None and not test_fid:
+                for i, img_path in enumerate(img_paths):
+                    img_name = os.path.basename(img_path)
+                    # change the suffix to png
+                    img_name = img_name.split('.')[0] + '.png'
+                    save_path = os.path.join(save_root, img_name)
+                    img = xs_recon_or_gen[i].to(torch.float32).cpu().clamp(0, 1).numpy() 
+                    img = (img * 255).astype('uint8').transpose(1, 2, 0)
+                    img = Image.fromarray(img)
+                    img.save(save_path)  
+        if test_fid:
+            # all gather
+            inception_acts = torch.cat(inception_acts, dim=0).to(self.device)
+            inception_logits = torch.cat(inception_logits, dim=0).to(self.device)
+            inception_acts = xm.all_gather(inception_acts, dim=0, pin_layout=False) # (N, 2048)
+            inception_logits = xm.all_gather(inception_logits, dim=0, pin_layout=False) # (N, 1008)
+            # do fid on master
+            inception_acts = inception_acts.cpu().numpy()
+            incep_logits = inception_logits.cpu().float()
+            if self.distenv.master:    
+                mu_gt = np.mean(fid_gt_act, axis=0)
+                sigma_gt = np.cov(fid_gt_act, rowvar=False)
+                mu = np.mean(inception_acts, axis=0)
+                sigma = np.cov(inception_acts, rowvar=False)
+                fid = frechet_distance(mu_gt, sigma_gt, mu, sigma)
+                IS_value, IS_std = Inception_Score(inception_logits)
+                if save_root is not None:
+                    np.savez(os.path.join(save_root, 'acts.npz'), 
+                            act = inception_acts,
+                            logits = inception_logits.cpu().numpy()
+                    )
+                return (fid, IS_value, IS_std)
+        return ()
     def logging(self, *args, **kwargs):
         raise NotImplementedError
     def run_epoch(self, optimizer=None, scheduler=None, epoch_st=0):
-        scaler = GradScaler() if self.config.experiment.amp else None
+        global CKPT_FOLDER
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
             if i % self.config.experiment.save_ckpt_freq == 0:
-                self.save_ckpt(optimizer, scheduler, i + 1)
-            summary_trn = self.train(optimizer, scheduler, scaler, epoch=i)
-            xm.mark_step()
-            if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
+                self.save_ckpt(optimizer, scheduler, i) 
+                # next epoch is i+1
+            summary_trn = self.train(optimizer, scheduler, None, epoch=i) # we do not use scaler in TPU
+            if i % self.config.experiment.test_freq == 0:
+                if self.do_online_eval:
+                    act_save_path = os.path.join(self.config.result_path, CKPT_FOLDER.format(i))
+                    if self.distenv.master:
+                        os.makedirs(act_save_path, exist_ok=True)
+                    stats = self.batch_infer(ema=False, valid=True, save_root=act_save_path, test_fid=True, fid_gt_act_path=self.fid_gt_act_path)
+                    if self.distenv.master:
+                        fid, IS_value, IS_std = stats
+                        print(f"Epoch {i} FID: {fid}, IS: {IS_value} +/- {IS_std}")
+                        self.writer.add_scalar("metrics/FID", fid, "valid",i )
+                        self.writer.add_scalar("metrics/IS", IS_value, "valid",i ) 
+                        self.writer.add_scalar("metrics/IS_std", IS_std, "valid",i )
                 summary_val = self.eval(epoch=i, valid=True, verbose=True)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i, valid=True, verbose=True)
+                
             if self.distenv.master:
                 self.logging(
-                    summary_trn, scheduler=scheduler, epoch=i + 1, mode="train"
+                    summary_trn, scheduler=scheduler, epoch=i, mode="train"
                 )
-                if i == 0 or (i + 1) % self.config.experiment.test_freq == 0:
+                if i % self.config.experiment.test_freq == 0:
                     self.logging(
-                        summary_val, scheduler=scheduler, epoch=i + 1, mode="valid"
+                        summary_val, scheduler=scheduler, epoch=i, mode="valid"
                     )
                     if self.model_ema is not None:
                         self.logging(
                             summary_val_ema,
                             scheduler=scheduler,
-                            epoch=i + 1,
+                            epoch=i,
                             mode="valid_ema",
                         )
             xm.rendezvous(

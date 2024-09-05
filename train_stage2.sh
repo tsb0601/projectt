@@ -44,4 +44,5 @@ python main_stage2.py \
     --world_size=$world_size \
     -l=$load_ckpt \
     --exp=$EXP \
-    --use_autocast
+    --use_autocast \
+    --do_online_eval

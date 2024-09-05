@@ -11,8 +11,13 @@ from .config import config_setup
 from .dist import initialize as dist_init
 from header import wandb_dir, PROJECT_NAME, wandb_id, xm, wandb # import wandb related variables
 import torch_xla.core.xla_model as xm
+#get home dir
 def logger_setup(log_path, eval=False):
     global wandb_dir, PROJECT_NAME
+    if wandb_dir:
+        original_log_path = log_path
+        log_path = os.path.join(Path.home(),'tmp', os.path.basename(log_path))
+        os.makedirs(log_path, exist_ok=True)
     log_fname = os.path.join(log_path, 'val.log' if eval else 'train.log')
 
     for hdlr in logging.root.handlers:
@@ -33,7 +38,7 @@ def logger_setup(log_path, eval=False):
         # find the parent directory of log_path
         resume = "allow" if wandb_id else None
         #wandb.tensorboard.patch(root_logdir=os.path.join(log_path,'train'), pytorch=True, tensorboard_x=False)
-        wandb.init(project=PROJECT_NAME, sync_tensorboard=True, dir=log_path, name=os.path.basename(log_path), id=wandb_id, resume=resume,reinit=True) # so we don't have to finish
+        wandb.init(project=PROJECT_NAME, sync_tensorboard=True, dir=log_path, name=os.path.basename(original_log_path), id=wandb_id, resume=resume,reinit=True) # set reinit= True so we don't have to call finish
         xm.master_print(f'wandb initialized with project: {PROJECT_NAME}, log_path: {log_path}, {"resume from id: " + wandb_id if wandb_id else ""}')
     writer = Writer(log_path)
 

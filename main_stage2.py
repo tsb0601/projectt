@@ -58,6 +58,8 @@ parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
+parser.add_argument('--fid_gt_act_path', type=str, default='data/VIRTUAL_imagenet256_labeled_act.npz') # GT activations for FID
+parser.add_argument('--do_online_eval', action='store_true') # if we want to do online eval for FID
 def main(rank, args, extra_args):
     start = time.time()
     global cache_path
@@ -120,7 +122,7 @@ def main(rank, args, extra_args):
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer: TrainerStage2 = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast, do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
     xm.master_print(f'[!]trainer created')
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:
@@ -138,7 +140,10 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
     if args.eval:
         #trainer.eval(valid=True, verbose=True)
-        trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
+        if args.fid_gt_act_path and os.path.isfile(args.fid_gt_act_path):
+            stats = trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=None, fid_gt_act_path=args.fid_gt_act_path, test_fid=True) # if we test FID we don't save the images
+        else:
+            trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
     xm.master_print(f'[!]finished in {time.time() - start} seconds')

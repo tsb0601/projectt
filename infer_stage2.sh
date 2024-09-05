@@ -25,4 +25,5 @@ python main_stage2.py \
     -l=$load_path \
     --world_size=$world_size  \
     --use_autocast \
-    --reload-batch-size 125 # default 125 for imagenet val
+    --reload-batch-size 32 \
+    --do_online_eval
