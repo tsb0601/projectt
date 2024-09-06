@@ -116,7 +116,7 @@ class TrainerTemplate:
             pin_memory=True,
             batch_size=config.experiment.batch_size,
             num_workers=num_workers,
-            drop_last=True, # drop_last=True to avoid dynamic shape
+            drop_last=False, # drop_last=True to avoid dynamic shape
             collate_fn=self.dataset_val.collate_fn if hasattr(self.dataset_val, 'collate_fn') else None
         )
         if self.distenv.master:
@@ -161,7 +161,6 @@ class TrainerTemplate:
                 fid_gt_act = self.fid_gt_act
             inception_model = self.inception_model
             dataset = self.dataset_val if valid else self.dataset_trn
-            per_device_len = len(dataset) // self.distenv.world_size # per device length, we use drop_last=False so if the data cannot be divided by world_size, all device will have a bit more replica data 
             inception_acts = []
             inception_logits = []
             st_idx = 0
@@ -194,9 +193,12 @@ class TrainerTemplate:
             inception_logits = torch.cat(inception_logits, dim=0).to(self.device)
             inception_acts = xm.all_gather(inception_acts, dim=0, pin_layout=False) # (N, 2048)
             inception_logits = xm.all_gather(inception_logits, dim=0, pin_layout=False) # (N, 1008)
+            # if len(inception_acts) > len(self.dataset_val) we choose the first len(self.dataset_val) samples
+            inception_acts = inception_acts[:len(dataset)]
+            inception_logits = inception_logits[:len(dataset)] #
             # do fid on master
             inception_acts = inception_acts.cpu().numpy()
-            incep_logits = inception_logits.cpu().float()
+            inception_logits = inception_logits.cpu().float()
             if self.distenv.master:    
                 mu_gt = np.mean(fid_gt_act, axis=0)
                 sigma_gt = np.cov(fid_gt_act, rowvar=False)
@@ -351,7 +353,6 @@ class TrainerTemplate:
                 'xm': xm.get_rng_state()
             }
             rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
-            assert os.path.exists(ckpt_folder), f"rank {rank} ckpt_folder {ckpt_folder} does not exist"
             torch.save(rng_state, rng_path)
             return
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
