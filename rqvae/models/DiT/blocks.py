@@ -1,7 +1,9 @@
+from typing import List
 import torch
 from torch import nn
 from ..basicblocks.utils import zero_module
 from ..basicblocks.basics import ConvResnetBlock
+
 class ConvEncoder(nn.Module):
     def __init__(self, in_channels:int, layers:int = 1, bottleneck_ratio: float = 16.0, kernel_size: int = 3, final_norm: bool = False):
         super(ConvEncoder, self).__init__()
@@ -16,9 +18,14 @@ class ConvEncoder(nn.Module):
                 next_dim = bottle_dim
             self.down.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size))
             cur_dim = next_dim
-    def forward(self, x):
+    def forward(self, x: torch.Tensor, return_hidden_states: bool = False)-> torch.Tensor:
+        hs = []
         for layer in self.down:
             x = layer(x)
+            if return_hidden_states:
+                hs.append(x)
+        if return_hidden_states:
+            return x, hs
         return x
 class ConvDecoder(nn.Module):
     def __init__(self, bottle_dim:int, layers:int = 1, upsample_ratio: float = 16.0, kernel_size: int = 3):
@@ -36,6 +43,25 @@ class ConvDecoder(nn.Module):
         self.out_channels = in_channels
     def forward(self, x):
         for layer in self.up:
+            x = layer(x)
+        return x
+class ConvDecoder_wSkipConnection(nn.Module):
+    def __init__(self, bottle_dim:int, layers:int = 1, upsample_ratio: float = 16.0, kernel_size: int = 3):
+        super(ConvDecoder_wSkipConnection, self).__init__()
+        in_channels = bottle_dim * upsample_ratio
+        each_layer_upsample_ratio = int(upsample_ratio ** (1.0 / layers)) if layers > 1 else 1
+        self.up = nn.ModuleList()
+        cur_dim = bottle_dim
+        for i in range(layers):
+            next_dim = int(cur_dim * each_layer_upsample_ratio)
+            if i == layers - 1:
+                next_dim = in_channels
+            self.up.append(ConvResnetBlock(in_channels=cur_dim * 2, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size)) # *2 for skip connection
+            cur_dim = next_dim
+        self.out_channels = in_channels
+    def forward(self, x:torch.Tensor, hs:List[torch.Tensor])-> torch.Tensor:
+        for layer in self.up:
+            x = torch.cat([x, hs.pop()], dim=1)
             x = layer(x)
         return x
 class SimpleConv(nn.Module):

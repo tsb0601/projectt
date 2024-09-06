@@ -5,7 +5,7 @@ from ..interfaces import *
 from .diffusion import create_diffusion
 from typing import List, Optional
 import torch_xla.core.xla_model as xm
-from .blocks import ConvEncoder, ConvDecoder
+from .blocks import ConvEncoder, ConvDecoder, ConvDecoder_wSkipConnection
 class DiT_Stage2(Stage2Model):
     def __init__(self,
         input_size:int,
@@ -122,25 +122,40 @@ class DiT_Stage2(Stage2Model):
         super().requires_grad_(requires_grad)
         #self.model.pos_embed.requires_grad_(False) # always freeze positional embeddings
 class simplewrapper(nn.Module):
-    def __init__(self, conv_encoder: ConvEncoder,conv_decoder: ConvDecoder, model:DiT):
+    def __init__(self, conv_encoder: ConvEncoder,conv_decoder: Union[ConvDecoder, ConvDecoder_wSkipConnection], model:DiT):
         super(simplewrapper, self).__init__()
         self.conv_encoder = conv_encoder
         self.model = model
         self.conv_decoder = conv_decoder
+        self.skip_connect =  isinstance(conv_decoder, ConvDecoder_wSkipConnection)
         #assert self.conv_encoder.in_channels == self.conv_decoder.out_channels, f'[!]simplewrapper: conv_encoder.in_channels: {self.conv_encoder.#in_channels} must be equal to conv_out.out_channels: {self.conv_decoder.out_channels}'
         channels = self.conv_decoder.out_channels
         #self.conv_out = zero_module(torch.nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0)) # zero out the output
+        self.out = nn.Sequential( # following https://github.com/CompVis/latent-diffusion/blob/main/ldm/modules/diffusionmodules/openaimodel.py#682
+            nn.GroupNorm(num_groups=min(channels, 32), num_channels=channels, eps=1e-6, affine=True),
+            nn.SiLU(),
+            zero_module(
+                nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1) # do a small conv
+            )
+        )
     def forward(self, x_t, t, **model_kwargs): # follow the calling convention of diffusion
-        x_t = self.conv_encoder(x_t)
+        if self.skip_connect:
+            x_t, hs  = self.conv_encoder(x_t, return_hidden_states = True)
+        else:
+            x_t = self.conv_encoder(x_t)
+            hs = None
         pred = self.model(x_t, t, **model_kwargs)
-        pred = self.conv_decoder(pred)
+        pred = self.conv_decoder(pred) if not self.skip_connect else self.conv_decoder(pred, hs)
         #pred = self.conv_out(pred)
+        pred = self.out(pred)
         return pred
+    
 class DiTwConv_Stage2(Stage2Model):
     def __init__(self, 
         downsample_ratio:int, 
         layers:int, 
         kernel_size:int,
+        skip_connect:bool,
         input_size:int,
         patch_size:int,
         in_channels:int,
@@ -182,11 +197,12 @@ class DiTwConv_Stage2(Stage2Model):
             learn_sigma=learn_sigma
         )
         self.downsampled_out_channels = model.out_channels
-        conv_decoder = ConvDecoder(bottle_dim=self.downsampled_out_channels, layers=layers, upsample_ratio=downsample_ratio, kernel_size=kernel_size)
+        decoder_cls = ConvDecoder_wSkipConnection if skip_connect else ConvDecoder
+        conv_decoder = decoder_cls(bottle_dim=self.downsampled_out_channels, layers=layers, upsample_ratio=downsample_ratio, kernel_size=kernel_size)
         model.requires_grad_(True)
         conv_decoder.requires_grad_(True)
         conv_encoder.requires_grad_(True)
-        self.model = simplewrapper(conv_encoder,conv_decoder, model)
+        self.model = simplewrapper(conv_encoder, conv_decoder, model)
         self.model.requires_grad_(True) # joint training
         # like DiT we only support square images
         self.diffusion = create_diffusion(timestep_respacing=self.timestep_respacing,learn_sigma= learn_sigma, noise_schedule=noise_schedule) # like DiT we set default 1000 timesteps
@@ -196,7 +212,7 @@ class DiTwConv_Stage2(Stage2Model):
         self.num_classes = num_classes
         self.use_cfg = self.cfg > 1.
         self.n_samples = n_samples
-        print(f'[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}') 
+        print(f'[!]DiT_Stage2_wConv: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}') 
     def forward(self, stage1_encodings: Stage1Encodings, inputs: LabeledImageData
     ) -> Stage2ModelOutput:
         zs = stage1_encodings.zs
