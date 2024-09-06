@@ -340,8 +340,7 @@ class TrainerTemplate:
         rank = self.distenv.local_rank
         epoch = 'last' if epoch == -1 else epoch
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
-        if self.distenv.master:
-            os.makedirs(ckpt_folder, exist_ok=True)
+        os.makedirs(ckpt_folder, exist_ok=True)
         xm.rendezvous("save_ckpt")
         if master_only and not self.distenv.master:
             # still save rng
@@ -352,8 +351,7 @@ class TrainerTemplate:
                 'xm': xm.get_rng_state()
             }
             rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
-            if not os.path.exists(ckpt_folder):
-                os.makedirs(ckpt_folder, exist_ok=True)
+            assert os.path.exists(ckpt_folder), f"rank {rank} ckpt_folder {ckpt_folder} does not exist"
             torch.save(rng_state, rng_path)
             return
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
