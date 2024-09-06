@@ -340,8 +340,7 @@ class TrainerTemplate:
         rank = self.distenv.local_rank
         epoch = 'last' if epoch == -1 else epoch
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
-        if self.distenv.master:
-            os.makedirs(ckpt_folder, exist_ok=True)
+        os.makedirs(ckpt_folder, exist_ok=True) # in gcsfuse this is not atomic
         xm.rendezvous("save_ckpt")
         if master_only and not self.distenv.master:
             # still save rng
