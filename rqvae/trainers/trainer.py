@@ -352,6 +352,8 @@ class TrainerTemplate:
                 'xm': xm.get_rng_state()
             }
             rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank))
+            if not os.path.exists(ckpt_folder):
+                os.makedirs(ckpt_folder, exist_ok=True)
             torch.save(rng_state, rng_path)
             return
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
