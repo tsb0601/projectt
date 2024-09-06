@@ -19,9 +19,9 @@ arch:
     target: rqvae.models.DiT.DiTwConv_Stage2
     params:
       # DiT B/1 Recipe
-      downsample_ratio: 64
-      layers: 6
-      kernel_size: 1
+      downsample_ratio: 4
+      layers: 2
+      kernel_size: 3
       skip_connect: true
       input_size: 16
       patch_size: 1
@@ -31,11 +31,10 @@ arch:
       num_heads: 12
       num_classes: 1000
       cfg: 0.0
-      learn_sigma: true
+      learn_sigma: false
       noise_schedule: 'linear'
       timestep_respacing: ""
-      inference_step: 2
-
+      inference_step: 250
   checkpointing: false
   ema: 0.114514
 optimizer:
