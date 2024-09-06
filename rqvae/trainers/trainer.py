@@ -84,6 +84,7 @@ class TrainerTemplate:
         if do_online_eval:
             assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for do_online_eval"
             self.inception_model = InceptionWrapper([InceptionV3.BLOCK_INDEX_BY_DIM[2048]]).to(self.device)
+            self.fid_gt_act = np.load(fid_gt_act_path)['act']if self.distenv.master else None
         self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
             self.dataset_trn,
             num_replicas=self.distenv.world_size,
@@ -145,7 +146,7 @@ class TrainerTemplate:
             loader = ParallelLoader(loader, [self.device]).per_device_loader(self.device)
         return loader
     @torch.no_grad()
-    def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False, fid_gt_act_path:str=None):
+    def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False):
         #assert os.path.exists(save_root), f"save_root {save_root} does not exist"
         if save_root is not None and self.distenv.master:
             assert os.path.exists(save_root), f"save_root {save_root} does not exist"
@@ -157,8 +158,7 @@ class TrainerTemplate:
         pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
         if test_fid:
             if self.distenv.master:
-                assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for test_fid"
-                fid_gt_act = np.load(fid_gt_act_path)['act'] # (N, 2048)
+                fid_gt_act = self.fid_gt_act
             inception_model = self.inception_model
             dataset = self.dataset_val if valid else self.dataset_trn
             per_device_len = len(dataset) // self.distenv.world_size # per device length, we use drop_last=False so if the data cannot be divided by world_size, all device will have a bit more replica data 
@@ -226,7 +226,7 @@ class TrainerTemplate:
                     act_save_path = os.path.join(self.config.result_path, CKPT_FOLDER.format(i))
                     if self.distenv.master:
                         os.makedirs(act_save_path, exist_ok=True)
-                    stats = self.batch_infer(ema=False, valid=True, save_root=act_save_path, test_fid=True, fid_gt_act_path=self.fid_gt_act_path)
+                    stats = self.batch_infer(ema=False, valid=True, save_root=act_save_path, test_fid=True)
                     if self.distenv.master:
                         fid, IS_value, IS_std = stats
                         print(f"Epoch {i} FID: {fid}, IS: {IS_value} +/- {IS_std}")

@@ -58,7 +58,7 @@ parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
-parser.add_argument('--fid_gt_act_path', type=str, default='data/VIRTUAL_imagenet256_labeled_act.npz') # GT activations for FID
+parser.add_argument('--fid_gt_act_path', type=str, default='ckpt_gcs/acts/VIRTUAL_imagenet256_labeled_act.npz') # GT activations for FID
 parser.add_argument('--do_online_eval', action='store_true') # if we want to do online eval for FID
 def main(rank, args, extra_args):
     start = time.time()
@@ -141,7 +141,7 @@ def main(rank, args, extra_args):
     if args.eval:
         #trainer.eval(valid=True, verbose=True)
         if args.fid_gt_act_path and os.path.isfile(args.fid_gt_act_path):
-            stats = trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=None, fid_gt_act_path=args.fid_gt_act_path, test_fid=True) # if we test FID we don't save the images
+            stats = trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=None, test_fid=True) # if we test FID we don't save the images
         else:
             trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
     else:
