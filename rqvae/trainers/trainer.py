@@ -337,7 +337,7 @@ class TrainerTemplate:
         return state_dict
     def save_ckpt(self, optimizer, scheduler, epoch, additional_attr_to_save:tuple = (), master_only:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
-        rank = self.distenv.rank # global rank
+        rank = self.distenv.world_rank # global rank
         epoch = 'last' if epoch == -1 else epoch
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
         os.makedirs(ckpt_folder, exist_ok=True)
