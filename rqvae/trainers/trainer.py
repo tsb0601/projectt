@@ -174,8 +174,9 @@ class TrainerTemplate:
                 xm.mark_step()
             if test_fid: # we want float32
                 # convert to uint8 then back
-                xs_recon_or_gen = xs_recon_or_gen.clamp(0, 1).cpu().numpy().astype('uint8')
-                xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device)
+                xs_recon_or_gen = xs_recon_or_gen.clamp(0, 1).cpu().numpy()
+                xs_recon_or_gen = (xs_recon_or_gen * 255).astype('uint8')
+                xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device) / 255
                 incep_act, incep_logits = inception_model.get_logits(xs_recon_or_gen.clamp(0, 1).float()) # (B, 2048)
                 inception_acts.append(incep_act)
                 inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
