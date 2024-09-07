@@ -160,9 +160,9 @@ class InceptionV3(nn.Module):
         #image_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(x.device)
         #image_std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(x.device)
         if self.normalize_input:
-            #x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1) !!WRONG!!
+            x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1) !!WRONG!!
             #x = (x - image_mean) / image_std # use imagenet mean and std for normalization
-            x = (x - self.image_mean.to(x.device)) / self.image_std.to(x.device)
+            #x = (x - self.image_mean.to(x.device)) / self.image_std.to(x.device)
         for idx, block in enumerate(self.blocks):
             x = block(x)
             if idx in self.output_blocks:
