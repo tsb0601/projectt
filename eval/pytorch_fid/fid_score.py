@@ -309,6 +309,9 @@ def compute_statistics_of_path(path, model, batch_size, dims, device, num_worker
     #)
     assert path.endswith('.npz'), 'Only npz files are supported'
     potential_act_path = path.replace('.npz', '_act.npz') # see if we have already computed the activations
+    if path.endswith('act.npz') or path.endswith('acts.npz'):
+        potential_act_path = path # it is already the act file
+    print(f'[!]INFO: Loading from {path}, potential_act_path: {potential_act_path}')
     if os.path.exists(potential_act_path) and use_cache:
         data =  np.load(potential_act_path)
         act, logits = data['act'], data['logits']

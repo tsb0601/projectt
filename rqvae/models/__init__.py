@@ -82,7 +82,7 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
             if is_master:
                 _, keys = load_model_from_ckpt(stage2model, ckpt_path, strict = False)
                 print(f'[!]INFO: Loaded Stage2Wrapper from {ckpt_path} with keys: {keys}')
-            assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
+                assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
         if use_ema:
             stage2model_ema = ExponentialMovingAverage(stage2model_ema, ema)
             stage2model_ema.eval()
@@ -97,7 +97,7 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
             if is_master:
                 _, keys = load_model_from_ckpt(stage1model, ckpt_path, strict = False)
                 print(f'[!]INFO: Loaded Stage1Wrapper from {ckpt_path} with keys: {keys}')
-            assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
+                assert keys.unexpected_keys == [], f'[!]ERROR: Unexpected keys: {keys.unexpected_keys}'
         if use_ema:
             stage1model_ema = ExponentialMovingAverage(stage1model_ema, ema)
             stage1model_ema.eval()
