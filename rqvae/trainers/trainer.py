@@ -223,6 +223,7 @@ class TrainerTemplate:
         global CKPT_FOLDER
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
+            stats = self.batch_infer(ema=False, valid=True, save_root=None, test_fid=True)
             if i % self.config.experiment.save_ckpt_freq == 0:
                 self.save_ckpt(optimizer, scheduler, i) 
                 # next epoch is i+1
