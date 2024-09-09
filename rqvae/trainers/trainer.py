@@ -176,8 +176,8 @@ class TrainerTemplate:
                 # convert to uint8 then back
                 xs_recon_or_gen = xs_recon_or_gen.clamp(0, 1).cpu().numpy()
                 xs_recon_or_gen = (xs_recon_or_gen * 255).astype('uint8')
-                xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device) / 255
-                incep_act, incep_logits = inception_model.get_logits(xs_recon_or_gen.clamp(0, 1).float()) # (B, 2048)
+                xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device) / 255.
+                incep_act, incep_logits = inception_model.get_logits(xs_recon_or_gen) # (B, 2048)
                 inception_acts.append(incep_act)
                 inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
                 st_idx += len(incep_act)
@@ -211,7 +211,7 @@ class TrainerTemplate:
                 fid = frechet_distance(mu_gt, sigma_gt, mu, sigma)
                 IS_value, IS_std = Inception_Score(inception_logits)
                 if save_root is not None:
-                    np.savez(os.path.join(save_root, 'acts.npz'), 
+                    np.savez(os.path.join(save_root, 'act.npz'), 
                             act = inception_acts,
                             logits = inception_logits.cpu().numpy()
                     )

@@ -140,7 +140,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
     if args.eval:
         #trainer.eval(valid=True, verbose=True)
-        if args.fid_gt_act_path and os.path.isfile(args.fid_gt_act_path):
+        if args.do_online_eval and args.fid_gt_act_path and os.path.isfile(args.fid_gt_act_path):
             stats = trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=None, test_fid=True) # if we test FID we don't save the images
         else:
             trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
