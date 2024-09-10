@@ -84,7 +84,7 @@ class TrainerTemplate:
         if do_online_eval:
             assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for do_online_eval"
             self.inception_model = InceptionWrapper([InceptionV3.BLOCK_INDEX_BY_DIM[2048]]).to(self.device)
-            self.fid_gt_act = np.load(fid_gt_act_path)['act']if self.distenv.master else None
+            self.fid_gt_act = np.load(fid_gt_act_path)['act'] if self.distenv.master else None
         self.sampler_trn = torch.utils.data.distributed.DistributedSampler(
             self.dataset_trn,
             num_replicas=self.distenv.world_size,
@@ -155,14 +155,15 @@ class TrainerTemplate:
             self.model_ema.eval()
         model = self.model_woddp if not ema or self.model_ema is None else self.model_ema_woddp
         loader = self.wrap_loader('valid' if valid else 'train')
-        pbar = tqdm(enumerate(loader), desc='Inferencing', disable=not self.distenv.master,total=len(loader))
+        pbar = tqdm(enumerate(loader), desc='Inferencing' if not test_fid else 'Testing FID', disable=not self.distenv.master,total=len(loader))
         if test_fid:
-            if self.distenv.master:
-                fid_gt_act = self.fid_gt_act
+            #if self.distenv.master:
+            fid_gt_act = self.fid_gt_act if self.distenv.master else None
             inception_model = self.inception_model
             dataset = self.dataset_val if valid else self.dataset_trn
             inception_acts = []
             inception_logits = []
+            inception_model.eval()
             st_idx = 0
         for it, inputs in pbar:
             inputs: LabeledImageData
@@ -171,12 +172,12 @@ class TrainerTemplate:
             with autocast(device=self.device) if self.use_autocast else nullcontext():
                 outputs:Stage1ModelOutput = model.infer(inputs) 
                 xs_recon_or_gen = outputs.xs_recon.detach().clone().float() # destroy the graph
-                xm.mark_step()
+            xm.mark_step()
             if test_fid: # we want float32
                 # convert to uint8 then back
                 xs_recon_or_gen = xs_recon_or_gen.clamp(0, 1).cpu().numpy()
                 xs_recon_or_gen = (xs_recon_or_gen * 255).astype('uint8')
-                xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device) / 255.
+                xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device) / 255. #do the exact same thing as image gen pipeline
                 incep_act, incep_logits = inception_model.get_logits(xs_recon_or_gen) # (B, 2048)
                 inception_acts.append(incep_act)
                 inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
@@ -191,12 +192,13 @@ class TrainerTemplate:
                     img = (img * 255).astype('uint8').transpose(1, 2, 0)
                     img = Image.fromarray(img)
                     img.save(save_path)  
+            xm.mark_step()
         if test_fid:
             # all gather
             inception_acts = torch.cat(inception_acts, dim=0).to(self.device)
             inception_logits = torch.cat(inception_logits, dim=0).to(self.device)
-            inception_acts = xm.all_gather(inception_acts, dim=0, pin_layout=False) # (N, 2048)
-            inception_logits = xm.all_gather(inception_logits, dim=0, pin_layout=False) # (N, 1008)
+            inception_acts = xm.all_gather(inception_acts, dim=0, pin_layout=True) # (N, 2048)
+            inception_logits = xm.all_gather(inception_logits, dim=0, pin_layout=True) # (N, 1008)
             # if len(inception_acts) > len(self.dataset_val) we choose the first len(self.dataset_val) samples
             inception_acts = inception_acts[:len(dataset)]
             inception_logits = inception_logits[:len(dataset)] #
@@ -223,10 +225,6 @@ class TrainerTemplate:
         global CKPT_FOLDER
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
-            stats = self.batch_infer(ema=False, valid=True, save_root=None, test_fid=True)
-            if self.distenv.master:
-                fid, IS_value, IS_std = stats
-                print(f"Epoch {i} FID: {fid}, IS: {IS_value} +/- {IS_std}")
             if i % self.config.experiment.save_ckpt_freq == 0:
                 self.save_ckpt(optimizer, scheduler, i) 
                 # next epoch is i+1
@@ -268,7 +266,7 @@ class TrainerTemplate:
         self.save_ckpt(optimizer, scheduler, -1 )# last ckpt
     def _load_model_only(self, load_path, additional_attr_to_load:tuple = (), load_from_master:bool = True):
         global CKPT_FOLDER, MODEL_NAME, EMA_MODEL_NAME, ADDIONTIONAL_NAME
-        rank = self.distenv.local_rank if not load_from_master else 0 # load from master (rank:0)
+        rank = self.distenv.world_rank if not load_from_master else 0 # load from master (rank:0)
         model_path = os.path.join(load_path, MODEL_NAME.format(rank))
         model_weight = torch.load(model_path) # to xla directly
         self.model_woddp.load_state_dict(model_weight)
@@ -290,12 +288,12 @@ class TrainerTemplate:
             target_module.load_state_dict(additional_attr_ckpt[attr]) 
     def _load_ckpt(self,load_path, optimizer, scheduler, additional_attr_to_load:tuple = (), load_from_master:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
-        rank = self.distenv.local_rank if not load_from_master else 0
+        rank = self.distenv.world_rank if not load_from_master else 0
         ckpt_folder = load_path
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
-        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(self.distenv.local_rank)) # rng state is per core
+        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank)) # rng state is per core
         if not os.path.exists(rng_path):
             rng_path = os.path.join(ckpt_folder, RNG_NAME.format(0)) # load from master
         model_weight = torch.load(model_path)
@@ -352,6 +350,7 @@ class TrainerTemplate:
         ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
         os.makedirs(ckpt_folder, exist_ok=True)
         xm.rendezvous("save_ckpt")
+        # we gather a random state
         if master_only and not self.distenv.master:
             # still save rng
             rng_state = {

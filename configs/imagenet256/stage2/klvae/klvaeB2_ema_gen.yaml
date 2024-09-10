@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet
   transforms:
     type: imagenetDiT256x256
 
@@ -23,7 +23,8 @@ arch:
       in_channels: 4
       learn_sigma: true
       noise_schedule: 'linear'
-      timestep_respacing: 2
+      timestep_respacing: ''
+      inference_step: 2
   checkpointing: false
   ema: 0.114514
 optimizer:

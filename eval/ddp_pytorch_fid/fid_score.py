@@ -32,6 +32,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from gc import disable
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
@@ -44,6 +45,8 @@ import torchvision.transforms as TF
 from PIL import Image
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
+from torch_xla.distributed.parallel_loader import ParallelLoader
+from torch.utils.data.distributed import DistributedSampler
 use_TPU = os.path.exists('/dev/accel0') # if not then there is no TPU
 if use_TPU:
     import torch_xla.core.xla_model as xm
@@ -121,15 +124,20 @@ class npzDataset(torch.utils.data.Dataset):
     def __init__(self, files, transforms=None):
         self.files = files
         self.transforms = transforms
-
+        self.image_size = files[0].shape[:2]
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, i):
-        img = self.files[i]
-        img = self.transforms(img)
+        #img = self.files[i]
+        # do a random gen
+        #img = self.transforms(img)
+        img = torch.randn(3, self.image_size[0], self.image_size[1]).clamp(0, 1)
+        img = (img * 255)
+        img = np.array(img).astype(np.uint8)
+        img = torch.tensor(img).float() / 255.0
         return img
-
+@torch.no_grad()
 def get_activations(
     file: np.ndarray,
     model: InceptionWrapper,
@@ -174,34 +182,55 @@ def get_activations(
         return TF.ToTensor()(img)
         #return torch.tensor(img).permute(2, 0, 1).float() / 255.0 # hand-crafted transform for speed
     dataset = npzDataset(file, transforms=data_transforms)
+    #dataloader = torch.utils.data.DataLoader(
+    #    dataset,
+    #    batch_size=batch_size,
+    #    shuffle=False,
+    #    drop_last=False,
+    #    num_workers=num_workers,
+    #)
+    # do it multi-threaded
+    world_size = xm.xrt_world_size() if use_TPU else 1
+    rank = xm.get_ordinal() if use_TPU else 0
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False) # do not shuffle
+    per_device_batch_size = batch_size // world_size
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        drop_last=False,
+        batch_size=per_device_batch_size,
+        sampler=sampler,
         num_workers=num_workers,
+        drop_last=False,
     )
-
-    pred_arr = np.empty((file.shape[0], dims))
-    logits_arr = torch.empty((file.shape[0], 1008)) # InceptionV3 has 1008 classes
+    pl_loader = ParallelLoader(dataloader, [device]).per_device_loader(device)
+    #pred_arr = np.empty((file.shape[0]//world_size, dims))
+    #logits_arr = torch.empty((file.shape[0]//world_size, 1008)) # InceptionV3 has 1008 classes
+    preds_arr = []
+    logits_arr = []
     start_idx = 0
-
-    for batch in tqdm(dataloader):
-        batch = batch.to(device)
-
-        with torch.no_grad():
-            pred, logits = model.get_logits(batch)
+    for batch in tqdm(pl_loader, disable=not xm.is_master_ordinal() if use_TPU else False): 
+        #batch = batch.to(device) 
+        pred, logits = model.get_logits(batch)
         logits = torch.nn.functional.softmax(logits, dim=-1)
         # If model output is not scalar, apply global spatial average pooling.
         # This happens if you choose a dimensionality not equal 2048.
         #if pred.size(2) != 1 or pred.size(3) != 1:
         #    pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
         #pred = pred.squeeze(3).squeeze(2).cpu().numpy()
-        pred = pred.cpu().numpy()
-        pred_arr[start_idx : start_idx + pred.shape[0]] = pred
-        logits_arr[start_idx : start_idx + pred.shape[0]] = logits
+        #pred = pred.cpu().numpy()
+        #pred_arr[start_idx : start_idx + pred.shape[0]] = pred
+        #logits_arr[start_idx : start_idx + pred.shape[0]] = logits
+        preds_arr.append(pred)
+        logits_arr.append(logits)
         start_idx = start_idx + pred.shape[0]
         xm.mark_step() if use_TPU else None
+    pred_arr = torch.cat(preds_arr, dim=0).to(device)
+    logits_arr = torch.cat(logits_arr, dim=0).to(device)
+    # all gather!
+    pred_arr = xm.all_gather(pred_arr, dim=0) if use_TPU else pred_arr
+    logits_arr = xm.all_gather(logits_arr, dim=0) if use_TPU else logits_arr
+    xm.master_print(f'[!]INFO: pred_arr.shape: {pred_arr.shape}, logits_arr.shape: {logits_arr.shape}')
+    pred_arr = pred_arr.cpu().numpy()
+    logits_arr = logits_arr.cpu().float()
     return pred_arr, logits_arr
 
 
@@ -358,11 +387,8 @@ def calculate_stat_given_paths(paths, batch_size, device, dims, num_workers=1, u
 
 
 
-def main():
-    args = parser.parse_args()
-
+def main(rank, args):
     device = xm.xla_device() if use_TPU else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     if args.num_workers is None:
         try:
             num_cpus = len(os.sched_getaffinity(0))

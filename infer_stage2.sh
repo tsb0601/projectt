@@ -18,6 +18,7 @@ load_path=$2
 model_config=$3
 world_size=$4
 mkdir -p $SAVE_DIR
+export XLA_DISABLE_FUNCTIONALIZATION=1
 python main_stage2.py \
     --eval \
     -m=$model_config \
@@ -26,4 +27,4 @@ python main_stage2.py \
     --world_size=$world_size  \
     --use_autocast \
     --reload-batch-size 32 \
-    #--do_online_eval
+    --do_online_eval

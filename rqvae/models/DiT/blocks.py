@@ -21,9 +21,9 @@ class ConvEncoder(nn.Module):
     def forward(self, x: torch.Tensor, return_hidden_states: bool = False)-> torch.Tensor:
         hs = []
         for layer in self.down:
-            x = layer(x)
             if return_hidden_states:
                 hs.append(x)
+            x = layer(x)
         if return_hidden_states:
             return x, hs
         return x
@@ -38,7 +38,7 @@ class ConvDecoder(nn.Module):
             next_dim = int(cur_dim * each_layer_upsample_ratio)
             if i == layers - 1:
                 next_dim = in_channels
-            self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size))
+            self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size, res_first=True))
             cur_dim = next_dim
         self.out_channels = in_channels
     def forward(self, x):
@@ -56,7 +56,7 @@ class ConvDecoder_wSkipConnection(nn.Module):
             next_dim = int(cur_dim * each_layer_upsample_ratio)
             if i == layers - 1:
                 next_dim = in_channels
-            self.up.append(ConvResnetBlock(in_channels=cur_dim * 2, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size)) # *2 for skip connection
+            self.up.append(ConvResnetBlock(in_channels=cur_dim * 2, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size, res_first=True)) # *2 for skip connection
             cur_dim = next_dim
         self.out_channels = in_channels
     def forward(self, x:torch.Tensor, hs:List[torch.Tensor])-> torch.Tensor:

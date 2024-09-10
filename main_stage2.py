@@ -142,6 +142,9 @@ def main(rank, args, extra_args):
         #trainer.eval(valid=True, verbose=True)
         if args.do_online_eval and args.fid_gt_act_path and os.path.isfile(args.fid_gt_act_path):
             stats = trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=None, test_fid=True) # if we test FID we don't save the images
+            if distenv.master:
+                FID, IS_mean, IS_std = stats
+                logger.info(f'FID: {FID}, IS: {IS_mean}+-{IS_std}')
         else:
             trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
     else:
@@ -151,7 +154,6 @@ def main(rank, args, extra_args):
         writer.close()  # may prevent from a file stable error in brain cloud..
         #if wandb_dir:
         #    wandb.finish()
-    xm.master_print(f'[!]finished in {time.time() - start} seconds')
     xm.master_print(f'[!]Results saved in {args.result_path}')
     if args.use_ddp:
         dist.destroy_process_group()

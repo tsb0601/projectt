@@ -134,7 +134,7 @@ def Normalize(in_channels, num_groups=32):
     return nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 class ConvResnetBlock(nn.Module):
     def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,
-                dropout, kernel_size=3):
+                dropout, kernel_size=3, res_first:bool = False):
         super().__init__()
         self.in_channels = in_channels
         padding = kernel_size // 2
@@ -143,14 +143,15 @@ class ConvResnetBlock(nn.Module):
         self.use_conv_shortcut = conv_shortcut
         self.act = nn.SiLU()
         self.norm1 = Normalize(in_channels)
+        conv1_channel = in_channels if res_first else out_channels
         self.conv1 = torch.nn.Conv2d(in_channels,
-                                    out_channels,
+                                    conv1_channel,
                                     kernel_size=kernel_size,
                                     stride=1,
                                     padding=padding)
-        self.norm2 = Normalize(out_channels)
+        self.norm2 = Normalize(conv1_channel)
         self.dropout = torch.nn.Dropout(dropout)
-        self.conv2 = torch.nn.Conv2d(out_channels,
+        self.conv2 = torch.nn.Conv2d(conv1_channel,
                                     out_channels,
                                     kernel_size=kernel_size,
                                     stride=1,
