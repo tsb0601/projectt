@@ -33,10 +33,11 @@ arch:
       in_channels: 12
       learn_sigma: true
       noise_schedule: 'linear'
-      timestep_respacing: 250
+      timestep_respacing: ''
+      inference_step: 250
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_mlp_compress_ep60/f64/f64_blk6_b4096_conv1x1_19082024_224604/ep_last-checkpoint/0-model.pt'
+  ckpt_path: 'ckpt_gcs/mae_mlp_compress_ep80/f64/f64_blk6_b4096_conv1x1_11092024_040113/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
