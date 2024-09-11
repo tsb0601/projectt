@@ -225,11 +225,11 @@ class TrainerTemplate:
         global CKPT_FOLDER
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
-            if i % self.config.experiment.save_ckpt_freq == 0:
+            if i % self.config.experiment.save_ckpt_freq == 0 and i != self.config.experiment.epochs - 1: # save ckpt
                 self.save_ckpt(optimizer, scheduler, i) 
                 # next epoch is i+1
             summary_trn = self.train(optimizer, scheduler, None, epoch=i) # we do not use scaler in TPU
-            if i % self.config.experiment.test_freq == 0:
+            if i % self.config.experiment.test_freq == 0 or i == self.config.experiment.epochs - 1: # do validation every test_freq or last epoch
                 if self.do_online_eval:
                     act_save_path = os.path.join(self.config.result_path, CKPT_FOLDER.format(i))
                     if self.distenv.master:
