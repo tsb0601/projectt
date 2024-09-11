@@ -20,3 +20,4 @@ RNG_NAME = '{}-rng.pt' # rank
 MODEL_NAME = '{}-model.pt' # rank
 EMA_MODEL_NAME = '{}-ema-model.pt' # rank
 ADDIONTIONAL_NAME = '{}-additional.pt' # rank
+ACT_FOLDER = 'activation/' # epoch

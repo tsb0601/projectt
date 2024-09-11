@@ -146,7 +146,7 @@ class TrainerTemplate:
             loader = ParallelLoader(loader, [self.device]).per_device_loader(self.device)
         return loader
     @torch.no_grad()
-    def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False):
+    def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False, epoch:int = 0):
         #assert os.path.exists(save_root), f"save_root {save_root} does not exist"
         if save_root is not None and self.distenv.master:
             assert os.path.exists(save_root), f"save_root {save_root} does not exist"
@@ -213,7 +213,7 @@ class TrainerTemplate:
                 fid = frechet_distance(mu_gt, sigma_gt, mu, sigma)
                 IS_value, IS_std = Inception_Score(inception_logits)
                 if save_root is not None:
-                    np.savez(os.path.join(save_root, 'act.npz'), 
+                    np.savez(os.path.join(save_root, f'ep{epoch}_act.npz'), 
                             act = inception_acts,
                             logits = inception_logits.cpu().numpy()
                     )
@@ -222,19 +222,19 @@ class TrainerTemplate:
     def logging(self, *args, **kwargs):
         raise NotImplementedError
     def run_epoch(self, optimizer=None, scheduler=None, epoch_st=0):
-        global CKPT_FOLDER
+        global CKPT_FOLDER, ACT_FOLDER
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
-            if i % self.config.experiment.save_ckpt_freq == 0 and i != self.config.experiment.epochs - 1: # save ckpt
+            if (i % self.config.experiment.save_ckpt_freq) == 0 and (i != self.config.experiment.epochs - 1): # save ckpt
                 self.save_ckpt(optimizer, scheduler, i) 
                 # next epoch is i+1
             summary_trn = self.train(optimizer, scheduler, None, epoch=i) # we do not use scaler in TPU
             if i % self.config.experiment.test_freq == 0 or i == self.config.experiment.epochs - 1: # do validation every test_freq or last epoch
                 if self.do_online_eval:
-                    act_save_path = os.path.join(self.config.result_path, CKPT_FOLDER.format(i))
+                    act_save_path = os.path.join(self.config.result_path, ACT_FOLDER)
                     if self.distenv.master:
                         os.makedirs(act_save_path, exist_ok=True)
-                    stats = self.batch_infer(ema=False, valid=True, save_root=act_save_path, test_fid=True)
+                    stats = self.batch_infer(ema=False, valid=True, save_root=act_save_path, test_fid=True, epoch = i)
                     if self.distenv.master:
                         fid, IS_value, IS_std = stats
                         print(f"Epoch {i} FID: {fid}, IS: {IS_value} +/- {IS_std}")
