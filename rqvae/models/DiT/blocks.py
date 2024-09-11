@@ -25,6 +25,8 @@ class ConvEncoder(nn.Module):
                 hs.append(x)
             x = layer(x)
         if return_hidden_states:
+            hs.append(x) # add the last hidden state
+        if return_hidden_states:
             return x, hs
         return x
 class ConvDecoder(nn.Module):
@@ -63,6 +65,7 @@ class ConvDecoder_wSkipConnection(nn.Module):
         for layer in self.up:
             x = torch.cat([x, hs.pop()], dim=1)
             x = layer(x)
+        x = torch.cat([x, hs.pop()], dim=1) # add the last hidden state
         return x
 class SimpleConv(nn.Module):
     def __init__(self, in_channels:int, layers:int = 1, bottleneck_ratio: float = 16.0, kernel_size: int = 3, final_norm: bool = False, double_channel_output: bool = False):

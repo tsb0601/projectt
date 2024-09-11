@@ -129,13 +129,14 @@ class simplewrapper(nn.Module):
         self.conv_decoder = conv_decoder
         self.skip_connect =  isinstance(conv_decoder, ConvDecoder_wSkipConnection)
         #assert self.conv_encoder.in_channels == self.conv_decoder.out_channels, f'[!]simplewrapper: conv_encoder.in_channels: {self.conv_encoder.#in_channels} must be equal to conv_out.out_channels: {self.conv_decoder.out_channels}'
-        channels = self.conv_decoder.out_channels
         #self.conv_out = zero_module(torch.nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0)) # zero out the output
+        out_channels = self.conv_decoder.out_channels * 2 if self.skip_connect else self.conv_decoder.out_channels
+        channels = self.conv_encoder.in_channels
         self.out = nn.Sequential( # following https://github.com/CompVis/latent-diffusion/blob/main/ldm/modules/diffusionmodules/openaimodel.py#682
-            nn.GroupNorm(num_groups=min(channels, 32), num_channels=channels, eps=1e-6, affine=True),
+            nn.GroupNorm(num_groups=min(out_channels, 32), num_channels=out_channels, eps=1e-6, affine=True),
             nn.SiLU(),
             zero_module(
-                nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1) # do a small conv
+                nn.Conv2d(out_channels, channels, kernel_size=3, stride=1, padding=1) # do a small conv
             )
         )
     def forward(self, x_t, t, **model_kwargs): # follow the calling convention of diffusion

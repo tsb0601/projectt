@@ -6,38 +6,27 @@ dataset:
 arch:
   stage: 2
   stage_1:
-    target: rqvae.models.MAE.Stage1MAE
+    target: rqvae.models.klvae.Stage1_KLVAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
-      no_cls: true
-  connector:
-    target: rqvae.models.connectors.Downsample_with_Conv_Connector
-    params:
-      hidden_size: 768
-      layers: 4
-      bottleneck_ratio: 16
-      kernel_size: 1
-      remove_cls: true
-      patch_as_input: false
+      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
-      # DiT B/1 Recipe
-      hidden_size: 768
+      # DiT L/2 Recipe
+      hidden_size: 1024
       input_size: 16
-      patch_size: 1
-      depth: 12
+      patch_size: 2
+      depth: 24
+      num_heads: 16
       num_classes: 1000
       cfg: 0.0
-      num_heads: 12
-      in_channels: 48
-      learn_sigma: false
+      in_channels: 4
+      learn_sigma: true
       noise_schedule: 'linear'
-      timestep_respacing: 250
-
+      timestep_respacing: ''
+      inference_step: 250
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_mlp_compress_ep80/f16/p01_f16_blk4_b4096_conv1x1_11092024_212047/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -47,7 +36,7 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 5  # 5% of total epochs
+    epoch: 5
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
@@ -57,12 +46,11 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
-  test_freq: 1
+  epochs: 80
+  save_ckpt_freq: 40
+  test_freq: 10
   amp: false
-  actual_batch_size: 4096
-
+  #actual_batch_size: 4096
 
 gan:
   disc:
@@ -72,6 +60,7 @@ gan:
       use_actnorm: false
       ndf: 64
       spectral_norm: false
+      amp: true
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adamw
@@ -79,7 +68,6 @@ gan:
       weight_decay: 0.0
       betas: [0.9, 0.95]
       max_gn: None
-      amp: true
       warmup:
         epoch: 5  # 5% of total epochs
         multiplier: 1
@@ -94,6 +82,5 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: .01
+    perceptual_weight: 0.
     disc_start: 100000
-    lpips_start: 10
