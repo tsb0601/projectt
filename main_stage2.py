@@ -80,7 +80,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'loaded dataset of {config.dataset.type}...')
     xm.master_print(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
     xm.master_print(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
-    model, model_ema = create_model(config.arch, ema=config.arch.ema)
+    model, model_ema = create_model(config.arch, ema=config.arch.ema, is_master=distenv.master)
     model.to(device) # let try moving the model to the device after optimizer creation
     if model_ema:
         model_ema.to(device)

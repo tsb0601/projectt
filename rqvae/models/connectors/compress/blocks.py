@@ -87,7 +87,7 @@ class SimpleConv(nn.Module):
             next_dim = int(cur_dim * each_layer_downsample_ratio)
             if i == layers - 1:
                 next_dim = in_channels
-            self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size))
+            self.up.append(ConvResnetBlock(in_channels=cur_dim, out_channels=next_dim, dropout=0.0, kernel_size=kernel_size,res_first=False))
             cur_dim = next_dim
         self.up_conv_out = zero_module(torch.nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=padding))
     def forward(self, x):

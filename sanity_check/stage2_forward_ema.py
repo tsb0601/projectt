@@ -19,7 +19,7 @@ config_path = sys.argv[1]
 im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 config = OmegaConf.load(config_path).arch
-stage2_model_wrapper, stage2_model_ema  = create_model(config, config.ema)
+stage2_model_wrapper, stage2_model_ema  = create_model(config, config.ema, is_master=True)
 stage2_model_wrapper:Stage2ModelWrapper
 stage2_model_ema: Optional[ExponentialMovingAverage]
 require_grad_params = [param for name, param in stage2_model_wrapper.named_parameters() if param.requires_grad]

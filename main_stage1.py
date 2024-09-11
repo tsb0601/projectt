@@ -60,6 +60,7 @@ parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
 parser.add_argument('--cache_latent', action='store_true')
 parser.add_argument('--do_online_eval', action='store_true') # if we want to do online eval for FID
+parser.add_argument('--fid_gt_act_path', type=str, default='ckpt_gcs/acts/val_256_act.npz') # GT activations for FID
 def main(rank, args, extra_args):
     start = time.time()
     global cache_path
@@ -80,7 +81,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'loaded dataset of {config.dataset.type}...')
     xm.master_print(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
     xm.master_print(f'world_size: {distenv.world_size}, local_rank: {distenv.local_rank}, node_rank: {distenv.world_rank}')
-    model, model_ema = create_model(config.arch, ema=config.arch.ema)
+    model, model_ema = create_model(config.arch, ema=config.arch.ema, is_master=distenv.master)
     model.to(device)
     if model_ema:
         model_ema.to(device)
@@ -122,7 +123,7 @@ def main(rank, args, extra_args):
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval or args.cache_latent,use_ddp=args.use_ddp, use_autocast=args.use_autocast)
+                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval or args.cache_latent,use_ddp=args.use_ddp, use_autocast=args.use_autocast,do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
     xm.master_print(f'[!]trainer created')
     if not args.load_path == '' and os.path.exists(args.load_path):
         if args.resume and not args.eval:

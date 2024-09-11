@@ -1,3 +1,4 @@
+from operator import is_
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,7 +20,7 @@ im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage1_model_wrapper, _  = create_model(config)
+    stage1_model_wrapper, _  = create_model(config, is_master=True)
     stage1_model_wrapper:Stage1ModelWrapper
     print('stage1 model:',stage1_model_wrapper)
     stage1_model = stage1_model_wrapper.stage_1_model
