@@ -26,15 +26,17 @@ arch:
       input_size: 16
       patch_size: 1
       depth: 12
+      num_heads: 12
       num_classes: 1000
       cfg: 0.0
-      num_heads: 12
       in_channels: 12
       learn_sigma: true
       noise_schedule: 'linear'
+      timestep_respacing: ''
+      inference_step: 250
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f64/f64_blk6_b256_19082024_223304/ep_last-checkpoint/0-model.pt'
+  ckpt_path: './ckpt_gcs/mae_conv_compress_ep80/f64/f64_blk4_b4096_conv1x1_12092024_005817/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -54,8 +56,8 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
+  epochs: 80
+  save_ckpt_freq: 40
   test_freq: 1
   amp: false
   #actual_batch_size: 4096
