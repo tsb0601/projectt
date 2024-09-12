@@ -40,7 +40,7 @@ arch:
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 8e-4
+  init_lr: 8.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
