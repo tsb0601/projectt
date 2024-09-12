@@ -14,7 +14,7 @@ arch:
     params:
       # DiT L/2 Recipe
       hidden_size: 1024
-      input_size: 16
+      input_size: 32
       patch_size: 2
       depth: 24
       num_heads: 16
