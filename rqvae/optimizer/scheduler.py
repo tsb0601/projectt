@@ -27,9 +27,6 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
     mode = config.mode
     start_from_zero = config.start_from_zero
 
-    #scheduler = CosineAnnealingLR(
-    #    optimizer, T_max=final_steps - warmup_steps - buffer_steps, eta_min=min_lr
-    #)
     decay_steps = final_steps - warmup_steps - buffer_steps
     end_factor = 0.
     
@@ -54,7 +51,15 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
     else:
         warmup = None
     start_factor = multiplier
-    scheduler = LinearLR(optimizer, start_factor, end_factor, final_steps, last_epoch=warmup_steps + buffer_steps - 1)
+    decay_mode = config.get('decay_mode', 'linear')
+    if decay_mode == 'linear':
+        scheduler = LinearLR(optimizer, start_factor, end_factor, final_steps, last_epoch=warmup_steps + buffer_steps - 1)
+    elif decay_mode == 'cosine':
+        scheduler = CosineAnnealingLR(
+            optimizer, T_max=final_steps - warmup_steps - buffer_steps, eta_min=min_lr
+        )
+    else:
+        raise NotImplementedError(f'{decay_mode} is not a valid decay policy')
     scheduler = Scheduler(warmup_scheduler=warmup, after_scheduler=scheduler)
 
     return scheduler

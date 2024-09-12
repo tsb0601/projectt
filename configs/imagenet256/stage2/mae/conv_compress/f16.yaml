@@ -51,6 +51,7 @@ optimizer:
     min_lr: 0.
     mode: fix
     start_from_zero: true
+    decay_mode: cosine
 
 experiment:
   batch_size: 32
