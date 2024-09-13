@@ -32,7 +32,8 @@ arch:
       in_channels: 48
       learn_sigma: false
       noise_schedule: 'linear'
-      timestep_respacing: 250
+      timestep_respacing: ''
+      inference_step: 250
   checkpointing: false
   ema: 0.114514
   ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f16/f16_blk4_b256_19082024_184612/ep_last-checkpoint/0-model.pt'
@@ -51,7 +52,7 @@ optimizer:
     min_lr: 0.
     mode: fix
     start_from_zero: true
-    decay_mode: cosine
+    #decay_mode: cosine
 
 experiment:
   batch_size: 32
