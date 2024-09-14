@@ -34,6 +34,7 @@ from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput, XLA_Mo
 from torch_xla.amp import autocast
 from contextlib import nullcontext
 from rqvae.metrics.fid import InceptionWrapper, frechet_distance, Inception_Score, InceptionV3
+from rqvae.utils.monitor import norm_tracker
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
@@ -81,6 +82,8 @@ class TrainerTemplate:
         self.dataset_val = dataset_val
         self.do_online_eval = do_online_eval
         self.fid_gt_act_path = fid_gt_act_path
+        self.clip_grad_norm = config.optimizer.get("clip_grad_norm", 0)
+        self.norm_tracker = norm_tracker(self.model.parameters(), max_norm=self.clip_grad_norm)
         if do_online_eval:
             assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for do_online_eval"
             self.inception_model = InceptionWrapper([InceptionV3.BLOCK_INDEX_BY_DIM[2048]]).to(self.device)

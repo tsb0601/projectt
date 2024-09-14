@@ -35,6 +35,7 @@ optimizer:
   betas: [0.9, 0.95]
   max_gn: None
   amp: true
+  clip_grad_norm: 1.0
   warmup:
     epoch: 5
     multiplier: 1
@@ -42,7 +43,7 @@ optimizer:
     min_lr: 0.
     mode: fix
     start_from_zero: true
-    decay_mode: cosine
+    decay_mode: linear
 
 experiment:
   batch_size: 32

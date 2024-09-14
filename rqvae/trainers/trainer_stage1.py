@@ -100,6 +100,7 @@ class Trainer(TrainerTemplate):
             "g_weight",
             "logits_real",
             "logits_fake",
+            "grad_norm"
         ]
         accm = AccmStage1WithGAN(
             metric_names,
@@ -275,10 +276,6 @@ class Trainer(TrainerTemplate):
             pbar = tqdm(enumerate(loader), total=len(loader))
         else:
             pbar = enumerate(loader)
-        if DEBUG:
-            xm.mark_step()
-            it_st_time = time.time()
-            xm.master_print(f"[!]start time: {it_st_time}s")
         for it, inputs in pbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
@@ -316,6 +313,10 @@ class Trainer(TrainerTemplate):
                 + g_weight * self.disc_weight * loss_gen
             )
             loss_gen_total.backward()
+            grad_norm = self.norm_tracker()
+            if self.clip_grad_norm > 0:
+                xm.master_print(f"grad_norm: {grad_norm}")
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
@@ -359,6 +360,7 @@ class Trainer(TrainerTemplate):
                 "loss_gen": loss_gen.detach(),
                 "loss_disc": loss_disc.detach(),
                 "g_weight": g_weight.detach(),
+                "grad_norm": grad_norm.detach(),
                 **logits,
             }
             accm.update(metrics, count=1)

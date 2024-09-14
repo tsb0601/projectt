@@ -14,6 +14,7 @@
 
 import logging
 import os
+import time
 import torch
 import torchvision
 from tqdm import tqdm
@@ -48,6 +49,7 @@ class Trainer(TrainerTemplate):
         metric_names = [
             "loss_total",
             "loss_total_ema",
+            "grad_norm",
         ]
         accm = AccmStage1WithGAN(
             metric_names,
@@ -133,11 +135,18 @@ class Trainer(TrainerTemplate):
                 outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
                 loss = outputs["loss_total"] # always use float for loss
             loss.backward()
+            if self.clip_grad_norm > 0:
+                grad_norm = self.norm_tracker.clip_norm()
+                #after_clip_grad_norm = self.norm_tracker()
+                #xm.master_print(f"after_clip_grad_norm: {after_clip_grad_norm}")
+            else:
+                grad_norm = torch.tensor(-1) # not tracking
             xm.mark_step()
             # logging
             loss_total = loss.detach()
             metrics = {
                 "loss_total": loss_total,
+                "grad_norm": grad_norm.detach(),
             }
             if self.model_ema is not None: # if ema exist we also track an ema loss
                 with torch.no_grad():
