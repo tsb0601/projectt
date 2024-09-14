@@ -48,7 +48,7 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 40
+  epochs: 80
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
