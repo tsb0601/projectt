@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
   connector:
     target: rqvae.models.connectors.Downsample_with_Conv_Connector
@@ -16,10 +16,10 @@ arch:
       hidden_size: 768
       layers: 6
       bottleneck_ratio: 64
+      kernel_size: 3
       remove_cls: true
       patch_as_input: false
       final_norm: true
-  ckpt_path: './ckpt_gcs/mae_conv_compress_ep60/f64/f64wnorm_blk6_b256_19082024_215539/ep_last-checkpoint/0-model.pt'
   checkpointing: false
   ema: 0.114514
 optimizer:
@@ -41,9 +41,9 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
-  test_freq: 1
+  epochs: 80
+  save_ckpt_freq: 40
+  test_freq: 10
   amp: false
 
 gan:
@@ -76,6 +76,6 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: .01
+    perceptual_weight: .1
     disc_start: 100000
     lpips_start: 10
