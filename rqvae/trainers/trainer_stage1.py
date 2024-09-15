@@ -313,10 +313,10 @@ class Trainer(TrainerTemplate):
                 + g_weight * self.disc_weight * loss_gen
             )
             loss_gen_total.backward()
-            grad_norm = self.norm_tracker()
             if self.clip_grad_norm > 0:
-                xm.master_print(f"grad_norm: {grad_norm}")
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+            else:
+                grad_norm = torch.tensor(-1) # not tracking
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
