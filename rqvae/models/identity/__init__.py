@@ -16,6 +16,7 @@ class Identity_Stage1(Stage1Model):
         self.in_channels = in_channels
         self.input_size = input_size
         self.hidden_dim = hidden_dim
+        self.dummy_param = torch.nn.Parameter(torch.empty(0)) # require a dummy parameter for optimizer
     def forward(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         """
         Just return x
@@ -47,7 +48,8 @@ class Identity_Stage1(Stage1Model):
         return output
     def compute_loss(self, outputs: Stage1ModelOutput, inputs: LabeledImageData):
         xs = inputs.img
-        loss = xs.mean() * 0. # zero loss but assure it's backpropable
+        xs_recon = outputs.xs_recon
+        loss = (xs - xs_recon).abs().mean() # l1 loss, but normally should be zero
         return {
             "loss_total": loss,
             "loss_recon": loss,
@@ -56,6 +58,6 @@ class Identity_Stage1(Stage1Model):
     def get_recon_imgs(self, x, xs):
         return x, xs
     def get_last_layer(self):
-        return None # no parameter to return
+        return self.dummy_param # no parameter to return
     def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         return self.forward(inputs)

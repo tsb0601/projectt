@@ -5,6 +5,7 @@
 
 
 import math
+import re
 
 import numpy as np
 import torch as th
@@ -107,19 +108,20 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
         # Linear schedule from Ho et al, extended to work for any number of
         # diffusion steps.
         scale = 1000 / num_diffusion_timesteps
-        return get_beta_schedule(
+        betas = get_beta_schedule(
             "linear",
             beta_start=scale * 0.0001,
             beta_end=scale * 0.02,
             num_diffusion_timesteps=num_diffusion_timesteps,
         )
     elif schedule_name == "squaredcos_cap_v2":
-        return betas_for_alpha_bar(
+        betas = betas_for_alpha_bar(
             num_diffusion_timesteps,
             lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
         )
     else:
         raise NotImplementedError(f"unknown beta schedule: {schedule_name}")
+    return betas
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
@@ -156,7 +158,8 @@ class GaussianDiffusion:
         betas,
         model_mean_type,
         model_var_type,
-        loss_type
+        loss_type,
+        input_base_dimension_ratio: float = 1.0,
     ):
 
         self.model_mean_type = model_mean_type
@@ -172,7 +175,13 @@ class GaussianDiffusion:
         self.num_timesteps = int(betas.shape[0])
         
         alphas = 1.0 - betas
+        self.input_base_dimension_ratio = input_base_dimension_ratio
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
+        # scale according to the input base dimension ratio
+        # alphas_cumprod_new = alphas_cumprod / (d + (1 - d) * alphas_cumprod)
+        self.alphas_cumprod = self.alphas_cumprod / ( 
+            input_base_dimension_ratio  + (1 - input_base_dimension_ratio ) * self.alphas_cumprod
+        )
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
         self.alphas_cumprod_next = np.append(self.alphas_cumprod[1:], 0.0)
         assert self.alphas_cumprod_prev.shape == (self.num_timesteps,)

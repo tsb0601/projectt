@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_overfit # overfitting test
   transforms:
     type: imagenetDiT256x256
 
@@ -8,8 +8,13 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
+  connector:
+    target: rqvae.models.connectors.ReshapeAndSplit_connector
+    params:
+      split: 1
+      remove_cls: true
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
@@ -18,11 +23,14 @@ arch:
       input_size: 16
       patch_size: 1
       depth: 12
+      num_heads: 12
       num_classes: 1000
       cfg: 0.0
       in_channels: 768
-      learn_sigma: false
+      learn_sigma: true
       noise_schedule: 'linear'
+      inference_step: 250
+      do_beta_rescaling: true
   checkpointing: false
   ema: 0.114514
 optimizer:
