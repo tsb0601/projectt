@@ -35,6 +35,7 @@ arch:
       noise_schedule: 'linear'
       timestep_respacing: ''
       inference_step: 250
+      do_beta_rescaling: true
   checkpointing: false
   ema: 0.114514
   ckpt_path: 'ckpt_gcs/mae_mlp_compress_ep80/f64/f64_blk6_b4096_conv1x1_11092024_040113/ep_last-checkpoint/0-model.pt'
