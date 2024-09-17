@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet_overfit
   transforms:
     type: imagenet256x256
 
@@ -9,7 +9,6 @@ arch:
     target: rqvae.models.klvae.Stage1_KLVAE
     params:
       ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
-    checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:

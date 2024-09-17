@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.identity.Identity_Stage1
     params:
-      hidden_dim: 48
+      hidden_dim: 192
       input_size: 256
       in_channels: 3
     checkpointing: false
@@ -17,13 +17,13 @@ arch:
     params:
       # DiT B/1 Recipe
       hidden_size: 768
-      input_size: 64
+      input_size: 32
       patch_size: 1
       depth: 12
       num_heads: 12
       num_classes: 1000
       cfg: 0.0
-      in_channels: 48
+      in_channels: 192
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
