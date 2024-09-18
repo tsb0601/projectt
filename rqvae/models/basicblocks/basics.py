@@ -3,6 +3,7 @@ from torch import nn
 from timm.models.vision_transformer import PatchEmbed, DropPath
 import torch_xla
 import torch
+
 from .utils import *
 from timm.models.vision_transformer import Mlp as MLP # Mlp ?? absoultely MLP
 norms = {
@@ -64,8 +65,44 @@ class AttnMlpBlock(nn.Module):
             x = x + self.drop_path(y)
             x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
-
-
+import collections.abc
+from itertools import repeat
+"""
+borrowed from timm.layers.helpers.py#L10
+"""
+def _ntuple(n):
+    def parse(x):
+        if isinstance(x, collections.abc.Iterable) and not isinstance(x, str):
+            return tuple(x)
+        return tuple(repeat(x, n))
+    return parse
+to_2tuple = _ntuple(2)
+class ConvMlp(nn.Module):
+    """
+    a module like timm.layers.Mlp but with Conv1d with adjustable kernel size
+    partially borrowed from timm.layers.mlp.py#L13
+    """
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, norm_layer=None, bias=True, drop=0., kernel_size=1):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        bias = to_2tuple(bias)
+        drop_probs = to_2tuple(drop)
+        conv_ln = partial(nn.Conv1d, kernel_size=kernel_size)
+        self.fc1 = conv_ln(in_features, hidden_features, bias=bias[0])
+        self.act = act_layer()
+        self.drop1 = nn.Dropout(drop_probs[0])
+        self.norm = norm_layer(hidden_features) if norm_layer else nn.Identity()
+        self.fc2 = conv_ln(hidden_features, out_features, bias=bias[1])
+        self.drop2 = nn.Dropout(drop_probs[1])
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop1(x)
+        x = self.norm(x)
+        x = self.fc2(x)
+        x = self.drop2(x)
+        return x
 class MlpResBlock(nn.Module):
     """
     Borrowed from https://github.com/LTH14/rcg/blob/main/rdm/modules/diffusionmodules/latentmlp.py#L9

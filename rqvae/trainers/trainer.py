@@ -296,7 +296,7 @@ class TrainerTemplate:
         model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
         opt_path = os.path.join(ckpt_folder, OPT_NAME.format(rank))
         sch_path = os.path.join(ckpt_folder, SCH_NAME.format(rank))
-        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(rank)) # rng state is per core
+        rng_path = os.path.join(ckpt_folder, RNG_NAME.format(self.distenv.world_rank)) # we assume rng is saved for each rank
         if not os.path.exists(rng_path):
             rng_path = os.path.join(ckpt_folder, RNG_NAME.format(0)) # load from master
         model_weight = torch.load(model_path)
