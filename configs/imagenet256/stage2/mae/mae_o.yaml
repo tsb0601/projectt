@@ -42,7 +42,7 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 2  # 5% of total epochs
+    epoch: 1
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
@@ -50,11 +50,11 @@ optimizer:
     start_from_zero: false
 
 experiment:
-  batch_size: 1 # for overfitting all samples are the same, thus batch size can be arbitrary
+  batch_size: 1
   accu_step: 1
-  epochs: 10
-  save_ckpt_freq: 2000 # do not save any checkpoints
-  test_freq: 2
+  epochs: 3
+  save_ckpt_freq: 1000
+  test_freq: 1
   amp: false
 
 gan:

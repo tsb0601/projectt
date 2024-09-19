@@ -33,6 +33,9 @@ with torch.no_grad():
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
+    print("=" * 10, 'testing forward', "=" * 10)
+    output = stage1_model.forward(data)
+    print(f'forward xs recon: shape: {output.xs_recon.shape}, min: {output.xs_recon.min()}, max: {output.xs_recon.max()} mean: {output.xs_recon.mean()} std: {output.xs_recon.std()}')
     print("=" * 10, 'testing encoding', "=" * 10)
     latent_output = stage1_model.encode(data)
     print(f'encoded zs: shape: {latent_output.zs.shape}, min: {latent_output.zs.min()}, max: {latent_output.zs.max()} mean: {latent_output.zs.mean()} std: {latent_output.zs.std()}')

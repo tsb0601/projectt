@@ -117,10 +117,6 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
-        if os.path.isfile(norm_data_path):
-            norm_data = torch.load(norm_data_path)
-            self.running_mean = norm_data['mean']
-            self.running_var = norm_data['var']
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -146,9 +142,6 @@ class Stage1MAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
-        # redo the final layernorm affine
-        if hasattr(self, 'running_var'):
-            latent = latent  / torch.sqrt(self.running_var)
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
