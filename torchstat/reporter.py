@@ -60,7 +60,7 @@ def report_format(collected_nodes):
                          index=['params', 'memory(MB)', 'MAdd', 'Flops', 'duration[%]',
                                 'MemRead(B)', 'MemWrite(B)', 'MemR+W(B)'],
                          name='total')
-    df = df.append(total_df)
+    df = df._append(total_df)
 
     df = df.fillna(' ')
     df['memory(MB)'] = df['memory(MB)'].apply(
@@ -72,7 +72,16 @@ def report_format(collected_nodes):
     summary = str(df) + '\n'
     summary += "=" * len(str(df).split('\n')[0])
     summary += '\n'
-    summary += "Total params: {:,}\n".format(total_parameters_quantity)
+    def convert_to_readable_format(param_quantity):
+        if param_quantity < 1e3:
+            return str(param_quantity)
+        elif param_quantity < 1e6:
+            return str(round(param_quantity / 1e3, 4)) + 'K'
+        elif param_quantity < 1e9:
+            return str(round(param_quantity / 1e6, 4)) + 'M'
+        else:
+            return str(round(param_quantity / 1e9, 4)) + 'B'
+    summary += "Total params: {}\n".format(convert_to_readable_format(total_parameters_quantity))
 
     summary += "-" * len(str(df).split('\n')[0])
     summary += '\n'

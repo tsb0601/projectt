@@ -21,7 +21,13 @@ def compute_flops(module, inp, out):
     elif isinstance(module, nn.Identity):
         return 0 # Identity layer does not have any flops
     else:
-        print(f"[Flops]: {type(module).__name__} is not supported!")
+        unsupported_ops_flops:set = globals().get('unsupported_ops_flops')
+        if unsupported_ops_flops is None:
+            globals()['unsupported_ops_flops'] = set()
+            unsupported_ops_flops = globals()['unsupported_ops_flops']
+        if type(module).__name__ not in unsupported_ops_flops:
+            unsupported_ops_flops.add(type(module).__name__)
+            print(f"[Flops]: {type(module).__name__} is not supported!")
         return 0
     pass
 
@@ -88,9 +94,10 @@ def compute_Pool2d_flops(module, inp, out):
 
 def compute_Linear_flops(module, inp, out):
     assert isinstance(module, nn.Linear)
-    assert len(inp.size()) == 2 and len(out.size()) == 2
+    assert len(inp.size()) <= 3 and len(out.size()) <= 3
     batch_size = inp.size()[0]
-    return batch_size * inp.size()[1] * out.size()[1]
+    seq_len = 1 if len(inp.size()) == 2 else inp.size()[1]
+    return batch_size * inp.size()[-1] * out.size()[-1] * seq_len
 
 def compute_Upsample_flops(module, inp, out):
     assert isinstance(module, nn.Upsample)

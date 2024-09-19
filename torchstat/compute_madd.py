@@ -125,29 +125,37 @@ def compute_Softmax_madd(module, inp, out):
     return exp + add + div
 
 
-def compute_Linear_madd(module, inp, out):
+def compute_Linear_madd(module, inp, out): # linear can be applied to 1d, 2d tensors
     assert isinstance(module, nn.Linear)
-    assert len(inp.size()) == 2 and len(out.size()) == 2
-
-    num_in_features = inp.size()[1]
-    num_out_features = out.size()[1]
-
+    #print('compute_Linear_madd',inp.size(),out.size())
+    assert len(inp.size()) == len(out.size()), f'input and output should have same dimensions, inp: {inp.size()}, out: {out.size()}'
+    assert len(inp.size()) <= 3 and len(out.size()) <= 3, f'inp: {inp.size()}, out: {out.size()}, only 1d, 2d, tensors are supported for Linear layer'
+    num_in_features = inp.size()[-1]
+    num_out_features = out.size()[-1]
+    if len(inp.size()) == 3:
+        L = inp.size()[1]
+    else:
+        L = 1
     mul = num_in_features
     add = num_in_features - 1
-    return num_out_features * (mul + add)
+    return num_out_features * (mul + add) * L
 
 
 def compute_Bilinear_madd(module, inp1, inp2, out):
     assert isinstance(module, nn.Bilinear)
-    assert len(inp1.size()) == 2 and len(inp2.size()) == 2 and len(out.size()) == 2
+    assert len(inp1.size()) == len(inp2.size()) == len(out.size()), f'input and output should have same dimensions, inp1: {inp1.size()}, inp2: {inp2.size()}, out: {out.size()}'
+    assert len(inp1.size()) <= 3 and len(inp2.size()) <= 3 and len(out.size()) <= 3, f'inp1: {inp1.size()}, inp2: {inp2.size()}, out: {out.size()}, only 1d, 2d, tensors are supported for Bilinear layer'
 
-    num_in_features_1 = inp1.size()[1]
-    num_in_features_2 = inp2.size()[1]
-    num_out_features = out.size()[1]
-
+    num_in_features_1 = inp1.size()[-1]
+    num_in_features_2 = inp2.size()[-1]
+    num_out_features = out.size()[-1]
+    if len(inp1.size()) == 3:
+        L = inp1.size()[1]
+    else:
+        L = 1
     mul = num_in_features_1 * num_in_features_2 + num_in_features_2
     add = num_in_features_1 * num_in_features_2 + num_in_features_2 - 1
-    return num_out_features * (mul + add)
+    return num_out_features * (mul + add) * L
 
 
 def compute_madd(module, inp, out):
@@ -174,5 +182,11 @@ def compute_madd(module, inp, out):
     elif isinstance(module, nn.Identity):
         return 0 # Identity layer does not have any MAdd
     else:
-        print(f"[MAdd]: {type(module).__name__} is not supported!")
+        unsupported_op_madd:set = globals().get('unsupported_ops_madd')
+        if unsupported_op_madd is None:
+            globals()['unsupported_ops_madd'] = set()
+            unsupported_op_madd = globals()['unsupported_ops_madd']
+        if type(module).__name__ not in unsupported_op_madd:
+            unsupported_op_madd.add(type(module).__name__)
+            print(f"[MAdd]: {type(module).__name__} is not supported!")
         return 0

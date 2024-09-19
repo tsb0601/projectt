@@ -4,7 +4,6 @@ from torchstat import ModelHook
 from collections import OrderedDict
 from torchstat import StatTree, StatNode, report_format
 
-
 def get_parent_node(root_node, stat_node_name):
     assert isinstance(root_node, StatNode)
 
@@ -48,15 +47,14 @@ def convert_leaf_modules_to_stat_tree(leaf_modules):
 
 
 class ModelStat(object):
-    def __init__(self, model, input_size, query_granularity=1):
+    def __init__(self, model, example_input, query_granularity=1, model_fn: str = 'forward'):
         assert isinstance(model, nn.Module)
-        assert isinstance(input_size, (tuple, list)) and len(input_size) == 3
         self._model = model
-        self._input_size = input_size
+        self._example_input = example_input
         self._query_granularity = query_granularity
-
+        self.model_fn = model_fn
     def _analyze_model(self):
-        model_hook = ModelHook(self._model, self._input_size)
+        model_hook = ModelHook(self._model, self._example_input, model_fn=self.model_fn)
         self.leaf_modules = model_hook.retrieve_leaf_modules()
         self.stat_tree = convert_leaf_modules_to_stat_tree(self.leaf_modules)
         collected_nodes = self.stat_tree.get_collected_stat_nodes(self._query_granularity)
@@ -68,6 +66,16 @@ class ModelStat(object):
         return report, report_df
 
 
-def stat(model, input_size, query_granularity=1):
-    ms = ModelStat(model, input_size, query_granularity)
-    print(ms.show_report()[0])
+def stat(model, example_input, query_granularity=1, model_fn: str = 'forward', simple: bool = False):
+    ms = ModelStat(model, example_input, query_granularity, model_fn)
+    report = ms.show_report()[0]
+    if simple:
+        # parse the flops, param, memory from the report
+        parsed_report = report.split('\n')
+        params_line = parsed_report[-7].replace('Total', '')
+        memory_line = parsed_report[-5].replace('Total', '')
+        madd_line = parsed_report[-4].replace('Total', '')
+        flops_line = parsed_report[-3].replace('Total', '')
+        print(' | '.join([params_line, memory_line,madd_line, flops_line]))
+    else:
+        print(report)

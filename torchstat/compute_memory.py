@@ -21,7 +21,13 @@ def compute_memory(module, inp, out):
     elif isinstance(module, nn.Identity):
         return (0, 0)
     else:
-        print(f"[Memory]: {type(module).__name__} is not supported!")
+        unsupported_ops_memory:set = globals().get('unsupported_ops_memory')
+        if unsupported_ops_memory is None:
+            globals()['unsupported_ops_memory'] = set()
+            unsupported_ops_memory = globals()['unsupported_ops_memory']
+        if type(module).__name__ not in unsupported_ops_memory:
+            unsupported_ops_memory.add(type(module).__name__)
+            print(f"[Memory]: {type(module).__name__} is not supported!")
         return (0, 0)
     pass
 
@@ -83,7 +89,7 @@ def compute_GroupNorm_memory(module, inp, out):
 
 def compute_Linear_memory(module, inp, out):
     assert isinstance(module, nn.Linear)
-    assert len(inp.size()) == 2 and len(out.size()) == 2
+    assert len(inp.size()) <= 3 and len(out.size()) <= 3
     batch_size = inp.size()[0]
     mread = batch_size * (inp.size()[1:].numel() + num_params(module))
     mwrite = out.size().numel()

@@ -10,19 +10,19 @@ from torchstat import compute_memory
 
 
 class ModelHook(object):
-    def __init__(self, model, input_size):
+    def __init__(self, model, example_input, model_fn:str = 'forward'):
         assert isinstance(model, nn.Module)
-        assert isinstance(input_size, (list, tuple))
+        #assert isinstance(input_size, (list, tuple))
 
         self._model = model
-        self._input_size = input_size
+        self._input_size = example_input
         self._origin_call = dict()  # sub module call hook
-
         self._hook_model()
-        x = torch.rand(1, *self._input_size)  # add module duration time
+        #x = torch.rand(1, *self._input_size)  # add module duration time
+        x = example_input
         self._model.eval()
-        self._model(x)
-
+        calling_fn = getattr(self._model, model_fn)
+        calling_fn(x)
     @staticmethod
     def _register_buffer(module):
         assert isinstance(module, nn.Module)
