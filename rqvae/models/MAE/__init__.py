@@ -142,6 +142,8 @@ class Stage1MAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
+        running_mean, running_std = self.model.running_mean, self.model.running_var
+        latent = (latent - running_mean) / torch.sqrt(running_std + 1e-5) # normalize
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -151,8 +153,8 @@ class Stage1MAE(Stage1Model):
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
         # add the final layernorm affine
-        if hasattr(self, 'running_var'):
-            zs = zs * torch.sqrt(self.running_var)
+        running_mean, running_std = self.model.running_mean, self.model.running_var
+        zs = zs * torch.sqrt(running_std + 1e-5) + running_mean
         #zs = (zs - self.layernorm_mean) / self.layernorm_std
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
