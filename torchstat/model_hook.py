@@ -3,6 +3,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import torch.nn as nn
+from zmq import has
 
 from torchstat import compute_madd
 from torchstat import compute_flops
@@ -26,19 +27,33 @@ class ModelHook(object):
     @staticmethod
     def _register_buffer(module):
         assert isinstance(module, nn.Module)
-
+        def _register_buff(module:nn.Module, name:str, value:torch.Tensor):
+            module: nn.Module
+            #module.name = value # initialize the buffer
+            module.__setattr__(name, value)
+            #if hasattr(module, name):
+            #    module.name = value # initialize the buffer
+            #else:
+            #    module.register_buffer(name, value)
         if len(list(module.children())) > 0:
             return
-
-        module.register_buffer('input_shape', torch.zeros(3).int())
-        module.register_buffer('output_shape', torch.zeros(3).int())
-        module.register_buffer('parameter_quantity', torch.zeros(1).int())
-        module.register_buffer('inference_memory', torch.zeros(1).long())
-        module.register_buffer('MAdd', torch.zeros(1).long())
-        module.register_buffer('duration', torch.zeros(1).float())
-        module.register_buffer('Flops', torch.zeros(1).long())
-        module.register_buffer('Memory', torch.zeros(2).long())
-
+        #module.register_buffer('_input_shape', torch.zeros(3).int())
+        #module.register_buffer('_output_shape', torch.zeros(3).int())
+        #module.register_buffer('parameter_quantity', torch.zeros(1).int())
+        #module.register_buffer('inference_memory', torch.zeros(1).long())
+        #module.register_buffer('MAdd', torch.zeros(1).long())
+        #module.register_buffer('duration', torch.zeros(1).float())
+        #module.register_buffer('Flops', torch.zeros(1).long())
+        #module.register_buffer('Memory', torch.zeros(2).long())
+        _register_buff(module, '_input_shape', torch.zeros(3).int())
+        _register_buff(module, '_output_shape', torch.zeros(3).int())
+        _register_buff(module, 'parameter_quantity', torch.zeros(1).int())
+        _register_buff(module, 'inference_memory', torch.zeros(1).long())
+        _register_buff(module, 'MAdd', torch.zeros(1).long())
+        _register_buff(module, 'duration', torch.zeros(1).float())
+        _register_buff(module, 'Flops', torch.zeros(1).long())
+        _register_buff(module, 'Memory', torch.zeros(2).long())
+        
     def _sub_module_call_hook(self):
         def wrap_call(module, *input, **kwargs):
             assert module.__class__ in self._origin_call
@@ -52,9 +67,9 @@ class ModelHook(object):
             module.duration = torch.from_numpy(
                 np.array([end - start], dtype=np.float32))
 
-            module.input_shape = torch.from_numpy(
+            module._input_shape = torch.from_numpy(
                 np.array(input[0].size()[1:], dtype=np.int32))
-            module.output_shape = torch.from_numpy(
+            module._output_shape = torch.from_numpy(
                 np.array(output.size()[1:], dtype=np.int32))
 
             parameter_quantity = 0

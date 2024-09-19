@@ -32,8 +32,8 @@ def convert_leaf_modules_to_stat_tree(leaf_modules):
             node = StatNode(name=stat_node_name, parent=parent_node, is_leaf=is_leaf)
             parent_node.add_child(node)
             if i == len(names) - 1:  # leaf module itself
-                input_shape = leaf_module.input_shape.numpy().tolist()
-                output_shape = leaf_module.output_shape.numpy().tolist()
+                input_shape = leaf_module._input_shape.numpy().tolist()
+                output_shape = leaf_module._output_shape.numpy().tolist()
                 node.input_shape = input_shape
                 node.output_shape = output_shape
                 node.parameter_quantity = leaf_module.parameter_quantity.numpy()[0]

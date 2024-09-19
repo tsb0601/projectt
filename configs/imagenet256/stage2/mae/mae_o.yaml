@@ -26,7 +26,7 @@ arch:
       num_heads: 12
       num_classes: 1000
       cfg: 0.0
-      in_channels: 192
+      in_channels: 48
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250

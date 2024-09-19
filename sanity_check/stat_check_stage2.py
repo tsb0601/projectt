@@ -23,7 +23,7 @@ im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage2_model_wrapper, _  = create_model(config, is_master=True)
+    stage2_model_wrapper, _  = create_model(config, is_master=False) # does not load ckpt
     stage2_model_wrapper:Stage2ModelWrapper
     print('stage2_model_wrapper:', stage2_model_wrapper)
     param, trainable_param = count_params(stage2_model_wrapper)
@@ -39,11 +39,11 @@ with torch.no_grad():
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
-    print("=" * 10, 'testing stage1 forward', "=" * 10)
-    stat(stage1_model, data, model_fn='forward', simple=True)
-    print("=" * 10, 'testing stage1 encoding', "=" * 10)
+    #print("=" * 10, 'testing stage1 forward', "=" * 10)
+    #stat(stage1_model, data, model_fn='forward', simple=True)
+    #print("=" * 10, 'testing stage1 encoding', "=" * 10)
     latent_output = stage1_model.encode(data)
-    stat(stage1_model, data, model_fn='encode', simple=True)
+    #stat(stage1_model, data, model_fn='encode', simple=True)
     print("=" * 10, 'testing connector', "=" * 10)
     forward_output = connector.forward(latent_output)
     stat(connector, latent_output, model_fn='forward', simple=True)
