@@ -77,7 +77,6 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
         raise NotImplementedError
     @torch.no_grad()
     def _forward_hook(self, encodings: Stage1Encodings) -> Stage1Encodings:
-        assert self.bn.training is True, f'[!]ERROR: BatchNorm should be in training mode, but got {self.bn.training}'
         latent = encodings.zs
         normed_latent = self.bn(latent)
         return Stage1Encodings(zs=normed_latent, additional_attr=encodings.additional_attr)
