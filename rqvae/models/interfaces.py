@@ -67,9 +67,6 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
         super().__init__()
         self.bn = bn  
         if bn is not None:
-            self.running_mean = self.bn.running_mean
-            self.running_var = self.bn.running_var
-            self.eps = self.bn.eps
             # register forward hook
             self.__class__.__call__ = self.wrap_call # wrap the forward call
     @abc.abstractmethod
@@ -80,7 +77,7 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
         raise NotImplementedError
     @torch.no_grad()
     def _forward_hook(self, encodings: Stage1Encodings) -> Stage1Encodings:
-        self.bn.train() # always set to train mode
+        assert self.bn.training is True, f'[!]ERROR: BatchNorm should be in training mode, but got {self.bn.training}'
         latent = encodings.zs
         normed_latent = self.bn(latent)
         return Stage1Encodings(zs=normed_latent, additional_attr=encodings.additional_attr)
@@ -90,9 +87,9 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
             return encodings
         zs = encodings.zs
         # expand to match zs dim: B,C ,L or B,C, H,W
-        running_mean = self.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
-        running_var = self.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
-        zs = (zs - running_mean) / torch.sqrt(running_var + self.eps)
+        running_mean = self.bn.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        running_var = self.bn.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        zs = (zs - running_mean) / torch.sqrt(running_var + self.bn.eps)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     @torch.no_grad()
     def unnormalize(self, encodings: Stage1Encodings) -> Stage1Encodings:
@@ -100,9 +97,9 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
             return encodings
         zs = encodings.zs
         # expand to match zs dim: B,C ,L or B,C, H,W
-        running_mean = self.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
-        running_var = self.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
-        zs = zs * torch.sqrt(running_var + self.eps) + running_mean
+        running_mean = self.bn.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        running_var = self.bn.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        zs = zs * torch.sqrt(running_var + self.bn.eps) + running_mean
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     def wrap_call(self, encodings: Stage1Encodings):
         encodings = self.forward(encodings)
@@ -175,6 +172,7 @@ class Stage1ModelWrapper(Stage1Model):
             connector = id_connector()
         self.connector = connector
         self.connector.requires_grad_(True) # train the connector
+        self.train()
     def forward(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         encodings = self.stage_1_model.encode(inputs)
         encodings = self.connector(encodings) # call __call__ instead of forward to make hook work
@@ -214,6 +212,9 @@ class Stage2ModelWrapper(Stage2Model):
         self.stage_2_model.requires_grad_(True)  # train the stage 2 model
         self.connector.requires_grad_(False)  # freeze the connector
         self.do_normalize = do_normalize
+        self.stage_1_model.eval()
+        self.connector.eval()
+        self.stage_2_model.train()
     def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(inputs)

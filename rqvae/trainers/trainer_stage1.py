@@ -374,7 +374,7 @@ class Trainer(TrainerTemplate):
                 pbar.set_description(line)
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
-                if (global_iter + 1) % (100 * self.accu_step) == 0: # log every 100 actual steps
+                if (global_iter + 1) % (20 * self.accu_step) == 0: # log every 20 actual steps
                     for key, value in metrics.items():
                         if isinstance(value, torch.Tensor):
                             value = value.to(
