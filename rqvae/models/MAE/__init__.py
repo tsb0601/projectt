@@ -82,7 +82,7 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, norm_data_path: str = '')->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False)->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -142,8 +142,6 @@ class Stage1MAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
-        running_mean, running_std = self.model.running_mean, self.model.running_var
-        latent = (latent - running_mean) / torch.sqrt(running_std + 1e-5) # normalize
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -152,10 +150,6 @@ class Stage1MAE(Stage1Model):
         return encodings
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
-        # add the final layernorm affine
-        running_mean, running_std = self.model.running_mean, self.model.running_var
-        zs = zs * torch.sqrt(running_std + 1e-5) + running_mean
-        #zs = (zs - self.layernorm_mean) / self.layernorm_std
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)

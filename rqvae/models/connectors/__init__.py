@@ -11,9 +11,10 @@ def update_additional_attr(additional_attr: Optional[dict], new_pairs: dict):
     additional_attr.update(new_pairs)
     return additional_attr
 class id_connector(base_connector):
-    def __init__(self):
+    def __init__(self, latent_size: list[int]):
         super().__init__()
-
+        if isinstance(latent_size, int):
+            latent_size = [latent_size]
     def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
         return encodings # do nothing
     def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
@@ -92,7 +93,7 @@ class ReshapeAndSplit_connector(base_connector):
         self.split = split
         self.remove_cls = remove_cls
         assert int(split**0.5) == split**0.5, 'split should be a square number'
-    def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
+    def forward(self, encodings: Stage1Encodings, inference: bool = True) -> Stage1Encodings:
         zs = encodings.zs # zs : [batch_size, num_patches + 1, hidden_size]
         # remove cls
         if self.remove_cls:
@@ -116,7 +117,7 @@ class ReshapeAndSplit_connector(base_connector):
         # then reshape to bsz, hidden_size, split_pn, split_pn
         zs = zs.view(batch_size, split_c, split_pn, split_pn)"""
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
-    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
+    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput], inference: bool = True) -> Stage1Encodings:
         zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
         if len(zs.shape) == 4:
             # been reshaped, we reshape them back & add a zero cls token
@@ -147,7 +148,7 @@ class Downsample_with_MLP_Connector(base_connector):
         self.remove_cls = remove_cls
         self.patch_as_input = patch_as_input
         assert patch_as_input & remove_cls == False, 'patch_as_input and remove_cls should not be true at the same time'
-    def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
+    def forward(self, encodings: Stage1Encodings, inference: bool = True) -> Stage1Encodings:
         zs = encodings.zs # bsz, seq_len, hidden_size
         # remove cls 
         if self.patch_as_input:
@@ -157,7 +158,7 @@ class Downsample_with_MLP_Connector(base_connector):
         zs = self.mlp.encode(zs) 
         zs = L_to_P(zs, self.split)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
-    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
+    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput], inference: bool = True) -> Stage1Encodings:
         zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
         if len(zs.shape) == 4:
             zs = P_to_L(zs, self.split)
@@ -183,17 +184,31 @@ class Downsample_with_Conv_Connector(base_connector):
         self.remove_cls = remove_cls
         self.patch_as_input = patch_as_input
         assert patch_as_input & remove_cls == False, 'patch_as_input and remove_cls should not be true at the same time'
-    def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        self.running_batchnorm = nn.BatchNorm2d(hidden_size, affine=False)
+        self.running_mean = self.running_batchnorm.running_mean
+        self.running_var = self.running_batchnorm.running_var
+    def forward(self, encodings: Stage1Encodings, inference: bool = True) -> Stage1Encodings:
         zs = encodings.zs # bsz, seq_len, hidden_size
         # remove cls 
         if self.remove_cls:
             zs = zs[:,1:]
         if not self.patch_as_input:
             zs = L_to_P(zs, self.split)
-        zs = self.conv.encode(zs) 
+        zs = self.conv.encode(zs)  # bsz, c, pn, pn
+        if inference:
+            running_mean, running_var = self.running_mean, self.running_var
+            zs = zs - running_mean[None,:,None,None]
+            zs = zs / (running_var[None,:,None,None] + 1e-5).sqrt()
+        else: # we do update
+            with torch.no_grad():
+                self.running_batchnorm(zs)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
-    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
+    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput], inference: bool = True) -> Stage1Encodings:
         zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
+        if inference:
+            running_mean, running_var = self.running_mean, self.running_var
+            zs = zs * (running_var[None,:,None,None] + 1e-5).sqrt()
+            zs = zs + running_mean[None,:,None,None]
         if len(zs.shape) == 4:
             zs = self.conv.decode(zs)
             if not self.patch_as_input:

@@ -983,9 +983,6 @@ class ViTMAEForPreTraining(ViTMAEPreTrainedModel):
 
         self.vit = ViTMAEModel(config)
         self.decoder = ViTMAEDecoder(config, num_patches=self.vit.embeddings.num_patches)
-        self.running_batchnorm = nn.BatchNorm1d(config.hidden_size, affine=False)# track running mean and var
-        self.running_var = self.running_batchnorm.running_var
-        self.running_mean = self.running_batchnorm.running_mean # make sure they are registered as parameters
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1157,8 +1154,6 @@ class ViTMAEForPreTraining(ViTMAEPreTrainedModel):
         latent = outputs.last_hidden_state
         ids_restore = outputs.ids_restore
         mask = outputs.mask
-        with torch.no_grad():
-            self.running_batchnorm(latent.permute(0, 2, 1).contiguous().detach()) # update mean and var
         decoder_outputs = self.decoder(latent, ids_restore, interpolate_pos_encoding=interpolate_pos_encoding, drop_cls_token=drop_cls_token)
         logits = decoder_outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
 

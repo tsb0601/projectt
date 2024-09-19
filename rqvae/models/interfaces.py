@@ -62,13 +62,37 @@ class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
         """Get the last layer of the model."""
         pass
 class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 and stage2 models
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, bn: nn.modules.batchnorm._BatchNorm):
+        super().__init__()  
+        self.bn = bn
+        self.running_mean = self.bn.running_mean
+        self.running_var = self.bn.running_var
+        self.__call__ = self.wrap_call
     def forward(self, encodings: Stage1Encodings) -> Stage1Encodings: # from stage1 to stage2
         raise NotImplementedError
     def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings: # from stage2 to stage1
         raise NotImplementedError
+    @torch.no_grad()
+    def _forward_hook(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        self.bn.train() # always set to train mode
+        latent = encodings.zs
+        normed_latent = self.bn(latent)
+        return Stage1Encodings(zs=normed_latent, additional_attr=encodings.additional_attr)
+    @torch.no_grad()
+    def normalize(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        zs = encodings.zs
+        zs = (zs - self.running_mean) / torch.sqrt(self.running_var + self.bn.eps)
+        return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
+    @torch.no_grad()
+    def unnormalize(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        zs = encodings.zs
+        zs = zs * torch.sqrt(self.running_var + self.bn.eps) + self.running_mean
+        return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
+    def wrap_call(self, encodings: Stage1Encodings):
+        encodings = self.forward(encodings)
+        self._forward_hook(encodings)
+        return encodings
+    #add a hook on forward to get mean and var
 from .connectors import id_connector
 class Stage1Model(XLA_Model):
 
