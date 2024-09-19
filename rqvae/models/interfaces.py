@@ -14,6 +14,7 @@
 
 import abc
 
+from numpy import shape
 from torch import nn
 import torch
 from header import *
@@ -62,14 +63,19 @@ class XLA_Model(nn.Module, metaclass=abc.ABCMeta):
         """Get the last layer of the model."""
         pass
 class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 and stage2 models
-    def __init__(self, bn: nn.modules.batchnorm._BatchNorm):
-        super().__init__()  
-        self.bn = bn
-        self.running_mean = self.bn.running_mean
-        self.running_var = self.bn.running_var
-        self.__call__ = self.wrap_call
+    def __init__(self, bn: nn.modules.batchnorm._BatchNorm = None):
+        super().__init__()
+        self.bn = bn  
+        if bn is not None:
+            self.running_mean = self.bn.running_mean
+            self.running_var = self.bn.running_var
+            self.eps = self.bn.eps
+            # register forward hook
+            self.__class__.__call__ = self.wrap_call # wrap the forward call
+    @abc.abstractmethod
     def forward(self, encodings: Stage1Encodings) -> Stage1Encodings: # from stage1 to stage2
         raise NotImplementedError
+    @abc.abstractmethod
     def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings: # from stage2 to stage1
         raise NotImplementedError
     @torch.no_grad()
@@ -80,13 +86,23 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
         return Stage1Encodings(zs=normed_latent, additional_attr=encodings.additional_attr)
     @torch.no_grad()
     def normalize(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        if self.bn is None:
+            return encodings
         zs = encodings.zs
-        zs = (zs - self.running_mean) / torch.sqrt(self.running_var + self.bn.eps)
+        # expand to match zs dim: B,C ,L or B,C, H,W
+        running_mean = self.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        running_var = self.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        zs = (zs - running_mean) / torch.sqrt(running_var + self.eps)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     @torch.no_grad()
     def unnormalize(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        if self.bn is None:
+            return encodings
         zs = encodings.zs
-        zs = zs * torch.sqrt(self.running_var + self.bn.eps) + self.running_mean
+        # expand to match zs dim: B,C ,L or B,C, H,W
+        running_mean = self.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        running_var = self.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        zs = zs * torch.sqrt(running_var + self.eps) + running_mean
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     def wrap_call(self, encodings: Stage1Encodings):
         encodings = self.forward(encodings)
@@ -161,13 +177,13 @@ class Stage1ModelWrapper(Stage1Model):
         self.connector.requires_grad_(True) # train the connector
     def forward(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         encodings = self.stage_1_model.encode(inputs)
-        encodings = self.connector.forward(encodings)
+        encodings = self.connector(encodings) # call __call__ instead of forward to make hook work
         encodings = self.connector.reverse(encodings)
         outputs = self.stage_1_model.decode(encodings)
         return outputs
     def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
         encodings = self.stage_1_model.encode(inputs)
-        encodings = self.connector.forward(encodings)
+        encodings = self.connector(encodings) # call __call__ instead of forward to make hook work
         return encodings
     def decode(self, encodings: Stage1Encodings) -> Stage1ModelOutput:
         encodings = self.connector.reverse(encodings)
@@ -187,7 +203,7 @@ class Stage2ModelWrapper(Stage2Model):
     Wrap a Stage2 model with a Stage1 model.
     """
 
-    def __init__(self, stage_1_model: Stage1Model, stage_2_model: Stage2Model, connector: Optional[base_connector] = None):
+    def __init__(self, stage_1_model: Stage1Model, stage_2_model: Stage2Model, connector: Optional[base_connector] = None, do_normalize: bool = False):
         super().__init__()
         self.stage_1_model = stage_1_model
         self.stage_2_model = stage_2_model
@@ -197,10 +213,13 @@ class Stage2ModelWrapper(Stage2Model):
         self.stage_1_model.requires_grad_(False)  # freeze the stage 1 model
         self.stage_2_model.requires_grad_(True)  # train the stage 2 model
         self.connector.requires_grad_(False)  # freeze the connector
+        self.do_normalize = do_normalize
     def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(inputs)
             stage1_encodings = self.connector.forward(stage1_encodings)
+            if self.do_normalize:
+                stage1_encodings = self.connector.normalize(stage1_encodings) # normalize the encodings in stage 2
         stage2_output = self.stage_2_model(stage1_encodings, inputs)
         return stage1_encodings, stage2_output
 
@@ -214,6 +233,8 @@ class Stage2ModelWrapper(Stage2Model):
     @torch.no_grad()
     def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         stage_2_gen = self.stage_2_model.infer(inputs)
+        if self.do_normalize:
+            stage_2_gen = self.connector.unnormalize(stage_2_gen)
         stage_1_encodings = self.connector.reverse(stage_2_gen)
         stage_1_gen = self.stage_1_model.decode(stage_1_encodings)
         return stage_1_gen

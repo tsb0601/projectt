@@ -75,8 +75,9 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
         stage_2_model, stage_2_ema = _create_according_to_config(config.stage_2, use_ema, stage=2)
         stage_2_model: Stage2Model
         stage_2_ema: Optional[ExponentialMovingAverage]
-        stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector)
-        stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector_ema) if use_ema else None
+        do_normalize = config.get('do_normalize', False)
+        stage2model = Stage2ModelWrapper(stage_1_model, stage_2_model, connector, do_normalize)
+        stage2model_ema = Stage2ModelWrapper(stage_1_ema, stage_2_ema, connector_ema, do_normalize) if use_ema else None
         if config.get('ckpt_path', False):
             ckpt_path = config.ckpt_path
             if is_master:

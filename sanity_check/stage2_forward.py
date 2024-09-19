@@ -37,6 +37,9 @@ with torch.no_grad():
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
     data = LabeledImageData(img=image)
+    print("=" * 10, 'testing wrapper forward', "=" * 10)
+    forward_output = stage2_model_wrapper.forward(data)[1]
+    print(forward_output.zs_pred.shape, forward_output.zs_pred.min(), forward_output.zs_pred.max())
     print("=" * 10, 'testing stage1 get last layer', "=" * 10)
     last_layer = stage1_model.get_last_layer()
     print(last_layer.shape, last_layer.dtype)
