@@ -35,7 +35,7 @@ arch:
       timestep_respacing: ''
       inference_step: 250
       do_beta_rescaling: true
-  #do_normalize: true
+  do_normalize: true
   checkpointing: false
   ema: 0.114514
   ckpt_path: 'ckpt_gcs/mae_conv_compress_ep80/f64/f64_blk6_b4096_conv3x3_19092024_230645/ep_last-checkpoint/0-model.pt'
@@ -62,7 +62,7 @@ experiment:
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  actual_batch_size: 128
+  actual_batch_size: 4096
 
 gan:
   disc:
