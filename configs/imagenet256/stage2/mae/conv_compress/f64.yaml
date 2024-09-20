@@ -38,7 +38,7 @@ arch:
   do_normalize: true
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_conv_compress_ep80/f64/f64_blk4_b4096_conv1x1_12092024_005817/ep_last-checkpoint/0-model.pt'
+  ckpt_path: 'ckpt_gcs/mae_conv_compress_ep80/f64/f64_blk6_b4096_conv3x3_19092024_230645/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
