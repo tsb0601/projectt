@@ -35,10 +35,10 @@ arch:
       noise_schedule: 'linear'
       timestep_respacing: 250
       do_beta_rescaling: true
-
+  do_normalize: true
   checkpointing: false
   ema: 0.114514
-  ckpt_path: './ckpt_gcs/mae_mlp_compress_ep80/f16/p01_f16_blk4_b4096_conv1x1_11092024_212047/ep_last-checkpoint/0-model.pt'
+  ckpt_path: 'ckpt_gcs/mae_mlp_compress_ep80/f16/f16_blk4_b4096_conv1x1_lr16e-4_20092024_183010/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw

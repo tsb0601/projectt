@@ -3,6 +3,8 @@ import os
 import sys
 from rqvae.utils.upload_api import asyncio_GCS_op
 from diffusers import StableDiffusion3Pipeline
+import torch
+torch.nn.SyncBatchNorm
 BUCKET_NAME = os.getenv('BUCKET_NAME','us-central2-storage')
 USER_NAME = os.getenv('USER_NAME', 'boyang-ckpt')
 def ensure_data_safety(blob_or_dir_name):
