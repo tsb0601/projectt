@@ -34,6 +34,7 @@ arch:
       noise_schedule: 'linear'
       timestep_respacing: ''
       inference_step: 250
+      do_beta_rescaling: true
   do_normalize: true
   checkpointing: false
   ema: 0.114514
@@ -58,9 +59,9 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
-  test_freq: 1
+  epochs: 80
+  save_ckpt_freq: 40
+  test_freq: 10
   amp: false
   actual_batch_size: 4096
 
