@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
   connector:
     target: rqvae.models.connectors.Downsample_with_Conv_Connector
@@ -39,9 +39,9 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 60
-  save_ckpt_freq: 30
-  test_freq: 1
+  epochs: 80
+  save_ckpt_freq: 40
+  test_freq: 10
   amp: false
 
 gan:
