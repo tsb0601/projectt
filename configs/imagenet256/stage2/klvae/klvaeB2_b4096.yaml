@@ -41,13 +41,13 @@ optimizer:
     buffer_epoch: 0
     min_lr: 0.
     mode: fix
-    decay_mode: linear
+    decay_mode: cosine
     start_from_zero: true
 
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 160
+  epochs: 80
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
