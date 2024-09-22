@@ -18,7 +18,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR
 
 
 def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None):
-
+    init_lr = config.init_lr
+    config = config.warmup # this is a bit hacky, but it is to make the code compatible with the original code
     multiplier = config.multiplier
     warmup_steps = config.epoch * steps_per_epoch
     buffer_steps = config.buffer_epoch * steps_per_epoch
@@ -26,9 +27,8 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
     min_lr = config.min_lr
     mode = config.mode
     start_from_zero = config.start_from_zero
-
-    decay_steps = final_steps - warmup_steps - buffer_steps
-    end_factor = 0.
+    decay_end_epoch = config.get('decay_end_epoch', max_epoch)
+    decay_steps = decay_end_epoch * steps_per_epoch - warmup_steps - buffer_steps
     
     if warmup_steps > 0.0:
         if mode == 'linear':
@@ -52,11 +52,13 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
         warmup = None
     start_factor = multiplier
     decay_mode = config.get('decay_mode', 'linear')
+    last_decay_steps = decay_steps + buffer_steps + warmup_steps
     if decay_mode == 'linear':
-        scheduler = LinearLR(optimizer, start_factor, end_factor, final_steps, last_epoch=warmup_steps + buffer_steps - 1)
+        end_factor = min_lr / init_lr
+        scheduler = LinearLR(optimizer, start_factor, end_factor, last_decay_steps, last_epoch=warmup_steps + buffer_steps - 1)
     elif decay_mode == 'cosine':
         scheduler = CosineAnnealingLR(
-            optimizer, T_max=final_steps - warmup_steps - buffer_steps, eta_min=min_lr
+            optimizer, T_max = last_decay_steps, eta_min=min_lr, last_epoch=warmup_steps + buffer_steps - 1
         )
     else:
         raise NotImplementedError(f'{decay_mode} is not a valid decay policy')

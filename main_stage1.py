@@ -109,7 +109,7 @@ def main(rank, args, extra_args):
     if use_optim:
         optimizer = create_optimizer(model, config)
         scheduler = create_scheduler(
-            optimizer, config.optimizer.warmup, steps_per_epoch,
+            optimizer, config.optimizer, steps_per_epoch,
             config.experiment.epochs, distenv
         )
     disc_state_dict = None
