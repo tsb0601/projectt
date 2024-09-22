@@ -48,11 +48,11 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 80
+  epochs: 160
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  #actual_batch_size: 4096
+  actual_batch_size: 4096
 
 gan:
   disc:
