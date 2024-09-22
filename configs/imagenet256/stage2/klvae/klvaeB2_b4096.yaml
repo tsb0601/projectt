@@ -42,7 +42,7 @@ optimizer:
     min_lr: 1.0e-4
     decay_end_epoch: 40
     mode: fix
-    decay_mode: linear
+    decay_mode: cosine
     start_from_zero: true
 
 experiment:
