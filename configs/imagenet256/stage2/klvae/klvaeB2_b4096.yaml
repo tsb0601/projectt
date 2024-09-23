@@ -30,7 +30,7 @@ optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
   init_lr: 1.6e-3
-  weight_decay: 0.0
+  weight_decay: 0.01
   betas: [0.9, 0.95]
   max_gn: None
   amp: true
@@ -38,8 +38,8 @@ optimizer:
     epoch: 5
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 5.0e-5
-    decay_end_epoch: 60
+    min_lr: 0.
+    decay_end_epoch: 80
     mode: fix
     decay_mode: linear
     start_from_zero: true
