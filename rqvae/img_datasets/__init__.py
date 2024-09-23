@@ -41,7 +41,7 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = Dummy_Dataset(root, transform=transforms_val)
     elif config.dataset.type == 'imagenet_overfit':
         root = root if root else 'data/imagenet'
-        dataset_trn = ImageNet_wImagepath(root, split='val', transform=transforms_trn)
+        dataset_trn = ImageNet_wImagepath(root, split='val', transform=transforms_val)
         dataset_val = ImageNet_wImagepath(root, split='val', transform=transforms_val)
         #dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:1024])
         # choose the first image and repeat it for 1024 time for training
