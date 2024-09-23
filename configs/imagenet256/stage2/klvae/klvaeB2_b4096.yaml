@@ -38,7 +38,7 @@ optimizer:
     epoch: 5
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 4.0e-4
+    min_lr: 5.0e-5
     decay_end_epoch: 40
     mode: fix
     decay_mode: cosine
