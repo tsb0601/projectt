@@ -105,6 +105,7 @@ class PSNR(BaseMetric):
     def evaluate(self, std_img, cmp_img):
         std_img = np.array(std_img)
         cmp_img = np.array(cmp_img)
+        print('input image shape:', std_img.shape)
         assert std_img.shape == cmp_img.shape, (f'Image shapes are differnet: {std_img.shape}, {cmp_img.shape}.')
         psnr =  calculate_psnr(std_img, cmp_img, crop_border=4, input_order='HWC')
         if psnr == float('inf'):
@@ -115,6 +116,7 @@ class SSIM(BaseMetric):
     def evaluate(self, std_img, cmp_img):
         std_img = np.array(std_img)
         cmp_img = np.array(cmp_img)
+        print('input image shape:', std_img.shape)
         if USE_TPU:
             std_img = torch.tensor(std_img).permute(2, 0, 1).unsqueeze(0).to(torch.float64)
             cmp_img = torch.tensor(cmp_img).permute(2, 0, 1).unsqueeze(0).to(torch.float64)
