@@ -12,14 +12,16 @@ def center_crop_arr(pil_image, image_size):
     Center cropping implementation from ADM.
     https://github.com/openai/guided-diffusion/blob/8fb3ad9197f16bbc40620447b2742e13458d2831/guided_diffusion/image_datasets.py#L126
     """
+    if pil_image.size == (image_size, image_size):
+        return pil_image
     while min(*pil_image.size) >= 2 * image_size:
         pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
+            tuple(x // 2 for x in pil_image.size), resample=Image.Resampling.BOX
         )
 
     scale = image_size / min(*pil_image.size)
     pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
+        tuple(round(x * scale) for x in pil_image.size), resample=Image.Resampling.BICUBIC
     )
 
     arr = np.array(pil_image)
