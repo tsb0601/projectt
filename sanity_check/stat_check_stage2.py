@@ -55,8 +55,11 @@ with torch.no_grad():
     stat(stage1_model, reverse_output, model_fn='decode', simple=True)
     print("=" * 10, 'testing stage1 loss', "=" * 10)
     stage1_model.compute_loss_fn = lambda inputs: stage1_model.compute_loss(inputs[0], inputs[1])['loss_total']
-    loss = stage1_model.compute_loss(recon_output, data)['loss_total']
-    stat(stage1_model, [recon_output, data], model_fn='compute_loss_fn', simple=True)
+    try:
+        loss = stage1_model.compute_loss(recon_output, data)['loss_total'] # some models may not support stage1 loss
+        stat(stage1_model, [recon_output, data], model_fn='compute_loss_fn', simple=True)
+    except Exception as e:
+        print(e)
     print("=" * 10, 'testing stage2 forward', "=" * 10)
     stage2_model.forward_fn = lambda inputs: stage2_model.forward(inputs[0], inputs[1])
     stat(stage2_model, [latent_output, data], model_fn='forward_fn', simple=True)

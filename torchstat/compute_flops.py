@@ -68,8 +68,8 @@ def compute_BatchNorm2d_flops(module, inp, out):
 
 def compute_GroupNorm_flops(module, inp, out):
     assert isinstance(module, nn.GroupNorm)
-    assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
-    in_c, in_h, in_w = inp.size()[1:]
+    #assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
+    #in_c, in_h, in_w = inp.size()[1:]
     batch_flops = np.prod(inp.shape)
     if module.affine:
         batch_flops *= 2

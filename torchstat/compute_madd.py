@@ -63,16 +63,25 @@ def compute_BatchNorm2d_madd(module, inp, out):
     return 4 * in_c * in_h * in_w
 
 def compute_GroupNorm_madd(module, inp, out):
+    """
+    ref: https://pytorch.org/docs/stable/generated/torch.nn.GroupNorm.html
+    Input can be (N, C , *), where * is any number of additional dimensions
+    Output will be (N, C, *)
+    """
     assert isinstance(module, nn.GroupNorm)
-    assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
-
-    in_c, in_h, in_w = inp.size()[1:]
-
+    #assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
+    
+    #in_c, in_h, in_w = inp.size()[1:]
+    in_c = inp.size()[1]
+    input_shapes = inp.size()[2:]
+    input_dim_prod = 1
+    for s in input_shapes:
+        input_dim_prod *= s
     # 1. sub mean
     # 2. div standard deviation
     # 3. mul alpha
     # 4. add beta
-    return 4 * in_c * in_h * in_w
+    return 4 * in_c * input_dim_prod
 
 def compute_MaxPool2d_madd(module, inp, out):
     assert isinstance(module, nn.MaxPool2d)

@@ -80,9 +80,8 @@ def compute_BatchNorm2d_memory(module, inp, out):
 
 def compute_GroupNorm_memory(module, inp, out):
     assert isinstance(module, nn.GroupNorm)
-    assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
-    batch_size, in_c, in_h, in_w = inp.size()
-
+    #assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
+    batch_size, in_c= inp.size()[0:2]
     mread = batch_size * (inp.size()[1:].numel() + 2 * in_c)
     mwrite = inp.size().numel()
     return (mread, mwrite)
