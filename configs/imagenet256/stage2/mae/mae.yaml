@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_overfit # overfitting test
+  type: imagenet # overfitting test
   transforms:
     type: imagenetDiT256x256
 
@@ -19,11 +19,11 @@ arch:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 768
+      hidden_size: 2048
       input_size: 16
       patch_size: 1
-      depth: 12
-      num_heads: 12
+      depth: 8
+      num_heads: 16
       num_classes: 1000
       cfg: 0.0
       in_channels: 768
