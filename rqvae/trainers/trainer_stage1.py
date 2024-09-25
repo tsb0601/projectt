@@ -14,6 +14,7 @@
 
 import logging
 import os
+import trace
 
 import torch
 import torchvision
@@ -160,6 +161,29 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
         # save the running mean and variance
         return running_mean, running_var
+    @torch.no_grad()
+    def calculate_mean_and_std(self, valid:bool= True, result_path:  Optional[str] = None) -> nn.modules.batchnorm._BatchNorm:
+        """
+        This func is used to calculate the mean and variance of the latent space
+        """
+        self.model.eval()
+        loader = self.wrap_loader("valid" if valid else "train")
+        def get_batchnorm(latent_size: tuple)-> nn.modules.batchnorm._BatchNorm:
+            bn_list = [nn.BatchNorm1d, nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]
+            return bn_list[len(latent_size)](latent_size[1], affine=False, track_running_stats=True)
+        bn = None
+        for it, inputs in tqdm(enumerate(loader)):
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                stage1_encodings: Stage1Encodings = self.model_woddp.encode(inputs)
+                zs = stage1_encodings.zs
+                if bn is None:
+                    bn = get_batchnorm(zs.shape)
+                    bn.train()
+                zs = bn(zs)
+            xm.mark_step()
+        
     @torch.no_grad()
     def cache_latent(self, feature_path:str, valid:bool= True):
         self.model.eval()
