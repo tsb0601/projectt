@@ -248,3 +248,6 @@ class Trainer(TrainerTemplate):
 
     def save_ckpt(self, optimizer, scheduler, epoch):
         return super().save_ckpt(optimizer, scheduler, epoch)
+    
+    def _save_model_only(self, epoch, additional_attr_to_save: tuple = ()):
+        return super()._save_model_only(epoch, additional_attr_to_save = additional_attr_to_save)

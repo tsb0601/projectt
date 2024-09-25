@@ -161,8 +161,8 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
         # save the running mean and variance
         return running_mean, running_var
-    @torch.no_grad()
-    def calculate_mean_and_std(self, valid:bool= True, result_path:  Optional[str] = None) -> nn.modules.batchnorm._BatchNorm:
+    #@torch.no_grad()
+    def calculate_mean_and_std(self, valid:bool= True) -> nn.modules.batchnorm._BatchNorm:
         """
         This func is used to calculate the mean and variance of the latent space
         """
@@ -170,20 +170,26 @@ class Trainer(TrainerTemplate):
         loader = self.wrap_loader("valid" if valid else "train")
         def get_batchnorm(latent_size: tuple)-> nn.modules.batchnorm._BatchNorm:
             bn_list = [nn.BatchNorm1d, nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]
-            return bn_list[len(latent_size)](latent_size[1], affine=False, track_running_stats=True)
+            return bn_list[len(latent_size) - 2](latent_size[1], affine=False, track_running_stats=True)
         bn = None
+        self.model_woddp: Stage1ModelWrapper
+        if self.model_woddp.connector.bn is None:
+            # do a test forward pass to determine the shape of the latent space
+            test_input:LabeledImageData = next(iter(loader))
+            test_input._to(self.device)._to(self.dtype)
+            test_output = self.model_woddp.encode(test_input) # after encoder and connector
+            bn = get_batchnorm(test_output.zs.shape)
+            self.model_woddp.connector.bn = bn # hook a proper bn
+            self.model_woddp.connector.requires_grad_(True)
+            self.model_woddp.connector.hook_forward()
+        self.model.train()
         for it, inputs in tqdm(enumerate(loader)):
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings: Stage1Encodings = self.model_woddp.encode(inputs)
-                zs = stage1_encodings.zs
-                if bn is None:
-                    bn = get_batchnorm(zs.shape)
-                    bn.train()
-                zs = bn(zs)
             xm.mark_step()
-        
+        return self.model_woddp.connector.bn
     @torch.no_grad()
     def cache_latent(self, feature_path:str, valid:bool= True):
         self.model.eval()
@@ -515,3 +521,6 @@ class Trainer(TrainerTemplate):
         return super().save_ckpt(
             optimizer, scheduler, epoch, additional_attr_to_save=("discriminator",)
         )
+
+    def _save_model_only(self, save_path, additional_attr_to_save=("discriminator",)):
+        return super()._save_model_only(save_path, additional_attr_to_save)

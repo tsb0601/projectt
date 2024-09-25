@@ -18,7 +18,7 @@ load_path=$2
 model_config=$3
 world_size=$4
 python main_stage1.py \
-    --eval \
+    --action gen \
     -m=$model_config \
     -r=$SAVE_DIR \
     -l=$load_path \

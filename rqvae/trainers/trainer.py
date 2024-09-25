@@ -289,6 +289,29 @@ class TrainerTemplate:
             assert hasattr(self, attr), f"self does not have attribute {attr}"
             target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
             target_module.load_state_dict(additional_attr_ckpt[attr]) 
+    def _save_model_only(self, epoch, additional_attr_to_save:tuple = ()):
+        global CKPT_FOLDER, MODEL_NAME, EMA_MODEL_NAME, ADDIONTIONAL_NAME
+        rank = self.distenv.world_rank
+        # only save from master
+        if not self.distenv.master:
+            return
+        epoch = 'last' if epoch == -1 else epoch
+        ckpt_folder = os.path.join(self.config.result_path , CKPT_FOLDER.format(epoch))
+        os.makedirs(ckpt_folder, exist_ok=True)
+        model_path = os.path.join(ckpt_folder, MODEL_NAME.format(rank))
+        additional_path = os.path.join(ckpt_folder, ADDIONTIONAL_NAME.format(rank))
+        model_weight = self.sync_and_to_cpu(self.model_woddp.state_dict())
+        torch.save(model_weight, model_path)
+        additional_attr_ckpt = {}  
+        for attr in additional_attr_to_save:
+            target_module = getattr(self, attr).module if self.use_ddp else getattr(self, attr)
+            additional_attr_ckpt[attr] = self.sync_and_to_cpu(target_module.state_dict())
+        if len(additional_attr_ckpt) > 0:
+            torch.save(additional_attr_ckpt, additional_path)
+        if self.model_ema:
+            ema_model_path = os.path.join(ckpt_folder, EMA_MODEL_NAME.format(rank))
+            ema_model_weight = self.sync_and_to_cpu(self.model_ema_woddp.state_dict())
+            torch.save(ema_model_weight, ema_model_path)
     def _load_ckpt(self,load_path, optimizer, scheduler, additional_attr_to_load:tuple = (), load_from_master:bool = True):
         global CKPT_FOLDER, MODEL_NAME, OPT_NAME, SCH_NAME, ADDIONTIONAL_NAME, EMA_MODEL_NAME, RNG_NAME
         rank = self.distenv.world_rank if not load_from_master else 0

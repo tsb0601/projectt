@@ -68,7 +68,9 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
         self.bn = bn  
         if bn is not None:
             # register forward hook
-            self.__class__.__call__ = self.wrap_call # wrap the forward call
+            self.hook_forward()
+    def hook_forward(self):
+        self.__class__.__call__ = self.wrap_call # wrap the forward call
     @abc.abstractmethod
     def forward(self, encodings: Stage1Encodings) -> Stage1Encodings: # from stage1 to stage2
         raise NotImplementedError
@@ -78,7 +80,9 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
     @torch.no_grad()
     def _forward_hook(self, encodings: Stage1Encodings) -> Stage1Encodings:
         latent = encodings.zs
+        print(f'latent shape: {latent.shape}, mean: {latent.mean()}, var: {latent.var()}')
         normed_latent = self.bn(latent)
+        print(f'normed latent shape: {normed_latent.shape}, mean: {normed_latent.mean()}, var: {normed_latent.var()}, running_mean: {self.bn.running_mean}, running_var: {self.bn.running_var}')
         return Stage1Encodings(zs=normed_latent, additional_attr=encodings.additional_attr)
     @torch.no_grad()
     def normalize(self, encodings: Stage1Encodings) -> Stage1Encodings:

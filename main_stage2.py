@@ -53,7 +53,7 @@ parser.add_argument('--local_rank', default=-1, type=int, help='local rank for d
 parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
 parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
-parser.add_argument('--eval', action='store_true')
+parser.add_argument('--action', choices=['train', 'eval', 'gen'], default='train')
 parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
@@ -103,7 +103,8 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!] micro_batch_size_per_core: {config.experiment.batch_size}, accu_step: {config.experiment.accu_step}, actual_batch_size: {actual_batch_size}, steps_per_epoch: {steps_per_epoch}')
     if distenv.master:
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
-    use_optim = not args.eval
+    is_eval = args.action != 'train'
+    use_optim = not is_eval # only train needs optimizer
     xm.master_print(f'[!]use_optim: {use_optim}')
     if use_optim:
         optimizer = create_optimizer(model, config)
@@ -116,16 +117,16 @@ def main(rank, args, extra_args):
     if distenv.master:
         print(model)
         compute_model_size(model, logger)
-    if distenv.master and not args.eval:
+    if distenv.master and not is_eval:
         logger.info(optimizer.__repr__())
     model = dist_utils.dataparallel_and_sync(distenv, model)
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer: TrainerStage2 = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval,use_ddp=args.use_ddp, use_autocast=args.use_autocast, do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
+                      device, distenv, disc_state_dict=disc_state_dict, eval = is_eval ,use_ddp=args.use_ddp, use_autocast=args.use_autocast, do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
     xm.master_print(f'[!]trainer created')
     if not args.load_path == '' and os.path.exists(args.load_path):
-        if args.resume and not args.eval:
+        if args.resume and not is_eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
             #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
             epoch_st = os.path.basename(args.load_path).split('-')[0].split('_')[-1]
@@ -138,7 +139,7 @@ def main(rank, args, extra_args):
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
-    if args.eval:
+    if args.action == 'eval':
         #trainer.eval(valid=True, verbose=True)
         if args.do_online_eval and args.fid_gt_act_path and os.path.isfile(args.fid_gt_act_path):
             stats = trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=None, test_fid=True) # if we test FID we don't save the images
@@ -146,7 +147,9 @@ def main(rank, args, extra_args):
                 FID, IS_mean, IS_std = stats
                 logger.info(f'FID: {FID}, IS: {IS_mean}+-{IS_std}')
         else:
-            trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
+            trainer.eval(valid=True, verbose=True, ema = model_ema is not None)
+    elif args.action == 'gen':
+        trainer.batch_infer(ema = model_ema is not None,valid=True, save_root=args.result_path) # if there is ema we use it for eval
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
@@ -160,4 +163,5 @@ def main(rank, args, extra_args):
     xm.rendezvous('done')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
+    args.eval = args.action != 'train' # sp judge for backward compatibility
     xmp.spawn(main, args=(args, extra_args), start_method='fork')

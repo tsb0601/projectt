@@ -53,12 +53,11 @@ parser.add_argument('--local_rank', default=-1, type=int, help='local rank for d
 parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
 parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
-parser.add_argument('--eval', action='store_true')
+parser.add_argument('--action', choices=['train', 'eval', 'cache_latent', 'gen', 'stat'], default='train')
 parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
 parser.add_argument('--use_autocast', action='store_true')
-parser.add_argument('--cache_latent', action='store_true')
 parser.add_argument('--do_online_eval', action='store_true') # if we want to do online eval for FID
 parser.add_argument('--fid_gt_act_path', type=str, default='ckpt_gcs/acts/val_256_act.npz') # GT activations for FID
 def main(rank, args, extra_args):
@@ -77,6 +76,7 @@ def main(rank, args, extra_args):
     device = xm.xla_device()
     print(f'Using device: {device}')
     xm.master_print(f'loading dataset of {config.dataset.type}...')
+    is_eval = args.action != 'train' # if not training we won't need to do optimizer and stuff
     dataset_trn, dataset_val = create_dataset(config, is_eval=args.eval, logger=logger)
     xm.master_print(f'loaded dataset of {config.dataset.type}...')
     xm.master_print(f'train dataset size: {len(dataset_trn)}, valid dataset size: {len(dataset_val)}')
@@ -104,7 +104,7 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!] micro_batch_size_per_core: {config.experiment.batch_size}, accu_step: {config.experiment.accu_step}, actual_batch_size: {actual_batch_size}, steps_per_epoch: {steps_per_epoch}')
     if distenv.master:
         logger.info(f'#conv+linear layers: {get_num_conv_linear_layers(model)}')
-    use_optim = not args.eval and not args.cache_latent
+    use_optim = not is_eval
     xm.master_print(f'[!]use_optim: {use_optim}')
     if use_optim:
         optimizer = create_optimizer(model, config)
@@ -123,10 +123,10 @@ def main(rank, args, extra_args):
     if model_ema:
         model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
-                      device, distenv, disc_state_dict=disc_state_dict, eval = args.eval or args.cache_latent,use_ddp=args.use_ddp, use_autocast=args.use_autocast,do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
+                      device, distenv, disc_state_dict=disc_state_dict, eval = is_eval ,use_ddp=args.use_ddp, use_autocast=args.use_autocast,do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
     xm.master_print(f'[!]trainer created')
     if not args.load_path == '' and os.path.exists(args.load_path):
-        if args.resume and not args.eval:
+        if args.resume and not is_eval:
             trainer._load_ckpt(args.load_path, optimizer, scheduler)
             #load_path should end with /ep_{epoch}-checkpoint/, we parse the epoch from the path
             epoch_st = os.path.basename(args.load_path).split('-')[0].split('_')[-1]
@@ -139,7 +139,7 @@ def main(rank, args, extra_args):
         xm.master_print(f'[!]model loaded from {args.load_path} with resume: {args.resume}')
         xm.mark_step()
     xm.master_print(f'[!]all trainer config created, start for {train_epochs - epoch_st} epochs from ep {epoch_st} to ep {train_epochs}')
-    if args.cache_latent:
+    if args.action == 'cache_latent':
         train_save_path = os.path.join(args.result_path, 'train')
         valid_save_path = os.path.join(args.result_path, 'valid')
         os.makedirs(train_save_path, exist_ok=True)
@@ -148,7 +148,7 @@ def main(rank, args, extra_args):
         trainer.cache_latent(feature_path=train_save_path, valid=False)
         xm.master_print(f'[!]caching latent for valid dataset')
         trainer.cache_latent(feature_path=valid_save_path, valid = True)
-    elif args.eval:
+    elif args.action == 'gen':
         #mean, var = trainer.encode_only(valid=True)
         #torch.save({
         #    'mean': mean.float().cpu(),
@@ -156,6 +156,14 @@ def main(rank, args, extra_args):
         #}, os.path.join(args.result_path, 'latent_data.pt'))
         #trainer.eval(valid=True, verbose=True)
         trainer.batch_infer(valid=True, save_root=args.result_path)
+    elif args.action == 'eval':
+        trainer.eval(valid=True, verbose=True)
+    elif args.action == 'stat':
+        bn = trainer.calculate_mean_and_std(valid = False) # calculate mean and std for the training dataset
+        running_mean, running_var = bn.running_mean, bn.running_var
+        xm.master_print(f'[!]running_mean: {running_mean.shape}, running_var: {running_var.shape}')
+        print(f'rank {rank} running_mean: {running_mean[:4]}, running_var: {running_var[:4]}')
+        trainer._save_model_only(epoch = -1 ) # save the model only
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
@@ -170,4 +178,5 @@ def main(rank, args, extra_args):
     xm.rendezvous('done')
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
+    args.eval = args.action != 'train' # sp judge for backward compatibility
     xmp.spawn(main, args=(args, extra_args), start_method='fork')
