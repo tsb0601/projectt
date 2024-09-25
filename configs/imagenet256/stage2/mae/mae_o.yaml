@@ -19,11 +19,11 @@ arch:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 780
+      hidden_size: 772
       input_size: 16
       patch_size: 1
       depth: 2
-      num_heads: 12
+      num_heads: 4
       num_classes: 1000
       cfg: 0.0
       in_channels: 768
