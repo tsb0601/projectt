@@ -30,7 +30,7 @@ arch:
       learn_sigma: true
       noise_schedule: 'linear'
       inference_step: 250
-      do_beta_rescaling: true
+      #do_beta_rescaling: true
   checkpointing: false
   ema: 0.114514
 optimizer:
