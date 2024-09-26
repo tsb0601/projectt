@@ -42,6 +42,7 @@ def create_diffusion(
             if not learn_sigma
             else gd.ModelVarType.LEARNED_RANGE
         ),
-        loss_type=loss_type
+        loss_type=loss_type,
+        input_base_dimension_ratio=input_base_dimension_ratio,
         # rescale_timesteps=rescale_timesteps,
     )
