@@ -19,10 +19,10 @@ arch:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 1024
+      hidden_size: 4096
       input_size: 16
       patch_size: 1
-      depth: 36
+      depth: 3
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
@@ -30,9 +30,9 @@ arch:
       learn_sigma: true
       noise_schedule: 'linear'
       inference_step: 250
-      do_beta_rescaling: true
+      #do_beta_rescaling: true
   checkpointing: false
-  ema: 0.114514
+  ema: 0.114514 # 337 227 125 606 # 
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
