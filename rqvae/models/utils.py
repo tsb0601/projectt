@@ -1,4 +1,5 @@
 import importlib
+from numpy import isin
 from safetensors.torch import load_model, save_model
 from header import *
 from dataclasses import dataclass
@@ -11,8 +12,12 @@ class UnifiedKey:
 def load_model_from_ckpt(model:nn.Module, ckpt_path:str, strict:bool = True) -> Tuple[nn.Module, UnifiedKey]:
     if ckpt_path.endswith('.pt'):
         ckpt = torch.load(ckpt_path)
-        keys = model.load_state_dict(ckpt, strict = strict)   
-        keys = UnifiedKey(keys.missing_keys, keys.unexpected_keys) 
+        if isinstance(ckpt, dict):
+            keys = model.load_state_dict(ckpt, strict = strict)
+            keys = UnifiedKey(keys.missing_keys, keys.unexpected_keys) 
+        elif isinstance(ckpt, nn.Module):
+            model = ckpt
+            keys = UnifiedKey([], [])
     elif ckpt_path.endswith('.safetensors'):
         keys = load_model(model, ckpt_path, strict = strict)
         raise NotImplementedError('SafeTensors is not implemented yet.')

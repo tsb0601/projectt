@@ -162,8 +162,13 @@ def main(rank, args, extra_args):
         bn = trainer.calculate_mean_and_std(valid = False) # calculate mean and std for the training dataset
         running_mean, running_var = bn.running_mean, bn.running_var
         xm.master_print(f'[!]running_mean: {running_mean.shape}, running_var: {running_var.shape}')
-        print(f'rank {rank} running_mean: {running_mean[:4]}, running_var: {running_var[:4]}')
-        trainer._save_model_only(epoch = -1 ) # save the model only
+        # only save the connector
+        if distenv.master:
+            connecter = trainer.model_woddp.connector.cpu()
+            connector_path = os.path.join(args.result_path, 'connector.pt')
+            # save the whole bn instead of state_dict
+            torch.save(connecter, connector_path)
+            xm.master_print(f'[!]connector saved in {connector_path}')
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
@@ -172,7 +177,7 @@ def main(rank, args, extra_args):
         #if wandb_dir:
         #    wandb.finish()
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
-    xm.master_print(f'[!]Results saved in {args.result_path}')
+    xm.master_print(f'[!]Results saved in {config.result_path}')
     if args.use_ddp:
         dist.destroy_process_group()
     xm.rendezvous('done')

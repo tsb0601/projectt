@@ -161,7 +161,7 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
         # save the running mean and variance
         return running_mean, running_var
-    #@torch.no_grad()
+    @torch.no_grad()
     def calculate_mean_and_std(self, valid:bool= True) -> nn.modules.batchnorm._BatchNorm:
         """
         This func is used to calculate the mean and variance of the latent space
@@ -178,17 +178,64 @@ class Trainer(TrainerTemplate):
             test_input:LabeledImageData = next(iter(loader))
             test_input._to(self.device)._to(self.dtype)
             test_output = self.model_woddp.encode(test_input) # after encoder and connector
-            bn = get_batchnorm(test_output.zs.shape)
+            bn = get_batchnorm(test_output.zs.shape).to(self.device).to(self.dtype)
             self.model_woddp.connector.bn = bn # hook a proper bn
-            self.model_woddp.connector.requires_grad_(True)
+            self.model_woddp.connector.bn.train()
             self.model_woddp.connector.hook_forward()
-        self.model.train()
-        for it, inputs in tqdm(enumerate(loader)):
+        tbar = tqdm(enumerate(loader), total=len(loader), disable=not self.distenv.master)
+        for it, inputs in tbar:
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            with autocast(self.device) if self.use_autocast else nullcontext():
+                self.model_woddp.encode(inputs)
+            xm.mark_step()
+        # do sync for bn
+        bn = self.model_woddp.connector.bn
+        bn.eval()
+        E_x = bn.running_mean
+        Var_x = bn.running_var
+        # all gather to get real mean and variance
+        mean_per_device = E_x.unsqueeze(0).to(self.device) # 1, C
+        mean_all = xm.all_gather(mean_per_device) # (N, C)
+        mean_of_mean = mean_all.mean(dim=0) # C
+        var_of_mean = mean_all.var(dim=0) # C
+        var_per_device = Var_x.unsqueeze(0).to(self.device)
+        var_all = xm.all_gather(var_per_device)
+        mean_of_var = var_all.mean(dim=0)
+        estimated_mean = mean_of_mean 
+        estimated_var = mean_of_var + var_of_mean # var(reduced(x)) = E[var(x)] + var(E[x])
+        xm.rendezvous('mean_var_sync')
+        # update the bn
+        self.model_woddp.connector.bn.running_mean = estimated_mean
+        self.model_woddp.connector.bn.running_var = estimated_var
+        self.model_woddp.connector.bn.eval()
+        # do some test, uncomment this to test the correctness of the mean and variance
+        """
+        loader = self.wrap_loader("valid" if valid else "train")
+        avg_mean = 0
+        avg_var = 0
+        avg_mse = 0
+        for it, inputs in enumerate(loader):
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings: Stage1Encodings = self.model_woddp.encode(inputs)
+                zs = stage1_encodings.zs
+                normed_ = self.model_woddp.connector.normalize(stage1_encodings)
+                normed_zs = normed_.zs
+                unnormed_ = self.model_woddp.connector.unnormalize(normed_)
+                unnormed_zs = unnormed_.zs
+                mse_l = torch.nn.functional.mse_loss(zs, unnormed_zs)
+                avg_mean += normed_zs.mean()
+                avg_var += normed_zs.var()
+                avg_mse += mse_l
+                #xm.master_print(f'[!]mean: {normed_zs.mean()}, var: {normed_zs.var()}, mse: {mse_l.item()}')
             xm.mark_step()
+        avg_mean /= len(loader)
+        avg_var /= len(loader)
+        avg_mse /= len(loader)
+        xm.master_print(f'[!]avg mean: {avg_mean}, avg var: {avg_var}, avg mse: {avg_mse}')
+        """
         return self.model_woddp.connector.bn
     @torch.no_grad()
     def cache_latent(self, feature_path:str, valid:bool= True):
@@ -522,5 +569,5 @@ class Trainer(TrainerTemplate):
             optimizer, scheduler, epoch, additional_attr_to_save=("discriminator",)
         )
 
-    def _save_model_only(self, save_path, additional_attr_to_save=("discriminator",)):
-        return super()._save_model_only(save_path, additional_attr_to_save)
+    def _save_model_only(self, epoch, additional_attr_to_save=("discriminator",)):
+        return super()._save_model_only(epoch, additional_attr_to_save)

@@ -1,12 +1,12 @@
 from rqvae.models.basicblocks.utils import zero_module
-from .models import DiT
+from .models import *
 import torch
 from ..interfaces import *
 from .diffusion import create_diffusion
 from typing import List, Optional
 import torch_xla.core.xla_model as xm
 from .blocks import ConvEncoder, ConvDecoder, ConvDecoder_wSkipConnection
-
+from rqvae.models.utils import get_obj_from_str
 
 class DiT_Stage2(Stage2Model):
     def __init__(
@@ -27,6 +27,7 @@ class DiT_Stage2(Stage2Model):
         inference_step: int = 250,
         n_samples: int = 125,
         do_beta_rescaling: bool = False,
+        class_cls_str: str = "rqvae.models.DiT.models.DiT",
     ):
         super().__init__()
         self.timestep_respacing = str(timestep_respacing)
@@ -40,7 +41,10 @@ class DiT_Stage2(Stage2Model):
         else:
             input_base_dimension_ratio = 1.0 # do not do rescaling
         self.hidden_size = hidden_size
-        self.model = DiT(
+        DiT_model_cls:DiT = get_obj_from_str(class_cls_str)
+        # assert this class inherits from DiT
+        assert issubclass(DiT_model_cls, DiT), f"[!]DiT_Stage2: class_cls_str: {class_cls_str} must inherit from DiT"
+        self.model = DiT_model_cls(
             input_size=input_size,
             patch_size=patch_size,
             in_channels=in_channels,
