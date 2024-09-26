@@ -45,7 +45,7 @@ def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tup
     model_ema = instantiate_from_config(config) if use_ema else None
     if config.get('ckpt_path', False):
         ckpt_path = config.ckpt_path
-        _, keys = load_model_from_ckpt(model, ckpt_path, strict = False)
+        model, keys = load_model_from_ckpt(model, ckpt_path, strict = False) # load the model (will re-define the model if the ckpt is a nn.Module)
         xm.master_print(f'[!]INFO: Loaded Stage{stage} model from {ckpt_path} with keys: {keys}')
     #if use_ema:
     #    model_ema = ExponentialMovingAverage(model_ema, config.ema)

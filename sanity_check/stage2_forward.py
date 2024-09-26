@@ -1,5 +1,7 @@
 import os
 import sys
+
+from cv2 import norm
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from PIL import Image
 import torch
@@ -21,7 +23,7 @@ im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage2_model_wrapper, _  = create_model(config, is_master=True)
+    stage2_model_wrapper, _  = create_model(config, is_master=True) # load the model on the master
     stage2_model_wrapper:Stage2ModelWrapper
     print('stage2_model_wrapper:', stage2_model_wrapper)
     param, trainable_param = count_params(stage2_model_wrapper)
@@ -48,16 +50,26 @@ with torch.no_grad():
     print(last_layer.shape, last_layer.dtype)
     print("=" * 10, 'testing encoding', "=" * 10)
     latent_output = stage1_model.encode(data)
-    print('encoded zs:', latent_output.zs.shape, latent_output.zs.min(), latent_output.zs.max())
+    print('encoded zs:', latent_output.zs.shape, latent_output.zs.mean(), latent_output.zs.std())
     print("=" * 10, 'testing connector', "=" * 10)
     latent_output = connector.forward(latent_output)
-    print('connected zs:', latent_output.zs.shape, latent_output.zs.min(), latent_output.zs.max())
+    print('connected zs:', latent_output.zs.shape, latent_output.zs.mean(), latent_output.zs.std())
+    if connector.bn is not None:
+        # we need to normalize the latent space
+        print("=" * 10, 'testing connector normalization', "=" * 10)
+        normalized_output = connector.normalize(latent_output)
+        print('normalized zs:', normalized_output.zs.shape, normalized_output.zs.mean(), normalized_output.zs.std())
+        print("=" * 10, 'testing connector unnormalization', "=" * 10)
+        unnormalized_output = connector.unnormalize(normalized_output)
+        print('unnormalized zs:', unnormalized_output.zs.shape, unnormalized_output.zs.mean(), unnormalized_output.zs.std())
+    else:
+        print("=" * 10, 'connector has no batchnorm, skipping normalization', "=" * 10)
     print("=" * 10, 'testing forward', "=" * 10)
     forward_output = stage2_model.forward(latent_output, data)
-    print('forward zs_pred:', forward_output.zs_pred.shape, forward_output.zs_pred.min(), forward_output.zs_pred.max())
+    print('forward zs_pred:', forward_output.zs_pred.shape, forward_output.zs_pred.mean(), forward_output.zs_pred.std())
     print("=" * 10, 'testing reverse', "=" * 10)
     reverse_output = connector.reverse(forward_output)
-    print('reverse zs:', reverse_output.zs.shape, reverse_output.zs.min(), reverse_output.zs.max())
+    print('reverse zs:', reverse_output.zs.shape, reverse_output.zs.mean(), reverse_output.zs.std())
     print("=" * 10, 'testing decoding (on stage2 output)', "=" * 10)
     recon_output = stage1_model.decode(reverse_output)
     recon = recon_output.xs_recon
