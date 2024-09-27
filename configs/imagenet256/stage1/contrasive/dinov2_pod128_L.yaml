@@ -20,13 +20,22 @@ optimizer:
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
+  amp: true
   warmup:
-    epoch: 0.5  # 5% of total epochs
+    epoch: 5  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
     mode: fix
     start_from_zero: true
+
+experiment:
+  batch_size: 32
+  accu_step: 1
+  epochs: 80
+  save_ckpt_freq: 40
+  test_freq: 5
+  amp: false
 
 experiment:
   batch_size: 32
@@ -66,6 +75,6 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: .75
-    perceptual_weight: .01
+    perceptual_weight: .1
     disc_start: 100000
     lpips_start: 10

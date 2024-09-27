@@ -54,7 +54,7 @@ def create_discriminator_with_optimizer_scheduler(
         optimizer = create_resnet_optimizer(model, disc_config.optimizer)
         scheduler = create_scheduler(
             optimizer,
-            config=disc_config.optimizer.warmup,
+            config=disc_config.optimizer,
             steps_per_epoch=steps_per_epoch,
             max_epoch=max_epoch,
             distenv=distenv,
