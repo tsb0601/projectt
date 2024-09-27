@@ -190,7 +190,8 @@ class DiT(nn.Module):
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
-
+        self.hidden_size = hidden_size
+        
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
         self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
@@ -318,6 +319,42 @@ class DiTwSkipConnection(DiT):
             x = block(x, c)                      # (N, T, D)
             if i >= half_depth:
                 x = x + hs.pop()
+        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        x = self.unpatchify(x)                   # (N, out_channels, H, W)
+        return x
+class DiTwSkipConnectionConv(DiT):
+    """
+    only difference is that it has skip connection in forward function
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        assert len(self.blocks) % 2 == 0, "The number of transformer blocks must be even for skip connection."
+        self.lns = nn.ModuleList([
+            nn.Linear(self.hidden_size * 2, self.hidden_size) for _ in range(len(self.blocks) // 2)
+        ])
+    # reload forward
+    def forward(self, x, t, y):
+        """
+        Forward pass of DiT with long skip connection. For a total of N transformer blocks, the skip connection connects the ith and (N-i)th blocks.
+        x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
+        t: (N,) tensor of diffusion timesteps
+        y: (N,) tensor of class labels
+        """
+        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        t = self.t_embedder(t)                   # (N, D)
+        y = self.y_embedder(y, self.training)    # (N, D)
+        c = t + y                                # (N, D)
+        depth = len(self.blocks)
+        half_depth = depth // 2 # must be divisible by 2
+        hs = []
+        for i, block in enumerate(self.blocks):
+            if i < half_depth:
+                hs.append(x)
+            x = block(x, c)                      # (N, T, D)
+            if i >= half_depth:
+                h = hs.pop()
+                x = torch.cat([x, h], dim= -1)   # (N, T, 2*D)
+                x = self.lns[i - half_depth](x) # (N, T, D)
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
