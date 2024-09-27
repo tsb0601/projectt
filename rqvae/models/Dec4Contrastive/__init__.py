@@ -47,7 +47,7 @@ class ContrastiveModelwithDecoder(Stage1Model):
     def compute_loss(self, outputs: Stage1ModelOutput, inputs: LabeledImageData, valid:bool = False) -> torch.Tensor:
         xs = inputs.img
         xs_recon = outputs.xs_recon
-        recon_loss = (xs - xs_recon).square().mean()
+        recon_loss = (xs - xs_recon).abs().mean()
         return {
             'loss_total': recon_loss,
             'loss_recon': recon_loss,
