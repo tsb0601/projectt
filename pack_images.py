@@ -61,11 +61,14 @@ def create_npz_from_sample_folder(sample_dir, num=50_000):
 import sys
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 2 and len(sys.argv) != 3:
         print("Usage: python pack_images.py <sample_dir>")
         sys.exit(1)
     sample_dir = sys.argv[1]
+    im_size = 256 if len(sys.argv) == 2 else int(sys.argv[2])
+    globals()['IM_SIZE'] = im_size
     assert os.path.isdir(sample_dir), f"Invalid directory: {sample_dir}"
+    print(f"Creating .npz file from images in {sample_dir}, IM_SIZE={IM_SIZE}")
     create_npz_from_sample_folder(sample_dir)
     
 if __name__ == "__main__":
