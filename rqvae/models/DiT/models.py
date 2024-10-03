@@ -507,7 +507,6 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=
 
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    print('AHCIUASHAHCUIS embed dim:', embed_dim)
     assert embed_dim % 2 == 0
 
     # use half of dimensions to encode grid_h
