@@ -1,7 +1,5 @@
 import os
 import sys
-
-from cv2 import norm
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from PIL import Image
 import torch

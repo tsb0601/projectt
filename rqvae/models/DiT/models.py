@@ -358,6 +358,22 @@ class DiTwSkipConnectionConv(DiT):
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
+class DiTwoAttn(DiT):
+    """
+    DiT without attention mechanism, simply stacking MLPs.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for block in self.blocks:
+            block.attn = nn.Identity()
+class DiTwoMlp(DiT):
+    """
+    DiT without MLPs, simply stacking attention mechanisms.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for block in self.blocks:
+            block.mlp = nn.Identity()
 class DiT_convMLP(nn.Module):
     """
     Diffusion model with a Transformer backbone.

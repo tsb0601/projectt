@@ -23,6 +23,8 @@ class id_connector(base_connector):
                 zs = encodings.zs_pred,
                 additional_attr = update_additional_attr(encodings.additional_attr, {'zs_degraded': encodings.zs_degraded})
             )
+        else:
+            raise ValueError('reverse input should be a Stage1Encodings or Stage2ModelOutput')
         return stage1_encodings
 def L_to_P(zs:torch.Tensor, split:float = 1)-> torch.Tensor:
     """

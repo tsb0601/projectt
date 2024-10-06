@@ -216,15 +216,23 @@ class Stage2ModelWrapper(Stage2Model):
         self.stage_1_model.eval()
         self.connector.eval()
         self.stage_2_model.train()
-    def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
+    def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(inputs)
             stage1_encodings = self.connector.forward(stage1_encodings)
             if self.do_normalize:
-                stage1_encodings = self.connector.normalize(stage1_encodings) # normalize the encodings in stage 2
+                stage1_encodings = self.connector.normalize(stage1_encodings) # normalize the latent space
+        return stage1_encodings
+    def forward(self, inputs: LabeledImageData) -> Tuple[Stage1Encodings, Stage2ModelOutput]:
+        stage1_encodings = self.encode(inputs)
         stage2_output = self.stage_2_model(stage1_encodings, inputs)
         return stage1_encodings, stage2_output
-
+    def decode(self, stage1_encodings: Stage2ModelOutput) -> Stage1ModelOutput:
+        if self.do_normalize:
+            stage1_encodings = self.connector.unnormalize(stage1_encodings)
+        stage1_encodings = self.connector.reverse(stage1_encodings)
+        stage1_gen = self.stage_1_model.decode(stage1_encodings)
+        return stage1_gen
     def compute_loss(self, stage1_encodings: Stage1Encodings ,stage2_output: Stage2ModelOutput , inputs: LabeledImageData , **kwargs) -> dict:
         return self.stage_2_model.compute_loss(stage1_encodings, stage2_output, inputs, **kwargs)
 
@@ -235,10 +243,7 @@ class Stage2ModelWrapper(Stage2Model):
     @torch.no_grad()
     def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         stage_2_gen = self.stage_2_model.infer(inputs)
-        if self.do_normalize:
-            stage_2_gen = self.connector.unnormalize(stage_2_gen)
-        stage_1_encodings = self.connector.reverse(stage_2_gen)
-        stage_1_gen = self.stage_1_model.decode(stage_1_encodings)
+        stage_1_gen = self.decode(stage_2_gen)
         return stage_1_gen
     def get_last_layer(self) -> torch.Tensor:
         return self.stage_2_model.get_last_layer()
