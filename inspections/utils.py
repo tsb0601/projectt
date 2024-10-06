@@ -2,7 +2,8 @@ from rqvae.img_datasets.interfaces import LabeledImageData
 from PIL import Image
 from torchvision.transforms import ToTensor, ToPILImage
 def get_example_data(im_size:int = 256, bsz:int = 1)->LabeledImageData:
-    image_path = 'visuals/dit_gen.png'
+    image_path = 'visuals/test_imagenet_orig.png'
+    #image_path = 'visuals/dit_gen.png'
     image = Image.open(image_path).resize((im_size, im_size)).convert('RGB')
     #repeat 2 times to asssure model works with batch size > 1
     image = ToTensor()(image).unsqueeze(0).repeat(bsz,1,1,1)

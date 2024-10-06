@@ -123,7 +123,20 @@ class DiTBlock(nn.Module):
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
         x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
         return x
-
+class DiTBlockOnlyMlp(nn.Module):
+    def __init__(self, hidden_size, mlp_ratio=4.0, **block_kwargs):
+        super().__init__()
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(hidden_size, 3 * hidden_size, bias=True)
+        )
+    def forward(self, x, c):
+        shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(3, dim=1)
+        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(x, shift_mlp, scale_mlp))
+        return x
 class DiTBlockwConv(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning, use Conv to replace MLP. When kernel_size=1, it is equivalent to DiTBlock.
@@ -165,7 +178,16 @@ class FinalLayer(nn.Module):
         x = modulate(self.norm_final(x), shift, scale)
         x = self.linear(x)
         return x
-
+class FinalLayerSimple(nn.Module):
+    """
+    simple linear layer
+    """
+    def __init__(self, hidden_size, patch_size, out_channels):
+        super().__init__()
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
+    def forward(self, x, c):
+        x = self.linear(x)
+        return x
 
 class DiT(nn.Module):
     """
@@ -366,6 +388,33 @@ class DiTwoAttn(DiT):
         super().__init__(**kwargs)
         for block in self.blocks:
             block.attn = nn.Identity()
+class DiTonlyMlp(DiT):
+    """
+    only MLP + AdaLN-Zero, no final layer
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        mlp_ratio = kwargs.get('mlp_ratio', None)
+        depth = kwargs.get('depth', None)
+        self.blocks = nn.ModuleList([
+            DiTBlockOnlyMlp(hidden_size, mlp_ratio=mlp_ratio) for _ in range(depth)
+        ])
+        # Initialize transformer layers:
+        def _basic_init(module):
+            if isinstance(module, nn.Linear):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)
+        # Zero-out adaLN modulation layers in DiT blocks:
+        for block in self.blocks:
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        self.final_layer = FinalLayerSimple(hidden_size, self.patch_size, self.out_channels)
+        nn.init.constant_(self.final_layer.linear.weight, 0)
+        nn.init.constant_(self.final_layer.linear.bias, 0)
+
 class DiTwoMlp(DiT):
     """
     DiT without MLPs, simply stacking attention mechanisms.

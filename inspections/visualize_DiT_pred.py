@@ -103,7 +103,6 @@ originals = torch.stack(originals)
 noised_images = torch.stack(noised_images)
 noises = torch.stack(noises)
 preds = torch.stack(preds)
-print('originals:', originals.shape, 'noised_images:', noised_images.shape, 'noises:', noises.shape, 'preds:', preds.shape)
 all_images = torch.cat([originals, noised_images, noises, preds], dim=0)
 # make grid
 grid = make_grid(all_images, nrow=10)
