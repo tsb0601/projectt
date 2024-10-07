@@ -21,4 +21,5 @@ transformers
 tpu-info
 pandas
 pycocotools
+einops
 git+https://github.com/openai/CLIP.git

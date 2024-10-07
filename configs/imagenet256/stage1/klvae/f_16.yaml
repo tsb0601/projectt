@@ -1,0 +1,88 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenet256x256
+arch:
+  stage: 1
+  stage_1:
+    target: rqvae.models.ldm.AutoEncoderKL_Stage1
+    params:
+      embed_dim: 16
+      kl_weight: 1.0e-06
+      ddconfig:
+        double_z: true
+        z_channels: 16
+        resolution: 256
+        in_channels: 3
+        out_ch: 3
+        ch: 128
+        ch_mult:
+        - 1
+        - 1
+        - 2
+        - 2
+        - 4
+        num_res_blocks: 2
+        attn_resolutions:
+        - 16
+        dropout: 0.0
+  checkpointing: false
+  ema: 0.114514
+experiment:
+  batch_size: 32 # so it can divide 50000
+  epochs: 10
+  accu_step: 1
+  save_ckpt_freq: 5
+  test_freq: 1
+  amp: false
+  actual_batch_size: 128
+
+optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+  type: adam
+  init_lr: 5.76e-4
+  weight_decay: 0.0
+  betas: [0.5, 0.9]
+  max_gn: None
+  amp: true
+  warmup:
+    epoch: 0.5  
+    multiplier: 1
+    buffer_epoch: 0
+    min_lr: 5.76e-4 # no decay
+    mode: fix
+    start_from_zero: true
+
+gan:
+  disc:
+    arch:
+      in_channels: 3
+      num_layers: 2
+      use_actnorm: false
+      ndf: 64
+      spectral_norm: false
+    optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adam
+      init_lr: 5.76e-4
+      weight_decay: 0.0
+      betas: [0.5, 0.9]
+      max_gn: None
+      amp: true
+      warmup:
+        epoch: 5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 5.76e-4
+        mode: fix
+        start_from_zero: true
+    experiment:
+      test_freq: 1
+      amp: false
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: .5
+    perceptual_weight: 1.0
+    disc_start: 50001 # to be modified to epoch
+    lpips_start: 0

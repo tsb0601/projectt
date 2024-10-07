@@ -56,6 +56,7 @@ with torch.no_grad():
     recon_image = ToPILImage()(recon[0].clamp(0., 1.))
     recon_image.save('./visuals/sanity_recon.png')
     print("=" * 10, 'testing stage1 loss', "=" * 10)
-    loss = stage1_model.compute_loss(recon_output, data)['loss_total']
-    print(loss)
+    loss = stage1_model.compute_loss(recon_output, data)
+    for key in loss:
+        print(f'{key}: {loss[key]}')
     print("=" * 10, 'all set!', "=" * 10)
