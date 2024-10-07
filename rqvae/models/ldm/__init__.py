@@ -42,7 +42,7 @@ class AutoEncoderKL_Stage1(Stage1Model):
         recon = outputs.xs_recon
         distr = outputs.additional_attr['distr']
         rec_loss = torch.abs(img.contiguous() - recon.contiguous())
-        rec_loss = torch.sum(rec_loss) / rec_loss.shape[0] # take mean over the batch
+        #rec_loss = torch.sum(rec_loss) / rec_loss.shape[0] # take mean over the batch
         rec_loss = rec_loss.mean() # we take the mean over the pixels
         kl_loss = distr.kl()
         #kl_loss = torch.sum(kl_loss) / kl_loss.shape[0] # take mean over the batch
