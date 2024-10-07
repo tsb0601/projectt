@@ -22,4 +22,5 @@ tpu-info
 pandas
 pycocotools
 einops
+taming-transformers
 git+https://github.com/openai/CLIP.git
