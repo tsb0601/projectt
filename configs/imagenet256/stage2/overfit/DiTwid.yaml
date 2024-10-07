@@ -16,10 +16,10 @@ arch:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 780
+      hidden_size: 768
       input_size: 16
       patch_size: 1
-      depth: 1
+      depth: 12
       num_heads: 12
       num_classes: 1000
       cfg: 0.0
@@ -27,6 +27,7 @@ arch:
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
+      mlp_ratio: 8.0
       #do_beta_rescaling: true
     checkpointing: false
   connector:

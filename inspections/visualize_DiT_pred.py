@@ -59,6 +59,7 @@ originals = []
 noised_images = []
 noises = []
 preds = []
+pred_noises = []
 with torch.no_grad():
     latent = model.encode(data)
     # visualize the latent space
@@ -97,13 +98,16 @@ with torch.no_grad():
         print('noise_mse_loss:', noise_mse_loss, 'training_loss:', training_loss)
         pred_x0 = diffusion._predict_xstart_from_eps(q_sample, t, model_output)
         decoded_output = decode_as_sample(pred_x0, model)[0]
+        decoded_pred = decode_as_sample(model_output, model)[0] * 0.5 + 0.5 # pred is also noise in [-1, 1]
         preds.append(decoded_output.clamp(0, 1))
+        pred_noises.append(decoded_pred.clamp(0, 1))
 # visualize the diffusion process
 originals = torch.stack(originals)
 noised_images = torch.stack(noised_images)
 noises = torch.stack(noises)
 preds = torch.stack(preds)
-all_images = torch.cat([originals, noised_images, noises, preds], dim=0)
+pred_noises = torch.stack(pred_noises)
+all_images = torch.cat([originals, noised_images, noises, preds, pred_noises], dim=0)
 # make grid
 grid = make_grid(all_images, nrow=10)
 print('grid shape:', grid.shape) 
