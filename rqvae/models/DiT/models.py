@@ -9,6 +9,8 @@
 # MAE: https://github.com/facebookresearch/mae/blob/main/models_mae.py
 # --------------------------------------------------------
 
+from sys import orig_argv
+from requests import patch
 import torch
 import torch.nn as nn
 import numpy as np
@@ -189,7 +191,21 @@ class FinalLayerSimple(nn.Module):
     def forward(self, x, c):
         x = self.linear(x)
         return x
-
+class FinalLayerIdentity(nn.Module):
+    """
+    identity layer
+    """
+    def __init__(self, hidden_size, patch_size, out_channels):
+        super().__init__()
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
+        self.hidden_size = hidden_size
+        self.output_channels = patch_size * patch_size * out_channels
+        nn.init.constant_(self.linear.weight, 0)
+        nn.init.constant_(self.linear.bias, 0)
+    def forward(self, x, c):
+        if x.shape[-1] != self.output_channels:
+            x = self.linear(x)
+        return x
 class DiT(nn.Module):
     """
     Diffusion model with a Transformer backbone.
@@ -413,6 +429,118 @@ class DiTonlyMlp(DiT):
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
         self.final_layer = FinalLayerSimple(hidden_size, self.patch_size, self.out_channels)
+        nn.init.constant_(self.final_layer.linear.weight, 0)
+        nn.init.constant_(self.final_layer.linear.bias, 0)
+class CustomDiTBlock(nn.Module):
+    """
+    h1 -> linear -> h2 -> MLP -> h2 -> linear -> h1
+    """
+    def __init__(self, h1, h2, mlp_ratio=4.0, modulate_pos: int = 0, gate_pos: int = -1):
+        super().__init__()
+        self.h1 = h1
+        self.h2 = h2
+        self.mlp = nn.ModuleList([
+            nn.Linear(h1, h2, bias=True),
+            nn.Linear(h2, int(h2 * mlp_ratio), bias=True),
+            nn.GELU(),
+            nn.Linear(int(h2 * mlp_ratio), h2, bias=True),
+            nn.Linear(h2, h1, bias=True)
+        ])
+        self.modulate_dim = h1 if modulate_pos == 0 else h2
+        self.gate_dim = h1 if gate_pos == -1 else h2
+        self.modulate_pos = modulate_pos
+        self.gate_pos = gate_pos
+        assert modulate_pos in [0,1] and gate_pos in [-1, -2]
+        self.adaln = nn.ModuleList([
+            nn.Linear(h1, self.modulate_dim, bias=True),
+            nn.Linear(h1, self.modulate_dim, bias=True),
+            nn.Linear(h1, self.gate_dim, bias=True)
+        ])
+        self.norm = nn.LayerNorm(self.modulate_dim, elementwise_affine=False, eps=1e-6)
+        nn.init.constant_(self.mlp[-1].weight, 0)
+        nn.init.constant_(self.mlp[-1].bias, 0)
+    def forward(self, x, c):
+        shift, scale, gate = self.adaln[0](c), self.adaln[1](c), self.adaln[2](c)
+        orig_ = x
+        for i, block in enumerate(self.mlp):
+            if i == self.modulate_pos:
+                x = modulate(self.norm(x), shift, scale)
+            x = block(x)
+            if i == self.gate_pos + len(self.mlp):
+                x = x * gate.unsqueeze(1)
+        orig_ = orig_ + x
+        return x
+class SimplyMLP(nn.Module):
+    """
+    self-designed MLP
+    """
+    def __init__(self, mlp_ratio: float = 4.0, hidden_size: int = 768, in_channels: int = 768):
+        super().__init__()
+        self.pre_projection = nn.Linear(hidden_size, in_channels, bias=True) # let's try a compression
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_size, in_channels, bias=True), # let's try a compression
+            nn.Linear(in_channels, int(hidden_size * mlp_ratio), bias=True),
+            nn.GELU(),
+            nn.Linear(int(hidden_size * mlp_ratio), hidden_size, bias=True),
+        )
+        self.after_projection = nn.Linear(in_channels, hidden_size, bias=True) # let's try a compression
+        #self.adaln = nn.Sequential(
+        #    nn.SiLU(),
+        #    nn.Linear(hidden_size, 3 * in_channels, bias=True)
+        #)
+        #nn.init.constant_(self.after_projection.weight, 0)
+        #nn.init.constant_(self.after_projection.bias, 0)
+        self.adaln = nn.ModuleList([
+            nn.Linear(hidden_size, hidden_size, bias=True),
+            nn.Linear(hidden_size, hidden_size, bias=True),
+            nn.Linear(hidden_size, hidden_size, bias=True)
+        ])
+        # init adaln-Zero
+        nn.init.constant_(self.adaln[-1].weight, 0)
+        nn.init.constant_(self.adaln[-1].bias, 0)
+        self.norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+    def forward(self, x, c):
+        #shift, scale, gate = self.adaln(c).chunk(3, dim=1)
+        shift = self.adaln[0](c)
+        scale = self.adaln[1](c)
+        gate = self.adaln[2](c)
+        x = modulate(self.norm(x), shift, scale)
+        x = self.pre_projection(x)
+        x = self.mlp(x)
+        x = self.after_projection(x) * gate.unsqueeze(1) 
+        return x
+class DiTSimplyMlp(DiT):
+    """
+    one-block self-designed MLP
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        mlp_ratio = kwargs.get('mlp_ratio', None)
+        in_channels = kwargs.get('in_channels', None)
+        pn = kwargs.get('patch_size', None)
+        in_channels = in_channels * pn * pn # patch_size ** 2 * in_channels
+        self.blocks = nn.ModuleList([
+            SimplyMLP(mlp_ratio=mlp_ratio, hidden_size=hidden_size, in_channels=in_channels)
+        ])
+        #self.final_layer = FinalLayerIdentity(hidden_size, self.patch_size, self.out_channels)
+        self.final_layer = FinalLayerSimple(hidden_size, self.patch_size, self.out_channels)
+        #nn.init.constant_(self.final_layer.linear.weight, 0)
+        #nn.init.constant_(self.final_layer.linear.bias, 0)
+class DiTCustomSingleBlock(DiT):
+    """
+    DiT but with a single custom block
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        mlp_ratio = kwargs.get('mlp_ratio', None)
+        h1 = hidden_size
+        h2 = kwargs.get('h2', None)
+        self.blocks = nn.ModuleList([
+            CustomDiTBlock(h1, h2, mlp_ratio=mlp_ratio)
+        ])
+        self.final_layer = FinalLayerIdentity(hidden_size, self.patch_size, self.out_channels)
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 
