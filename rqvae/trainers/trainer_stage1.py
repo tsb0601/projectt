@@ -329,7 +329,7 @@ class Trainer(TrainerTemplate):
             mode = "valid" if valid else "train"
             mode = "%s_ema" % mode if ema else mode
             logger.info(f"""{mode:10s}, """ + line)
-            self.reconstruct(xs, epoch=0, mode=mode)
+            self.reconstruct(xs, epoch=epoch, mode=mode)
 
         summary = accm.get_summary(n_inst)
         summary["input"] = xs

@@ -116,6 +116,8 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]model loaded')
     if distenv.master:
         print(model)
+        print(f'[!]model dtype: {next(model.parameters()).dtype}')
+        exit()
         compute_model_size(model, logger)
     if distenv.master and use_optim:
         logger.info(optimizer.__repr__())
