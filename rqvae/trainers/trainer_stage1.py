@@ -474,8 +474,6 @@ class Trainer(TrainerTemplate):
                 if it % (len(loader) // 2) == 0:
                     self.model.eval()
                     bsz = xs.size(0)
-                    if bsz == 1:  # need to be handle properly
-                        continue
                     max_shard_size = min(bsz, 16)
                     xs, xs_recon = self.model_woddp.get_recon_imgs(
                         xs[:max_shard_size], xs_recon[:max_shard_size]
@@ -493,8 +491,8 @@ class Trainer(TrainerTemplate):
                         .detach()
                         .cpu()
                         .float()
-                    )
-                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size // 2)
+                    ) if max_shard_size > 1 else torch.cat([xs, xs_recon], dim=0)
+                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size // 2 if max_shard_size > 1 else 1).detach()
                     self.writer.add_image(
                         "reconstruction_step", grid, "train", global_iter
                     )
@@ -521,8 +519,6 @@ class Trainer(TrainerTemplate):
     @torch.no_grad()
     def reconstruct(self, xs, epoch, mode="valid"):
         # do not write image when bs is 1
-        if xs.size(0) == 1:
-            return
         bsz = xs.size(0)
         max_shard_size = min((bsz // 2) * 2, 16)
         model = self.model_ema if "ema" in mode else self.model
@@ -540,9 +536,9 @@ class Trainer(TrainerTemplate):
                 xs_recon[max_shard_size // 2 :],
             ],
             dim=0,
-        )
+        ) if max_shard_size > 1 else torch.cat([xs_real, xs_recon], dim=0)
         grid = (
-            torchvision.utils.make_grid(grid, nrow=max_shard_size // 2)
+            torchvision.utils.make_grid(grid, nrow=max_shard_size // 2 if max_shard_size > 1 else 1)
             .detach()
             .cpu()
             .float()
