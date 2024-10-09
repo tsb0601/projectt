@@ -457,18 +457,21 @@ class CustomDiTBlock(nn.Module):
             nn.Linear(h1, self.gate_dim, bias=True)
         ])
         self.norm = nn.LayerNorm(self.modulate_dim, elementwise_affine=False, eps=1e-6)
-        nn.init.constant_(self.mlp[-1].weight, 0)
-        nn.init.constant_(self.mlp[-1].bias, 0)
+        nn.init.constant_(self.adaln[-1].weight, 0)
+        nn.init.constant_(self.adaln[-1].bias, 0)
     def forward(self, x, c):
         shift, scale, gate = self.adaln[0](c), self.adaln[1](c), self.adaln[2](c)
         orig_ = x
         for i, block in enumerate(self.mlp):
             if i == self.modulate_pos:
+            #    print('modulate, shift, scale', shift.shape, scale.shape)
                 x = modulate(self.norm(x), shift, scale)
             x = block(x)
+            #print('block', i, x.shape)
             if i == self.gate_pos + len(self.mlp):
                 x = x * gate.unsqueeze(1)
-        orig_ = orig_ + x
+            #    print('gate', x.shape)
+        x = orig_ + x
         return x
 class SimplyMLP(nn.Module):
     """
@@ -532,15 +535,17 @@ class DiTCustomSingleBlock(DiT):
     DiT but with a single custom block
     """
     def __init__(self, **kwargs):
+        h2 = kwargs.pop('h2', None)
+        modulate_pos = kwargs.pop('modulate_pos', 0)
+        gate_pos = kwargs.pop('gate_pos', -1)
         super().__init__(**kwargs)
         hidden_size = self.hidden_size
         mlp_ratio = kwargs.get('mlp_ratio', None)
         h1 = hidden_size
-        h2 = kwargs.get('h2', None)
         self.blocks = nn.ModuleList([
-            CustomDiTBlock(h1, h2, mlp_ratio=mlp_ratio)
+            CustomDiTBlock(h1, h2, mlp_ratio=mlp_ratio, modulate_pos=modulate_pos, gate_pos=gate_pos) for _ in range(len(self.blocks))
         ])
-        self.final_layer = FinalLayerIdentity(hidden_size, self.patch_size, self.out_channels)
+        self.final_layer = FinalLayerSimple(hidden_size, self.patch_size, self.out_channels)
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 

@@ -28,6 +28,7 @@ class DiT_Stage2(Stage2Model):
         n_samples: int = 125,
         do_beta_rescaling: bool = False,
         class_cls_str: str = "rqvae.models.DiT.models.DiT",
+        **kwargs,
     ):
         super().__init__()
         self.timestep_respacing = str(timestep_respacing)
@@ -55,6 +56,7 @@ class DiT_Stage2(Stage2Model):
             class_dropout_prob=class_dropout_prob,
             num_classes=num_classes,
             learn_sigma=learn_sigma,
+            **kwargs,
         )
         self.model.requires_grad_(True)
         self.inference_step = inference_step
