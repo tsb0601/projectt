@@ -117,7 +117,6 @@ def main(rank, args, extra_args):
     if distenv.master:
         print(model)
         print(f'[!]model dtype: {next(model.parameters()).dtype}')
-        exit()
         compute_model_size(model, logger)
     if distenv.master and use_optim:
         logger.info(optimizer.__repr__())
