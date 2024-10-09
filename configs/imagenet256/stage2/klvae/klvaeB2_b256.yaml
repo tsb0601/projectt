@@ -23,7 +23,7 @@ arch:
       in_channels: 4
       learn_sigma: true
       noise_schedule: 'linear'
-      #timestep_respacing: 250
+      inference_step: 250
   checkpointing: false
   ema: 0.114514
 optimizer:
