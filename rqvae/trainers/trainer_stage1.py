@@ -520,7 +520,7 @@ class Trainer(TrainerTemplate):
     def reconstruct(self, xs, epoch, mode="valid"):
         # do not write image when bs is 1
         bsz = xs.size(0)
-        max_shard_size = min((bsz // 2) * 2, 16)
+        max_shard_size = min(bsz, 16) 
         model = self.model_ema if "ema" in mode else self.model
         model.eval()
         xs_real = xs[:max_shard_size]
