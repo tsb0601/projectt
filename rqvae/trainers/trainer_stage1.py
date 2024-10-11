@@ -32,16 +32,20 @@ from header import *
 import torch_xla.core.xla_model as xm
 from torch_xla.amp import autocast
 from contextlib import nullcontext
+
 logger = logging.getLogger(__name__)
 import os
 import numpy as np
+
 DEBUG = bool(os.environ.get("DEBUG", 0))
 import time  # for debugging
 from typing import *
 from rqvae.models.interfaces import *
 from rqvae.img_datasets.interfaces import LabeledImageData
 
-def calculate_adaptive_weight(nll_loss, g_loss, last_layer):
+
+def calculate_adaptive_weight(nll_loss, g_loss, last_layer, nll_scale=1.0):
+    nll_loss = nll_loss * nll_scale
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
     g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
 
@@ -67,8 +71,8 @@ class Trainer(TrainerTemplate):
                 disc_config,
                 steps_per_epoch=len(self.loader_trn),
                 max_epoch=num_epochs_for_gan,
-                device = self.device,
-                dtype = self.dtype,
+                device=self.device,
+                dtype=self.dtype,
                 distenv=self.distenv,
                 is_eval=self.is_eval,
             )
@@ -90,6 +94,7 @@ class Trainer(TrainerTemplate):
         self.perceptual_weight = gan_config.loss.perceptual_weight
         self.disc_weight = gan_config.loss.disc_weight
         self.get_last_layer = self.model_woddp.get_last_layer
+
     def get_accm(self):
         metric_names = [
             "loss_total",
@@ -101,7 +106,7 @@ class Trainer(TrainerTemplate):
             "g_weight",
             "logits_real",
             "logits_fake",
-            "grad_norm"
+            "grad_norm",
         ]
         accm = AccmStage1WithGAN(
             metric_names,
@@ -116,8 +121,6 @@ class Trainer(TrainerTemplate):
         loss_disc = torch.zeros((), device=self.device)
 
         logits_avg = {}
-        inputs = inputs * 2 - 1 # normalize to [-1, 1]
-        recons = recons * 2 - 1 # normalize to [-1, 1]
         if mode == "gen":
             logits_fake, _ = self.discriminator(recons.contiguous(), None)
             loss_gen = self.gen_loss(logits_fake)
@@ -144,46 +147,58 @@ class Trainer(TrainerTemplate):
             logits_avg["logits_fake"] = logits_fake.detach().mean()
 
         return loss_gen, loss_disc, logits_avg
+
     @torch.no_grad()
-    def encode_only(self, valid:bool= True):
+    def encode_only(self, valid: bool = True):
         """
         This func is used to calculate the mean and variance of the latent space
         The model should return a running mean and variance of the latent space
         """
-        self.model.train() # to calculate the running mean and variance
+        self.model.train()  # to calculate the running mean and variance
         loader = self.wrap_loader("valid" if valid else "train")
         for it, inputs in tqdm(enumerate(loader)):
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings: Stage1Encodings = self.model_woddp.encode(inputs)
-                running_mean = stage1_encodings.additional_attr['running_mean']
-                running_var = stage1_encodings.additional_attr['running_var']
+                running_mean = stage1_encodings.additional_attr["running_mean"]
+                running_var = stage1_encodings.additional_attr["running_var"]
             xm.mark_step()
         # save the running mean and variance
         return running_mean, running_var
+
     @torch.no_grad()
-    def calculate_mean_and_std(self, valid:bool= True) -> nn.modules.batchnorm._BatchNorm:
+    def calculate_mean_and_std(
+        self, valid: bool = True
+    ) -> nn.modules.batchnorm._BatchNorm:
         """
         This func is used to calculate the mean and variance of the latent space
         """
         self.model.eval()
         loader = self.wrap_loader("valid" if valid else "train")
-        def get_batchnorm(latent_size: tuple)-> nn.modules.batchnorm._BatchNorm:
+
+        def get_batchnorm(latent_size: tuple) -> nn.modules.batchnorm._BatchNorm:
             bn_list = [nn.BatchNorm1d, nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]
-            return bn_list[len(latent_size) - 2](latent_size[1], affine=False, track_running_stats=True)
+            return bn_list[len(latent_size) - 2](
+                latent_size[1], affine=False, track_running_stats=True
+            )
+
         bn = None
         self.model_woddp: Stage1ModelWrapper
         if self.model_woddp.connector.bn is None:
             # do a test forward pass to determine the shape of the latent space
-            test_input:LabeledImageData = next(iter(loader))
+            test_input: LabeledImageData = next(iter(loader))
             test_input._to(self.device)._to(self.dtype)
-            test_output = self.model_woddp.encode(test_input) # after encoder and connector
+            test_output = self.model_woddp.encode(
+                test_input
+            )  # after encoder and connector
             bn = get_batchnorm(test_output.zs.shape).to(self.device).to(self.dtype)
-            self.model_woddp.connector.bn = bn # hook a proper bn
+            self.model_woddp.connector.bn = bn  # hook a proper bn
             self.model_woddp.connector.bn.train()
             self.model_woddp.connector.hook_forward()
-        tbar = tqdm(enumerate(loader), total=len(loader), disable=not self.distenv.master)
+        tbar = tqdm(
+            enumerate(loader), total=len(loader), disable=not self.distenv.master
+        )
         for it, inputs in tbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
@@ -196,16 +211,18 @@ class Trainer(TrainerTemplate):
         E_x = bn.running_mean
         Var_x = bn.running_var
         # all gather to get real mean and variance
-        mean_per_device = E_x.unsqueeze(0).to(self.device) # 1, C
-        mean_all = xm.all_gather(mean_per_device) # (N, C)
-        mean_of_mean = mean_all.mean(dim=0) # C
-        var_of_mean = mean_all.var(dim=0) # C
+        mean_per_device = E_x.unsqueeze(0).to(self.device)  # 1, C
+        mean_all = xm.all_gather(mean_per_device)  # (N, C)
+        mean_of_mean = mean_all.mean(dim=0)  # C
+        var_of_mean = mean_all.var(dim=0)  # C
         var_per_device = Var_x.unsqueeze(0).to(self.device)
         var_all = xm.all_gather(var_per_device)
         mean_of_var = var_all.mean(dim=0)
-        estimated_mean = mean_of_mean 
-        estimated_var = mean_of_var + var_of_mean # var(reduced(x)) = E[var(x)] + var(E[x])
-        xm.rendezvous('mean_var_sync')
+        estimated_mean = mean_of_mean
+        estimated_var = (
+            mean_of_var + var_of_mean
+        )  # var(reduced(x)) = E[var(x)] + var(E[x])
+        xm.rendezvous("mean_var_sync")
         # update the bn
         self.model_woddp.connector.bn.running_mean = estimated_mean
         self.model_woddp.connector.bn.running_var = estimated_var
@@ -238,8 +255,9 @@ class Trainer(TrainerTemplate):
         xm.master_print(f'[!]avg mean: {avg_mean}, avg var: {avg_var}, avg mse: {avg_mse}')
         """
         return self.model_woddp.connector.bn
+
     @torch.no_grad()
-    def cache_latent(self, feature_path:str, valid:bool= True):
+    def cache_latent(self, feature_path: str, valid: bool = True):
         self.model.eval()
         loader = self.wrap_loader("valid" if valid else "train")
         for it, inputs in tqdm(enumerate(loader)):
@@ -252,21 +270,25 @@ class Trainer(TrainerTemplate):
                 label = inputs.condition
                 for i, z in enumerate(zs):
                     img_name = os.path.basename(img_paths[i])
-                    img_name = img_name.split('.')[0]
-                    save_path = f'{feature_path}/{img_name}.npy'   
+                    img_name = img_name.split(".")[0]
+                    save_path = f"{feature_path}/{img_name}.npy"
                     z_i = z.cpu().numpy()
                     label_i = label[i].cpu().numpy()
-                    xm.master_print(f'[!]saving latent to {save_path}, latent shape: {z_i.shape}, label shape: {label_i.shape}')
+                    xm.master_print(
+                        f"[!]saving latent to {save_path}, latent shape: {z_i.shape}, label shape: {label_i.shape}"
+                    )
                     xm.mark_step()
                     exit()
-                    np.save(save_path, {
-                        'z': z_i,
-                        'label': label_i
-                    })
+                    np.save(save_path, {"z": z_i, "label": label_i})
             xm.mark_step()
+
     @torch.no_grad()
     def eval(
-        self, valid:bool=True, ema:bool=False, verbose:bool=False, epoch:int=0
+        self,
+        valid: bool = True,
+        ema: bool = False,
+        verbose: bool = False,
+        epoch: int = 0,
     ) -> SummaryStage1WithGAN:
         model = self.model_ema if ema else self.model
         discriminator = self.discriminator
@@ -289,7 +311,9 @@ class Trainer(TrainerTemplate):
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_output: Stage1ModelOutput = model(inputs)
                 xs_recon = stage1_output.xs_recon  # calling convention
-                outputs = self.model_woddp.compute_loss(stage1_output, inputs, valid=True)
+                outputs = self.model_woddp.compute_loss(
+                    stage1_output, inputs, valid=True
+                )
                 xm.mark_step()
                 loss_rec_lat = outputs["loss_total"]
                 loss_recon = outputs["loss_recon"]
@@ -303,7 +327,9 @@ class Trainer(TrainerTemplate):
                 p_weight = self.perceptual_weight
 
                 if use_discriminator:
-                    loss_gen, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="eval")
+                    loss_gen, loss_disc, logits = self.gan_loss(
+                        xs, xs_recon, mode="eval"
+                    )
                 else:
                     loss_gen = torch.zeros((), device=self.device)
                     loss_disc = torch.zeros((), device=self.device)
@@ -346,7 +372,11 @@ class Trainer(TrainerTemplate):
         discriminator.train()
         discriminator.zero_grad(set_to_none=True)
         use_discriminator = True if epoch >= self.gan_start_epoch else False
-        use_lpips = True if epoch >= self.lpips_start_epoch and self.perceptual_weight > 0 else False
+        use_lpips = (
+            True
+            if epoch >= self.lpips_start_epoch and self.perceptual_weight > 0
+            else False
+        )
         xm.master_print(f"[!]use_discriminator: {use_discriminator}")
         accm = self.get_accm()
         loader = self.wrap_loader("train")
@@ -366,20 +396,24 @@ class Trainer(TrainerTemplate):
                 loss_recon = outputs["loss_recon"]
                 loss_latent = outputs["loss_latent"]
                 xm.mark_step()
+                normed_xs = xs * 2 - 1
+                normed_xs_recon = xs_recon * 2 - 1
                 # generator loss
                 loss_pcpt = (
-                    self.perceptual_loss(xs, xs_recon)
+                    self.perceptual_loss(normed_xs, normed_xs_recon) # LPIPS loss
                     if use_lpips
                     else torch.zeros((), device=self.device, dtype=self.dtype)
                 )
                 p_weight = self.perceptual_weight
             if use_discriminator:
                 with autocast(self.device) if self.use_autocast else nullcontext():
-                    loss_gen, _, _ = self.gan_loss(xs, xs_recon, mode="gen")
-                g_weight = calculate_adaptive_weight( # calculate adaptive weight involves backward so it should be excluded from autocast
-                    loss_recon + p_weight * loss_pcpt,
+                    loss_gen, _, _ = self.gan_loss(normed_xs, normed_xs_recon, mode="gen")
+                nll_loss = loss_recon + p_weight * loss_pcpt
+                g_weight = calculate_adaptive_weight(  # calculate adaptive weight involves backward so it should be excluded from autocast
+                    nll_loss,
                     loss_gen,
                     last_layer=self.get_last_layer(),
+                    nll_scale=1.0,
                 )
             else:
                 loss_gen = torch.zeros((), device=self.device)
@@ -392,19 +426,23 @@ class Trainer(TrainerTemplate):
             )
             loss_gen_total.backward()
             if self.clip_grad_norm > 0:
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), self.clip_grad_norm
+                )
             else:
-                grad_norm = torch.tensor(-1) # not tracking
+                grad_norm = torch.tensor(-1)  # not tracking
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
                 else:
-                    xm.optimizer_step(optimizer) # else we use xm.optimizer_step
+                    xm.optimizer_step(optimizer)  # else we use xm.optimizer_step
                 self.model.zero_grad(set_to_none=True)
                 if self.model_ema_woddp is not None:
-                    self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
+                    self.model_ema_woddp.update(
+                        self.model_woddp, step=None
+                    )  # use fixed decay
                 scheduler.step()
-                
+
             xm.mark_step()
             # discriminator loss
 
@@ -423,7 +461,7 @@ class Trainer(TrainerTemplate):
                     self.discriminator.zero_grad(set_to_none=True)
                     # discriminator.zero_grad(set_to_none=True)
                     self.model.zero_grad(set_to_none=True)
-                    #if self.model_ema_woddp is not None:
+                    # if self.model_ema_woddp is not None:
                     #    self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
             else:
                 loss_disc = torch.zeros((), device=self.device)
@@ -453,7 +491,9 @@ class Trainer(TrainerTemplate):
                 pbar.set_description(line)
                 # per-step logging
                 global_iter = epoch * len(self.loader_trn) + it
-                if (global_iter + 1) % (20 * self.accu_step) == 0: # log every 20 actual steps
+                if (global_iter + 1) % (
+                    20 * self.accu_step
+                ) == 0:  # log every 20 actual steps
                     for key, value in metrics.items():
                         if isinstance(value, torch.Tensor):
                             value = value.to(
@@ -481,20 +521,26 @@ class Trainer(TrainerTemplate):
                         xs[:max_shard_size], xs_recon[:max_shard_size]
                     )
                     grid = (
-                        torch.cat(
-                            [
-                                xs[: max_shard_size // 2],
-                                xs_recon[: max_shard_size // 2],
-                                xs[max_shard_size // 2 :],
-                                xs_recon[max_shard_size // 2 :],
-                            ],
-                            dim=0,
+                        (
+                            torch.cat(
+                                [
+                                    xs[: max_shard_size // 2],
+                                    xs_recon[: max_shard_size // 2],
+                                    xs[max_shard_size // 2 :],
+                                    xs_recon[max_shard_size // 2 :],
+                                ],
+                                dim=0,
+                            )
+                            .detach()
+                            .cpu()
+                            .float()
                         )
-                        .detach()
-                        .cpu()
-                        .float()
-                    ) if max_shard_size > 1 else torch.cat([xs, xs_recon], dim=0)
-                    grid = torchvision.utils.make_grid(grid, nrow=max_shard_size // 2 if max_shard_size > 1 else 1).detach()
+                        if max_shard_size > 1
+                        else torch.cat([xs, xs_recon], dim=0)
+                    )
+                    grid = torchvision.utils.make_grid(
+                        grid, nrow=max_shard_size // 2 if max_shard_size > 1 else 1
+                    ).detach()
                     self.writer.add_image(
                         "reconstruction_step", grid, "train", global_iter
                     )
@@ -522,7 +568,7 @@ class Trainer(TrainerTemplate):
     def reconstruct(self, xs, epoch, mode="valid"):
         # do not write image when bs is 1
         bsz = xs.size(0)
-        max_shard_size = min(bsz, 16) 
+        max_shard_size = min(bsz, 16)
         model = self.model_ema if "ema" in mode else self.model
         model.eval()
         xs_real = xs[:max_shard_size]
@@ -530,17 +576,23 @@ class Trainer(TrainerTemplate):
         stage1_output: Stage1ModelOutput = self.model_woddp(xs_data)
         xs_recon = stage1_output.xs_recon
         xs_real, xs_recon = self.model_woddp.get_recon_imgs(xs_real, xs_recon)
-        grid = torch.cat(
-            [
-                xs_real[: max_shard_size // 2],
-                xs_recon[: max_shard_size // 2],
-                xs_real[max_shard_size // 2 :],
-                xs_recon[max_shard_size // 2 :],
-            ],
-            dim=0,
-        ) if max_shard_size > 1 else torch.cat([xs_real, xs_recon], dim=0)
         grid = (
-            torchvision.utils.make_grid(grid, nrow=max_shard_size // 2 if max_shard_size > 1 else 1)
+            torch.cat(
+                [
+                    xs_real[: max_shard_size // 2],
+                    xs_recon[: max_shard_size // 2],
+                    xs_real[max_shard_size // 2 :],
+                    xs_recon[max_shard_size // 2 :],
+                ],
+                dim=0,
+            )
+            if max_shard_size > 1
+            else torch.cat([xs_real, xs_recon], dim=0)
+        )
+        grid = (
+            torchvision.utils.make_grid(
+                grid, nrow=max_shard_size // 2 if max_shard_size > 1 else 1
+            )
             .detach()
             .cpu()
             .float()

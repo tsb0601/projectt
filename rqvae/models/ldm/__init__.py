@@ -21,6 +21,7 @@ class AutoEncoderKL_Stage1(Stage1Model):
         self.kl_weight = kl_weight
     def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
         xs = inputs.img
+        xs = xs * 2 - 1 # normalize to [-1, 1]
         latent = self.model.encode(xs)
         sample = latent.sample() if self.do_sample else latent.mode()
         encodings = Stage1Encodings(
@@ -33,6 +34,7 @@ class AutoEncoderKL_Stage1(Stage1Model):
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs
         recon = self.model.decode(zs)
+        recon = (recon + 1) / 2 # denormalize to [0, 1]
         return Stage1ModelOutput(recon,
                 additional_attr={
                     'distr': outputs.additional_attr['distr'],
@@ -41,7 +43,7 @@ class AutoEncoderKL_Stage1(Stage1Model):
         img = inputs.img
         recon = outputs.xs_recon
         distr = outputs.additional_attr['distr']
-        rec_loss = torch.abs(img.contiguous() - recon.contiguous())
+        rec_loss = torch.abs(img.contiguous() - recon.contiguous()) * 2 # we use L1 loss, the official implementation uses image in [-1, 1] but here we use [0, 1], so we multiply by 2
         #rec_loss = torch.sum(rec_loss) / rec_loss.shape[0] # take mean over the batch
         rec_loss = rec_loss.mean() # we take the mean over the pixels
         kl_loss = distr.kl()
