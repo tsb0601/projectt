@@ -53,8 +53,8 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = ImageNet_wImagepath(root, split='val', transform=transforms_val)
         #dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:1024])
         # choose the first image and repeat it for 1024 time for training
-        dataset_trn = Subset(dataset_trn, [0]*512) # lets get a bit more samples
-        dataset_val = Subset(dataset_val, list(range(512)))
+        dataset_trn = Subset(dataset_trn, [0]*1024) # lets get a bit more samples
+        dataset_val = Subset(dataset_val, [0]*256)
     elif config.dataset.type == 'imagenet_u':
         root = root if root else 'data/imagenet'
         dataset_trn = ImageNet_Fake(root, split='train', transform=transforms_trn)

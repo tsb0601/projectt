@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenetVAE256x256
 arch:
@@ -84,5 +84,5 @@ gan:
     gen_loss: vanilla
     disc_weight: .75
     perceptual_weight: 1.0
-    disc_start: 0 # to be modified to epoch
+    disc_start: 2 # to be modified to epoch
     lpips_start: 0

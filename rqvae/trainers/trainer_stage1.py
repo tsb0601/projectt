@@ -116,7 +116,8 @@ class Trainer(TrainerTemplate):
         loss_disc = torch.zeros((), device=self.device)
 
         logits_avg = {}
-
+        inputs = inputs * 2 - 1 # normalize to [-1, 1]
+        recons = recons * 2 - 1 # normalize to [-1, 1]
         if mode == "gen":
             logits_fake, _ = self.discriminator(recons.contiguous(), None)
             loss_gen = self.gen_loss(logits_fake)
@@ -429,9 +430,7 @@ class Trainer(TrainerTemplate):
                 logits = {}
             xm.mark_step()
             # logging
-            loss_total = (
-                loss_rec_lat.detach() + p_weight * loss_pcpt.detach()
-            )  # rec + lat + pcpt
+            loss_total = loss_gen_total.detach()
             metrics = {
                 "loss_total": loss_total,
                 "loss_recon": loss_recon.detach(),
