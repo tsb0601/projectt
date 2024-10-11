@@ -85,6 +85,23 @@ def create_transforms(config, split='train', is_eval=False):
         if split == 'train' and not is_eval:
             #weak data augmentation
             transforms_ = [
+                transforms.Resize(resolution),
+                transforms.RandomCrop(resolution),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+        else:
+            transforms_ = [
+                lambda x: center_crop_arr(x, resolution),
+                transforms.ToTensor(),
+            ]
+    elif config.transforms.type.startswith('imagenetVAE'):
+        # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
+        resolution = int(config.transforms.type.split('x')[-1])
+        if split == 'train' and not is_eval:
+            #weak data augmentation
+            transforms_ = [
                 transforms.RandomResizedCrop(resolution, scale=(0.2, 1.0), interpolation=3),  # following MAE pretraining
                 transforms.RandomCrop(resolution),
                 transforms.RandomHorizontalFlip(p=0.5),

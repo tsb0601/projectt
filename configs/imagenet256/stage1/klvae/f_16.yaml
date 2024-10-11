@@ -1,7 +1,7 @@
 dataset:
   type: imagenet
   transforms:
-    type: imagenet256x256
+    type: imagenetVAE256x256
 arch:
   stage: 1
   stage_1:
@@ -29,13 +29,13 @@ arch:
   checkpointing: false
   ema: 0.114514
 experiment:
-  batch_size: 32 # so it can divide 50000
+  batch_size: 1
   epochs: 10
   accu_step: 1
   save_ckpt_freq: 5
   test_freq: 1
   amp: false
-  actual_batch_size: 128
+  #actual_batch_size: 128
 
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
@@ -82,7 +82,7 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: .5
+    disc_weight: .75
     perceptual_weight: 1.0
-    disc_start: 50001 # to be modified to epoch
+    disc_start: 0 # to be modified to epoch
     lpips_start: 0
