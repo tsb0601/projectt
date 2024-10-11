@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet
   transforms:
     type: imagenetVAE256x256
 arch:
@@ -35,7 +35,7 @@ experiment:
   save_ckpt_freq: 5
   test_freq: 1
   amp: false
-  #actual_batch_size: 128
+  actual_batch_size: 128
 
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
