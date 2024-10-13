@@ -64,6 +64,8 @@ class Trainer(TrainerTemplate):
 
         disc_config = gan_config.disc
         self.gan_start_epoch = gan_config.loss.disc_start
+        self.gan_upd_start_epoch = gan_config.loss.disc_upd_start
+        assert self.gan_upd_start_epoch <= self.gan_start_epoch, "discriminator update start should be less than or equal to the start of GAN training"
         num_epochs_for_gan = self.config.experiment.epochs - self.gan_start_epoch
         self.lpips_start_epoch = gan_config.loss.lpips_start
         disc_model, disc_optim, disc_sched = (
@@ -372,6 +374,7 @@ class Trainer(TrainerTemplate):
         discriminator.train()
         discriminator.zero_grad(set_to_none=True)
         use_discriminator = True if epoch >= self.gan_start_epoch else False
+        train_disc = True if epoch >= self.gan_upd_start_epoch else False
         use_lpips = (
             True
             if epoch >= self.lpips_start_epoch and self.perceptual_weight > 0
@@ -446,7 +449,7 @@ class Trainer(TrainerTemplate):
             xm.mark_step()
             # discriminator loss
 
-            if use_discriminator:
+            if train_disc:
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="disc")
                     dict_loss = loss_disc * self.disc_weight
