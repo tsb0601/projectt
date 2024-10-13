@@ -65,11 +65,12 @@ def initialize(args: argparse.Namespace , logger =None):
         # for example, generate random seed from args.seed for (rank + 1) times
         seed = args.seed
         rank = args.rank
-        for _ in range(rank + 1):
-            seed = hash((seed, rank)) 
-            # convert seed to [0, 2^32 - 1]
-            seed = seed % (2**32 - 1)
-        set_seed(seed) # set seed for each process
+        local_seed = seed * args.world_size + rank
+        #for _ in range(rank + 1):
+        #    seed = hash((seed, rank)) 
+        #    # convert seed to [0, 2^32 - 1]
+        #    seed = seed % (2**32 - 1)
+        set_seed(local_seed) # set seed for each process
     else:
         print('[dist] Single processed')
         raise ValueError('Single processed is currently not supported')

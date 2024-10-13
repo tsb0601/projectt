@@ -244,6 +244,14 @@ class TrainerTemplate:
                         self.writer.add_scalar("metrics/FID", fid, "valid",i )
                         self.writer.add_scalar("metrics/IS", IS_value, "valid",i ) 
                         self.writer.add_scalar("metrics/IS_std", IS_std, "valid",i )
+                    if self.model_ema is not None:
+                        ema_stats = self.batch_infer(ema=True, valid=True, save_root=act_save_path, test_fid=True, epoch = i)
+                        if self.distenv.master:
+                            fid, IS_value, IS_std = ema_stats
+                            print(f"Epoch {i} EMA FID: {fid}, IS: {IS_value} +/- {IS_std}")
+                            self.writer.add_scalar("metrics/FID", fid, "valid_ema",i )
+                            self.writer.add_scalar("metrics/IS", IS_value, "valid_ema",i ) 
+                            self.writer.add_scalar("metrics/IS_std", IS_std, "valid_ema",i )
                 summary_val = self.eval(epoch=i, valid=True, verbose=True)
                 if self.model_ema is not None:
                     summary_val_ema = self.eval(ema=True, epoch=i, valid=True, verbose=True)

@@ -148,13 +148,6 @@ class Trainer(TrainerTemplate):
                 "loss_total": loss_total,
                 "grad_norm": grad_norm.detach(),
             }
-            if self.model_ema is not None: # if ema exist we also track an ema loss
-                with torch.no_grad():
-                    with autocast(self.device) if self.use_autocast else nullcontext():
-                        stage1_encodings, stage2_output = self.model_ema(inputs)
-                        outputs = self.model_ema_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
-                        loss_total_ema = outputs["loss_total"]
-                metrics.update({"loss_total_ema": loss_total_ema})
             if (it + 1) % self.accu_step == 0:
                 if self.use_ddp:
                     optimizer.step()  # in DDP we use optimizer.step() instead of xm.optimizer_step(optimizer), see https://github.com/pytorch/xla/blob/master/docs/ddp.md for performance tips
@@ -187,6 +180,15 @@ class Trainer(TrainerTemplate):
                     self.writer.add_scalar(
                         "lr_step", scheduler.get_last_lr()[0], "train", global_iter
                     )
+                    if self.model_ema is not None: # if ema exist we also track an ema loss
+                        with torch.no_grad():
+                            with autocast(self.device) if self.use_autocast else nullcontext():
+                                stage1_encodings, stage2_output = self.model_ema(inputs)
+                                outputs = self.model_ema_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
+                                loss_total_ema = outputs["loss_total"]
+                        self.writer.add_scalar(
+                            "loss_step/loss_total_ema", loss_total_ema, "train", global_iter
+                        )
                 if it % (len(loader) // 2) == 0:
                     self.model.eval()
                     with torch.no_grad():

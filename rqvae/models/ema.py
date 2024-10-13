@@ -24,6 +24,8 @@ class ExponentialMovingAverage(torch.nn.Module):
         super(ExponentialMovingAverage, self).__init__()
 
         self.module = init_module
+        # only keep the param that requires grad
+        self.requires_grad_params = [name for name, param in self.module.named_parameters() if param.requires_grad]
         self.module.eval()
         self.module.requires_grad_(False) # make sure the model is not trainable
         self.mu = mu
@@ -40,7 +42,7 @@ class ExponentialMovingAverage(torch.nn.Module):
             mu = min(self.mu, (1. + step) / (10. + step))
         ema_params = OrderedDict(self.module.named_parameters())
         params = OrderedDict(module.named_parameters())
-        for name, param in params.items():
+        for name, param in self.module.named_parameters():
             if name not in ema_params:
                 raise ValueError(f'[ExponentialMovingAverage] not found {name} in the model')
             if not param.requires_grad: # skip non-trainable parameters
