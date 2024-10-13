@@ -18,7 +18,6 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-
 class ExponentialMovingAverage(torch.nn.Module):
     def __init__(self, init_module, mu):
         super(ExponentialMovingAverage, self).__init__()

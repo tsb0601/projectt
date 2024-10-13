@@ -57,7 +57,7 @@ gan:
   disc:
     arch:
       in_channels: 3
-      num_layers: 2
+      num_layers: 3
       use_actnorm: false
       ndf: 64
       spectral_norm: false
@@ -82,7 +82,7 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: .75
+    disc_weight: .5
     perceptual_weight: 1.0
-    disc_start: 0 # to be modified to epoch
+    disc_start: 2
     lpips_start: 0
