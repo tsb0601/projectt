@@ -49,7 +49,7 @@ experiment:
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  #actual_batch_size: 256
+  actual_batch_size: 256
 
 gan:
   disc:
