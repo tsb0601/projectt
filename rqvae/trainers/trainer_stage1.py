@@ -451,7 +451,7 @@ class Trainer(TrainerTemplate):
 
             if train_disc:
                 with autocast(self.device) if self.use_autocast else nullcontext():
-                    _, loss_disc, logits = self.gan_loss(xs, xs_recon, mode="disc")
+                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_xs_recon, mode="disc")
                     dict_loss = loss_disc * self.disc_weight
                 dict_loss.backward()
                 # torch.autograd.backward(dict_loss, grad_tensors=[xs], retain_graph=False)
