@@ -162,8 +162,6 @@ class Trainer(TrainerTemplate):
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()
-                #for metric_name, value in metrics.items():
-                #    line += f""", {metric_name}: {value.item():4f}"""
                 line += f""", lr: {scheduler.get_last_lr()[0]:e}"""
                 pbar.set_description(line)
                 # per-step logging
