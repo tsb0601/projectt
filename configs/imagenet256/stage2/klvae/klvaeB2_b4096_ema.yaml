@@ -34,10 +34,10 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 5
+    epoch: 2
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.0e-4
+    min_lr: 0.0
     mode: fix
     decay_mode: linear
     start_from_zero: true
