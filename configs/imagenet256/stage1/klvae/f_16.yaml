@@ -30,7 +30,7 @@ arch:
   ema: 0.114514
 experiment:
   batch_size: 1
-  epochs: 10
+  epochs: 20
   accu_step: 1
   save_ckpt_freq: 5
   test_freq: 1
@@ -49,7 +49,7 @@ optimizer:
     epoch: 1.0 
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.6e-4 # no decay
+    min_lr: 0. # no decay
     mode: fix
     start_from_zero: true
 
@@ -73,7 +73,7 @@ gan:
         epoch: 1.0 
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 1.6e-4 # no decay
+        min_lr: 0.0 # no decay
         mode: fix
         start_from_zero: true
     experiment:
@@ -84,6 +84,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .2
     perceptual_weight: 1.0
-    disc_start: 5
-    disc_upd_start: 5
+    disc_start: 6
+    disc_upd_start: 6
     lpips_start: 0

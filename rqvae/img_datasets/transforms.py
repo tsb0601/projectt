@@ -103,7 +103,7 @@ def create_transforms(config, split='train', is_eval=False):
         if split == 'train' and not is_eval:
             #first resize to first_crop_sizexfirst_crop_size, then random crop to resolution
             transforms_ = [
-                transforms.Resize(first_crop_size),
+                transforms.Resize(first_crop_size, interpolation=3),
                 transforms.RandomCrop(resolution),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
