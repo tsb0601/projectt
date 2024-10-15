@@ -451,9 +451,10 @@ class Trainer(TrainerTemplate):
 
             if train_disc:
                 with autocast(self.device) if self.use_autocast else nullcontext():
-                    disc_stage1_output: Stage1ModelOutput = self.model(inputs) # call a new forward pass
-                    disc_xs_recon = disc_stage1_output.xs_recon  
-                    normed_disc_xs_recon = disc_xs_recon * 2 - 1
+                    with torch.no_grad():
+                        disc_stage1_output: Stage1ModelOutput = self.model(inputs) # call a new forward pass
+                        disc_xs_recon = disc_stage1_output.xs_recon  
+                        normed_disc_xs_recon = disc_xs_recon * 2 - 1
                     _, loss_disc, logits = self.gan_loss(normed_xs, normed_disc_xs_recon, mode="disc")
                     dict_loss = loss_disc * self.disc_weight
                 dict_loss.backward()
