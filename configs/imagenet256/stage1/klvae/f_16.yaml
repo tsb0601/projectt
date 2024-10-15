@@ -85,5 +85,5 @@ gan:
     disc_weight: .2
     perceptual_weight: 1.0
     disc_start: 5
-    disc_upd_start: 5
+    disc_upd_start: 5s
     lpips_start: 0
