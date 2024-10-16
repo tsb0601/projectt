@@ -41,14 +41,18 @@ def extract_features(stage1_model_wrapper:Stage1ModelWrapper, dataset: LabeledIm
     encode_func = stage1_model_wrapper.encode if use_connector else stage1_model_wrapper.stage_1_model.encode
     tbar = tqdm(dataloader, total=len(dataloader), desc='Extracting features', disable= not is_ddp or not xm.is_master_ordinal())
     with torch.no_grad():
-        for i, data in enumerate(tbar):
+        for i, data in enumerate(tbar): 
+            img_path = data.img_path[0]
+            img_name = os.path.basename(img_path).split('.')[0] + '.npz' # replace .jpg with .npz
+            # if exists, skip
+            if os.path.exists(os.path.join(output_dir, img_name)):
+                continue
             data: LabeledImageData
             data._to(device)
             encodings = encode_func(data)
-            img_path = data.img_path[0]
             zs = encodings.zs.squeeze(0).cpu().numpy()
             condition = data.condition.squeeze(0).cpu().numpy()
-            img_name = os.path.basename(img_path).split('.')[0] + '.npz' # replace .jpg with .npz
+           
             #print(f'img_name: {img_name}, zs shape: {zs.shape}, condition shape: {condition.shape}')
             np.savez(os.path.join(output_dir, img_name), latent=zs, condition=condition)
             #tbar.set_postfix({'img':img_name})

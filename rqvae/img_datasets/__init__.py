@@ -22,6 +22,7 @@ from .imagenet import ImageNet_wImagepath, ImageNet_Fake
 from .dummy import Dummy_Dataset
 from .lsun import LSUNClass
 from .ffhq import FFHQ
+from .latent import LatentDataset
 from .transforms import create_transforms
 from .interfaces import LabeledImageDatasetWrapper
 SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
@@ -61,6 +62,12 @@ def create_dataset(config, is_eval=False, logger=None):
         dataset_val = ImageNet_Fake(root, split='val', transform=transforms_val)
         dataset_trn = Subset(dataset_trn, torch.randperm(len(dataset_trn))[:512])
         dataset_val = Subset(dataset_val, torch.randperm(len(dataset_val))[:256])
+    elif config.dataset.type == 'imagenet_latent':
+        root = root if root else 'data/imagenet/latent_256'
+        train_features_dir = os.path.join(root, f'train')
+        val_features_dir = os.path.join(root, f'val')
+        dataset_trn = LatentDataset(train_features_dir)
+        dataset_val = LatentDataset(val_features_dir)
     elif config.dataset.type == 'ffhq':
         root = root if root else 'data/ffhq'
         dataset_trn = FFHQ(root, split='train', transform=transforms_trn)

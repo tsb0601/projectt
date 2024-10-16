@@ -146,8 +146,7 @@ class DiT_Stage2(Stage2Model):
             model_kwargs = dict(y=y, cfg_scale=cfg)
             sample_fn = self.model.forward_with_cfg
         else:
-            # y_null = torch.tensor([1000] * labels.shape[0], device=device)
-            model_kwargs = dict(y=y)  # do unconditional sampling
+            model_kwargs = dict(y=y)  # do conditional sampling
             sample_fn = self.model.forward
         # Sample images:
         samples = self.infer_diffusion.p_sample_loop(

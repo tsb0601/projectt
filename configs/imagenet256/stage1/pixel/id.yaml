@@ -1,0 +1,17 @@
+dataset:
+  type: imagenet_overfit
+  transforms:
+    type: imagenet256x256
+
+arch:
+  stage: 1
+  stage_1:
+    target: rqvae.models.identity.Identity_Stage1
+    params:
+      hidden_dim: 768
+      input_size: 256
+      in_channels: 3
+    checkpointing: false
+  connector:
+    target: rqvae.models.connectors.id_connector
+  ema: 0.114514

@@ -148,6 +148,18 @@ class TrainerTemplate:
         if self.distenv.TPU:
             loader = ParallelLoader(loader, [self.device]).per_device_loader(self.device)
         return loader
+    def tensor_image_to_numpy(self, tensor_im: torch.Tensor) -> np.ndarray:
+        """
+        tensor should be in range [0, 1]
+        """
+        len_shape = len(tensor_im.shape)
+        if len_shape == 3:
+            tensor_im = tensor_im.unsqueeze(0)
+        tensor_im = tensor_im * 2 - 1
+        tensor_im = torch.clamp(tensor_im * 127.5 + 128, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy()
+        if len_shape == 3:
+            tensor_im = tensor_im.squeeze(0)
+        return tensor_im
     @torch.no_grad()
     def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False, epoch:int = 0):
         #assert os.path.exists(save_root), f"save_root {save_root} does not exist"
@@ -174,13 +186,13 @@ class TrainerTemplate:
             img_paths = inputs.img_path
             with autocast(device=self.device) if self.use_autocast else nullcontext():
                 outputs:Stage1ModelOutput = model.infer(inputs) 
-                xs_recon_or_gen = outputs.xs_recon.detach().clone().float() # destroy the graph
+            xs_recon_or_gen = outputs.xs_recon.detach().clone().float() # destroy the graph
             xm.mark_step()
             if test_fid: # we want float32
                 # convert to uint8 then back
-                xs_recon_or_gen = xs_recon_or_gen.clamp(0, 1).cpu().numpy()
-                xs_recon_or_gen = (xs_recon_or_gen * 255).astype('uint8')
+                xs_recon_or_gen = self.tensor_image_to_numpy(xs_recon_or_gen)
                 xs_recon_or_gen = torch.from_numpy(xs_recon_or_gen).to(torch.float32).to(self.device) / 255. #do the exact same thing as image gen pipeline
+                xs_recon_or_gen = xs_recon_or_gen.permute(0, 3, 1, 2) # (B, C, H, W)
                 incep_act, incep_logits = inception_model.get_logits(xs_recon_or_gen) # (B, 2048)
                 inception_acts.append(incep_act)
                 inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
@@ -191,8 +203,7 @@ class TrainerTemplate:
                     # change the suffix to png
                     img_name = img_name.split('.')[0] + '.png'
                     save_path = os.path.join(save_root, img_name)
-                    img = xs_recon_or_gen[i].to(torch.float32).cpu().clamp(0, 1).numpy() 
-                    img = (img * 255).astype('uint8').transpose(1, 2, 0)
+                    img = self.tensor_image_to_numpy(xs_recon_or_gen[i]) 
                     img = Image.fromarray(img)
                     img.save(save_path)  
             xm.mark_step()

@@ -16,10 +16,12 @@ from torchstat import stat, ModelStat
 import sys
 import os
 from omegaconf import OmegaConf
+from check_utils import *
 def count_params(model: torch.nn.Module):
     return sum(p.numel() for p in model.parameters()), sum(p.numel() for p in model.parameters() if p.requires_grad)
 config_path = sys.argv[1]
-im_size = int(sys.argv[2]) if len(sys.argv) > 2 else 256
+# accept a tuple of image size from sys.argv[2], if not provided, default to (256, 256, 3)
+im_size = tuple(map(int, sys.argv[2].split(','))) if len(sys.argv) > 2 else (256, 256)
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
@@ -31,10 +33,7 @@ with torch.no_grad():
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
     stage2_model = stage2_model_wrapper.stage_2_model
-    image_path = '/home/bytetriper/VAE-enhanced/test.png'
-    image = Image.open(image_path).resize((im_size, im_size)).convert('RGB')
-    #repeat 2 times to asssure model works with batch size > 1
-    image = ToTensor()(image).unsqueeze(0) # bsz 1
+    image = get_default_image(im_size)
     print(image.shape, image.min(), image.max())
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)

@@ -61,3 +61,50 @@ class Identity_Stage1(Stage1Model):
         return self.dummy_param # no parameter to return
     def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         return self.forward(inputs)
+
+class SimpleIdentity_Stage1(Stage1Model):
+    """
+    do nothing, just return the input
+    """
+    def __init__(self):
+        """
+        assume the input is a 3D tensor of shape (B, in_channel, input_size, input_size)
+        """
+        super().__init__()
+    def forward(self, inputs: LabeledImageData) -> Stage1ModelOutput:
+        """
+        Just return x
+        """
+        output = Stage1ModelOutput(
+            xs_recon=inputs.img,
+            additional_attr={}
+        )
+        return output
+    def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
+        """
+        reshape the input to [B, hidden_dim, patch_num, patch_num]
+        """
+        x = inputs.img
+        return Stage1Encodings(zs=x, additional_attr={})
+    def decode(self,outputs: Stage1Encodings) -> Stage1ModelOutput:
+        x = outputs.zs
+        output = Stage1ModelOutput(
+            xs_recon=x,
+            additional_attr={}
+        )
+        return output
+    def compute_loss(self, outputs: Stage1ModelOutput, inputs: LabeledImageData):
+        xs = inputs.img
+        xs_recon = outputs.xs_recon
+        loss = (xs - xs_recon).abs().mean() # l1 loss, but normally should be zero
+        return {
+            "loss_total": loss,
+            "loss_recon": loss,
+            "loss_latent": loss
+        }
+    def get_recon_imgs(self, x, xs):
+        return x, xs
+    def get_last_layer(self):
+        return self.dummy_param # no parameter to return
+    def infer(self, inputs: LabeledImageData) -> Stage1ModelOutput:
+        return self.forward(inputs)

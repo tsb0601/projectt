@@ -52,3 +52,35 @@ class Stage1_KLVAE_ForProbing(nn.Module):
         #latent = xs.reshape(xs.shape[0], -1)
         latent = self.fc_norm(latent)
         return latent
+
+class Stage1_KLVAE_OnlyDecoder(Stage1Model):
+    """
+    accepts VAE latent and only do decode
+    """
+    def __init__(self, ckpt_path:str):
+        super().__init__()
+        vae = AutoencoderKL.from_pretrained(ckpt_path)
+        vae: AutoencoderKL
+        self.vae = vae
+    def forward(self, inputs: LabeledImageData):
+        latent = self.encode(inputs)
+        recon = self.decode(latent)
+        return recon
+    def encode(self, inputs: LabeledImageData):
+        x = inputs.img # do nothing, input is already latent
+        return Stage1Encodings(zs=x, additional_attr={})
+    def decode(self, outputs: Stage1Encodings):
+        z = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred
+        z = z.div_(0.18215)
+        x = self.vae.decode(z).sample
+        x = x.mul_(0.5).add_(0.5)
+        return Stage1ModelOutput(xs_recon=x, additional_attr={})
+    def get_last_layer(self):
+        return self.vae.decoder.conv_out.weight
+    def compute_loss(self, *args, **kwargs):
+        raise NotImplementedError('KLVAE does not support training')
+    @torch.no_grad()
+    def infer(self, inputs: LabeledImageData):
+        return self(inputs)
+    def get_recon_imgs(self, x: torch.Tensor, xs: torch.Tensor):
+        return x.clamp(0, 1), xs.clamp(0, 1)
