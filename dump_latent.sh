@@ -4,4 +4,5 @@ output_path=$2
 python dump_latent.py \
     --config_path $config_path \
     --output_dir $output_path \
-    --is_ddp
+    --is_ddp \
+    --train_split
