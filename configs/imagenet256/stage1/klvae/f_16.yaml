@@ -27,10 +27,10 @@ arch:
         - 16
         dropout: 0.0
   checkpointing: false
-  ema: 0.114514
+  ema: 0.9999
 experiment:
   batch_size: 1
-  epochs: 10
+  epochs: 20
   accu_step: 1
   save_ckpt_freq: 5
   test_freq: 1
@@ -85,6 +85,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .2
     perceptual_weight: 1.0
-    disc_start: 6
-    disc_upd_start: 6
+    disc_start: 10
+    disc_upd_start: 10
     lpips_start: 0

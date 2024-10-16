@@ -1,0 +1,13 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenetDiT256x256
+
+arch:
+  stage: 1
+  stage_1:
+    target: rqvae.models.klvae.Stage1_KLVAE
+    params:
+      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+  checkpointing: false
+  ema: 0.114514
