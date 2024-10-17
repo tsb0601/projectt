@@ -39,3 +39,15 @@ condition dtype: {sample.condition.dtype},\
 img[0,0]: {sample.img[0,0]},\
 condition: {sample.condition},\
 img_path: {sample.img_path}')
+
+# try loading for some iter to test the speed
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+dataloader = DataLoader(dataset_trn, batch_size=32, shuffle=True, num_workers=4, collate_fn=dataset_trn.collate_fn if hasattr(dataset_trn, 'collate_fn') else dataset_trn.default_collate_fn)
+total_iter = 1e4
+import time
+start = time.time()
+for i, batch in enumerate(tqdm(dataloader)):
+    if i >= total_iter:
+        break
+print('time per iter:', (time.time()-start)/total_iter)

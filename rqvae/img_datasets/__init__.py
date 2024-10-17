@@ -22,10 +22,9 @@ from .imagenet import ImageNet_wImagepath, ImageNet_Fake
 from .dummy import Dummy_Dataset
 from .lsun import LSUNClass
 from .ffhq import FFHQ
-from .latent import LatentDataset
+from .latent import LatentDataset, LatentDatasetPreLoaded
 from .transforms import create_transforms
 from .interfaces import LabeledImageDatasetWrapper
-SMOKE_TEST = bool(os.environ.get("SMOKE_TEST", 0))
 def create_dataset(config, is_eval=False, logger=None):
     transforms_trn = create_transforms(config.dataset, split='train', is_eval=is_eval)
     transforms_val = create_transforms(config.dataset, split='val', is_eval=is_eval)
@@ -68,6 +67,12 @@ def create_dataset(config, is_eval=False, logger=None):
         val_features_dir = os.path.join(root, f'val')
         dataset_trn = LatentDataset(train_features_dir)
         dataset_val = LatentDataset(val_features_dir)
+    elif config.dataset.type == 'imagenet_latent_preloaded':
+        root = root if root else 'data/imagenet/latent_256'
+        train_features_dir = os.path.join(root, f'train')
+        val_features_dir = os.path.join(root, f'val')
+        dataset_trn = LatentDatasetPreLoaded(train_features_dir)
+        dataset_val = LatentDatasetPreLoaded(val_features_dir)
     elif config.dataset.type == 'ffhq':
         root = root if root else 'data/ffhq'
         dataset_trn = FFHQ(root, split='train', transform=transforms_trn)
