@@ -140,6 +140,28 @@ class DiTBlockOnlyMlp(nn.Module):
         shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(3, dim=1)
         x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm(x), shift_mlp, scale_mlp))
         return x
+class DiTBlockWoAdaLN(nn.Module):
+    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+    def forward(self, x, c):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+class DiTBlockwoAdaLNAttn(nn.Module):
+    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
+        super().__init__()
+        self.norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0)
+    def forward(self, x, c):
+        x = x + self.mlp(self.norm(x))
+        return x
 class DiTBlockwConv(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning, use Conv to replace MLP. When kernel_size=1, it is equivalent to DiTBlock.
@@ -548,7 +570,125 @@ class DiTCustomSingleBlock(DiT):
         self.final_layer = FinalLayerSimple(hidden_size, self.patch_size, self.out_channels)
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
-
+class DiTWoAdaLN(DiT):
+    def __init__(self, **kwargs):
+        t_emb_dim = kwargs.pop('t_emb_dim', 256)
+        wo_attn = kwargs.pop('wo_attn', False)
+        super().__init__(**kwargs)
+        mlp_ratio = kwargs.get('mlp_ratio', None)
+        self.hidden_size += t_emb_dim # actual embed dim, we concat t_emb to x_emb
+        self.t_embedder = TimestepEmbedder(t_emb_dim) # re-def t_embedder
+        block_cls = DiTBlockwoAdaLNAttn if wo_attn else DiTBlockWoAdaLN
+        self.blocks = nn.ModuleList([
+            block_cls(self.hidden_size, self.num_heads, mlp_ratio=mlp_ratio) for _ in range(len(self.blocks))
+        ])
+        self.final_layer = FinalLayerSimple(self.hidden_size, self.patch_size, self.out_channels)
+        nn.init.constant_(self.final_layer.linear.weight, 0)
+        nn.init.constant_(self.final_layer.linear.bias, 0)
+    def forward(self, x, t, y):
+        x = self.x_embedder(x) + self.pos_embed
+        t = self.t_embedder(t)
+        # t: (N, D) -> (N, L, D)
+        t = t.unsqueeze(1).expand(-1, x.shape[1], -1)
+        # drop y
+        x = torch.cat([x, t], dim=-1) # concat t to x
+        for block in self.blocks:
+            x = block(x, None)
+        x = self.final_layer(x, None)
+        x = self.unpatchify(x)
+        return x
+class DiTwWideBlockonLargeTimeStep(DiT):
+    """
+    use a thin DiT on small time step, and a wide DiT on large time step
+    """
+    def __init__(self, **kwargs):
+        self.t_sep = kwargs.pop('t_sep', 800)
+        wide_channel = kwargs.pop('wide_channel', 1024) # wide hidden size for wide-DiT
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        mlp_ratio = kwargs.get('mlp_ratio', None)
+        depth = kwargs.get('depth', None)
+        input_size = kwargs.get('input_size', None)
+        num_classes = kwargs.get('num_classes', None)
+        class_dropout_prob = kwargs.get('class_dropout_prob', None)
+        self.thin_blocks = nn.ModuleList([
+            DiTBlock(hidden_size, self.num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
+        ])
+        self.wide_blocks = nn.ModuleList([
+            DiTBlock(wide_channel, self.num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
+        ])
+        self.thin_final_layer = FinalLayer(hidden_size, self.patch_size, self.out_channels)
+        self.wide_final_layer = FinalLayer(wide_channel, self.patch_size, self.out_channels)
+        self.wide_x_embedder = PatchEmbed(input_size, self.patch_size, self.in_channels, wide_channel, bias=True)
+        self.wide_pos_embed = nn.Parameter(torch.zeros(1, self.wide_x_embedder.num_patches, wide_channel), requires_grad=False)
+        self.wide_t_embedder = TimestepEmbedder(wide_channel)
+        self.wide_y_embedder = LabelEmbedder(num_classes, wide_channel, class_dropout_prob)
+        w = self.wide_x_embedder.proj.weight.data
+        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        nn.init.constant_(self.wide_x_embedder.proj.bias, 0)
+        nn.init.normal_(self.wide_y_embedder.embedding_table.weight, std=0.02)
+        nn.init.normal_(self.wide_t_embedder.mlp[0].weight, std=0.02)
+        nn.init.normal_(self.wide_t_embedder.mlp[2].weight, std=0.02)
+        #pos embed
+        pos_embed = get_2d_sincos_pos_embed(self.wide_pos_embed.shape[-1], int(self.wide_x_embedder.num_patches ** 0.5))
+        self.wide_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        def _basic_init(module):
+            if isinstance(module, nn.Linear):
+                torch.nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+        self.apply(_basic_init)        
+        for block in self.thin_blocks:
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        for block in self.wide_blocks:
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.thin_final_layer.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.thin_final_layer.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.thin_final_layer.linear.weight, 0)
+        nn.init.constant_(self.thin_final_layer.linear.bias, 0)
+        nn.init.constant_(self.wide_final_layer.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.wide_final_layer.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.wide_final_layer.linear.weight, 0)
+        nn.init.constant_(self.wide_final_layer.linear.bias, 0)
+    def forward(self, x, t, y):
+        thin_x = self.x_embedder(x) + self.pos_embed
+        thin_t = self.t_embedder(t)
+        thin_y = self.y_embedder(y, self.training)
+        thin_c = thin_t + thin_y
+        wide_x = self.wide_x_embedder(x) + self.wide_pos_embed
+        wide_t = self.wide_t_embedder(t)
+        wide_y = self.wide_y_embedder(y, self.training)
+        wide_c = wide_t + wide_y
+        for block in self.thin_blocks:
+            thin_x = block(thin_x, thin_c)
+        thin_x = self.thin_final_layer(thin_x, thin_c)
+        for block in self.wide_blocks:
+            wide_x = block(wide_x, wide_c)
+        wide_x = self.wide_final_layer(wide_x, wide_c)
+        # thin_x: (N, T, patch_size ** 2 * out_channels)
+        # wide_x: (N, T, patch_size ** 2 * out_channels)
+        # combine in batch dimension
+        # t: (N,) -> (N, *x.shape[1:]), x: (N, 
+        empty_x = torch.zeros_like(thin_x)
+        """for i in range(len(x)):
+            if t[i] < self.t_sep:
+                empty_x[i] = thin_x[i]
+            else:
+                empty_x[i] = wide_x[i]"""
+        # use tensor op to replace for loop
+        # t: (N,) 
+        # t_sep: scalar
+        # thin_x: (N, T, patch_size ** 2 * out_channels)
+        # wide_x: (N, T, patch_size ** 2 * out_channels)
+        # first expand t to (N, T, patch_size ** 2 * out_channels)
+        t = t.reshape(-1, 1, 1).expand(-1, thin_x.shape[1], thin_x.shape[2])
+        # then compare t with t_sep
+        empty_x = torch.where(t < self.t_sep, thin_x, wide_x)
+        final_x = self.unpatchify(empty_x)
+        return final_x
+import torch_xla._internal.tpu
 class DiTwoMlp(DiT):
     """
     DiT without MLPs, simply stacking attention mechanisms.

@@ -5,10 +5,7 @@ check the xla environment
 import torch
 import torch_xla.core.xla_model as xm
 import sys
-from torch_xla.distributed.parallel_loader import ParallelLoader as pl
 import os
-from torch.utils.data import DataLoader, DistributedSampler
-import numpy as np
 import torch_xla.distributed.xla_backend
 import torch_xla.distributed.xla_multiprocessing as xmp
 
