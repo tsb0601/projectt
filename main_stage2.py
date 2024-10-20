@@ -11,15 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import os
-import argparse
-import math
-
-import torch
-import torch.distributed as dist
-import torch_xla as xla
-import torch_xla.core.xla_model as xm
+from header import *
 import rqvae.utils.dist as dist_utils
 from rqvae.models import create_model
 from rqvae.trainers import create_trainer
@@ -27,9 +19,6 @@ from rqvae.img_datasets import create_dataset
 from rqvae.optimizer import create_optimizer, create_scheduler
 from rqvae.utils.utils import compute_model_size, get_num_conv_linear_layers
 from rqvae.utils.setup import setup , wandb_dir
-import wandb
-#wandb.require('core')
-import torch_xla.runtime as xr
 import time
 from rqvae.trainers import TrainerStage2
 from rqvae.models.interfaces import Stage2ModelWrapper

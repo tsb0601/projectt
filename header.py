@@ -9,6 +9,8 @@ import torch_xla.core.xla_model as xm
 import wandb
 from torch import nn
 from typing import *
+from patch_metadata import patch_metadata
+patch_metadata()
 wandb_dir = os.environ.get("WANDB_DIR", None)
 wandb_id = os.environ.get("WANDB_ID", None)
 PROJECT_NAME = os.environ.get("WANDB_PROJECT", 'VAE-enhanced')
