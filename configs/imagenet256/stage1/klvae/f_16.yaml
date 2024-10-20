@@ -30,7 +30,7 @@ arch:
   ema: 0.9999
 experiment:
   batch_size: 1
-  epochs: 20
+  epochs: 10
   accu_step: 1
   save_ckpt_freq: 5
   test_freq: 1
@@ -83,8 +83,8 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: .2
+    disc_weight: .5
     perceptual_weight: 1.0
-    disc_start: 10
-    disc_upd_start: 10
+    disc_start: 5
+    disc_upd_start: 5
     lpips_start: 0

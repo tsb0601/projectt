@@ -409,8 +409,10 @@ class Trainer(TrainerTemplate):
                 )
                 p_weight = self.perceptual_weight
             if use_discriminator:
+                discriminator.eval()
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     loss_gen, _, _ = self.gan_loss(normed_xs, normed_xs_recon, mode="gen")
+                discriminator.train()
                 nll_loss = loss_recon + p_weight * loss_pcpt
                 g_weight = calculate_adaptive_weight(  # calculate adaptive weight involves backward so it should be excluded from autocast
                     nll_loss,
