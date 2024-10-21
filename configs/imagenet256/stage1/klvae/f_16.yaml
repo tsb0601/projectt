@@ -30,9 +30,9 @@ arch:
   ema: 0.9999
 experiment:
   batch_size: 1
-  epochs: 10
+  epochs: 6
   accu_step: 1
-  save_ckpt_freq: 5
+  save_ckpt_freq: 6
   test_freq: 1
   amp: false
   actual_batch_size: 256
@@ -85,6 +85,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .5
     perceptual_weight: 1.0
-    disc_start: 0
+    disc_start: 3
     disc_upd_start: 0
     lpips_start: 0
