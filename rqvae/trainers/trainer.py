@@ -142,6 +142,7 @@ class TrainerTemplate:
 
     def eval(self, valid=True, ema=False, verbose=False, epoch=0):
         raise NotImplementedError
+    
     def wrap_loader(self, split:str = 'train'):
         assert split in ['train', 'valid'], f"split should be either 'train' or 'valid', but got {split}"
         loader = self.loader_trn if split == 'train' else self.loader_val

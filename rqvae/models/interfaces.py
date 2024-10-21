@@ -197,6 +197,12 @@ class Stage1ModelWrapper(Stage1Model):
         return self.stage_1_model.get_recon_imgs(x, xs)
     def get_last_layer(self) -> torch.Tensor:
         return self.stage_1_model.get_last_layer()
+    def train(self):
+        self.stage_1_model.train()
+        self.connector.train()
+    def eval(self):
+        self.stage_1_model.eval()
+        self.connector.eval()
 class Stage2ModelWrapper(Stage2Model):
     """
     Wrap a Stage2 model with a Stage1 model.
@@ -213,9 +219,7 @@ class Stage2ModelWrapper(Stage2Model):
         self.stage_2_model.requires_grad_(True)  # train the stage 2 model
         self.connector.requires_grad_(False)  # freeze the connector
         self.do_normalize = do_normalize
-        self.stage_1_model.eval()
-        self.connector.eval()
-        self.stage_2_model.train()
+        self.train()
     def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
         with torch.no_grad():
             stage1_encodings = self.stage_1_model.encode(inputs)
@@ -247,3 +251,11 @@ class Stage2ModelWrapper(Stage2Model):
         return stage_1_gen
     def get_last_layer(self) -> torch.Tensor:
         return self.stage_2_model.get_last_layer()
+    def train(self):
+        self.stage_2_model.train()
+        self.stage_1_model.eval()
+        self.connector.eval()
+    def eval(self):
+        self.stage_2_model.eval()
+        self.stage_1_model.eval()
+        self.connector.eval()

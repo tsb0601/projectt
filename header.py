@@ -1,5 +1,3 @@
-from patch_metadata import patch_metadata
-patch_metadata()
 import torch_xla.runtime as xr
 import os
 import argparse
