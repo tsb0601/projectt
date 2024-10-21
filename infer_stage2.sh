@@ -25,6 +25,5 @@ python main_stage2.py \
     -r=$SAVE_DIR \
     -l=$load_path \
     --world_size=$world_size  \
-    --use_autocast \
     --reload-batch-size 32 
     #--do_online_eval
