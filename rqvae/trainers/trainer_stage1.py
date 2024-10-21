@@ -373,6 +373,7 @@ class Trainer(TrainerTemplate):
         discriminator = self.discriminator
         discriminator.train()
         discriminator.zero_grad(set_to_none=True)
+        self.perceptual_loss.eval()
         use_discriminator = True if epoch >= self.gan_start_epoch else False
         train_disc = True if epoch >= self.gan_upd_start_epoch else False
         use_lpips = (
