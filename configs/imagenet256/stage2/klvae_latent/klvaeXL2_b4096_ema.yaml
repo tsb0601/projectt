@@ -25,7 +25,7 @@ arch:
       noise_schedule: 'linear'
       inference_step: 250
   checkpointing: false
-  ema: 0.99
+  ema: 0.9999
 optimizer:
   type: adamw
   init_lr: 1.6e-3
