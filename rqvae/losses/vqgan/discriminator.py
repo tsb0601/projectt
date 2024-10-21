@@ -113,7 +113,7 @@ class NLayerDiscriminator(nn.Module):
             norm_layer      -- normalization layer
         """
         super(NLayerDiscriminator, self).__init__()
-        norm_layer = ActNorm if use_actnorm else nn.BatchNorm2d
+        norm_layer = ActNorm if use_actnorm else nn.InstanceNorm2d
         if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
