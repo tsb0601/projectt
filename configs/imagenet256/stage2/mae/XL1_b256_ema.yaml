@@ -32,7 +32,7 @@ arch:
       noise_schedule: 'linear'
       inference_step: 250
   checkpointing: false
-  ema: 0.9999
+  ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -56,7 +56,7 @@ experiment:
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  actual_batch_size: 256
+  actual_batch_size: 4
 gan:
   disc:
     arch:

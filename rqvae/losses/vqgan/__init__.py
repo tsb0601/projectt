@@ -19,7 +19,6 @@ from .discriminator import NLayerDiscriminator, weights_init
 from .gan_loss import hinge_d_loss, vanilla_d_loss, vanilla_g_loss
 from .lpips import LPIPS
 
-
 def create_vqgan_loss(loss_config):
 
     disc_loss_type = loss_config.disc_loss
