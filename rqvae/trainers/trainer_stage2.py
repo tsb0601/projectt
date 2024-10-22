@@ -125,14 +125,12 @@ class Trainer(TrainerTemplate):
             inputs._to(self.device)._to(self.dtype)
             last_input = inputs
             xs = inputs.img
-            xm.master_print(f"xs: {xs.shape}")
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = self.model(inputs)
                 stage1_encodings: Stage1Encodings
                 stage2_output: Stage2ModelOutput
                 outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
                 loss = outputs["loss_total"] # always use float for loss
-            xm.master_print(f"loss: {loss}, forward done")
             loss.backward()
             if self.clip_grad_norm > 0:
                 grad_norm = self.norm_tracker.clip_norm()
@@ -156,10 +154,8 @@ class Trainer(TrainerTemplate):
                 scheduler.step()
                 if self.model_ema_woddp is not None:
                     self.model_ema_woddp.update(self.model_woddp, step=None) # use fixed decay
-            xm.master_print(f"step done")
             xm.mark_step()
             accm.update(metrics, count=1, sync=True, distenv=self.distenv) # in training we only monitor master process for logging
-            xm.master_print(f"accm update done")
             if self.distenv.master:
                 line = f"""(epoch {epoch} / iter {it}) """
                 line += accm.get_summary().print_line()

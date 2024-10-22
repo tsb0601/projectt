@@ -209,12 +209,10 @@ class AccmStage1WithGAN:
     @torch.no_grad()
     def update(self, metrics_to_add, count=None, sync=False, distenv=None):
         if sync:
-            print(f"rank {distenv.local_rank} metrics_to_add: {metrics_to_add}")
             for name, value in metrics_to_add.items():
                 #gathered_value = dist_utils.all_gather_cat(distenv, value.unsqueeze(0))
                 #gathered_value = gathered_value.sum().detach()
                 #value = value.clone() # to avoid the in-place operation 
-                print(f"rank {distenv.local_rank} value: {value}")
                 gathered_sum_value = xm.mesh_reduce(None, value, lambda x: sum(x)/len(x))
                 metrics_to_add[name] = gathered_sum_value.detach()
                 xm.mark_step(wait=True)
