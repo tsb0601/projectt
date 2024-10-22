@@ -88,8 +88,7 @@ def broadcast_master_param(model: torch.nn.Module) -> None:
   """
   parameters_and_buffers = list(
       itertools.chain(model.parameters(), model.buffers()))
-  collective_broadcast(parameters_and_buffers, pin_layout=True)
-  xm.mark_step()
+  collective_broadcast(parameters_and_buffers, pin_layout=False)
 def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     if distenv.use_ddp:
         assert dist.is_initialized(), 'DistributedDataParallel requires torch.distributed to be initialized.'
@@ -106,7 +105,8 @@ def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
         #dist.barrier()
     else:
         #xm.broadcast_master_param(model)
-        broadcast_master_param(model) # significantly slower than dist.broadcast before first compilation, so caching is really important
+        xm.broadcast_master_param(model)
+        #broadcast_master_param(model) # significantly slower than dist.broadcast before first compilation, so caching is really important
         #model = torch.nn.DataParallel(model)
     xm.mark_step() # mark step for sync
     return model

@@ -125,7 +125,6 @@ class Trainer(TrainerTemplate):
             inputs._to(self.device)._to(self.dtype)
             last_input = inputs
             xs = inputs.img
-            print(f"rank {self.distenv.rank}, it {it} xs.shape {xs.shape}")
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = self.model(inputs)
                 stage1_encodings: Stage1Encodings
