@@ -197,9 +197,9 @@ class Stage1ModelWrapper(Stage1Model):
         return self.stage_1_model.get_recon_imgs(x, xs)
     def get_last_layer(self) -> torch.Tensor:
         return self.stage_1_model.get_last_layer()
-    def train(self, flag: bool = True):
-        self.stage_1_model.train(flag)
-        self.connector.train(flag)
+    def train(self, mode: bool = True):
+        self.stage_1_model.train(mode)
+        self.connector.train(mode)
     def eval(self):
         self.stage_1_model.eval()
         self.connector.eval()
@@ -251,8 +251,8 @@ class Stage2ModelWrapper(Stage2Model):
         return stage_1_gen
     def get_last_layer(self) -> torch.Tensor:
         return self.stage_2_model.get_last_layer()
-    def train(self, flag: bool = True):
-        self.stage_2_model.train(flag)
+    def train(self, mode: bool = True):
+        self.stage_2_model.train(mode)
         self.stage_1_model.train(False)
         self.connector.train(False)
     def eval(self):

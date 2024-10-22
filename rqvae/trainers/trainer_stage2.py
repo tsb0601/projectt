@@ -77,7 +77,6 @@ class Trainer(TrainerTemplate):
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
             last_input = inputs
-            xs = inputs.img
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = model(inputs)
                 stage1_encodings: Stage1Encodings
@@ -126,12 +125,11 @@ class Trainer(TrainerTemplate):
             inputs._to(self.device)._to(self.dtype)
             last_input = inputs
             xs = inputs.img
+            print(f"rank {self.distenv.rank}, it {it} xs.shape {xs.shape}")
             with autocast(self.device) if self.use_autocast else nullcontext():
                 stage1_encodings, stage2_output = self.model(inputs)
                 stage1_encodings: Stage1Encodings
                 stage2_output: Stage2ModelOutput
-                zs = stage1_encodings.zs
-                zs_pred = stage2_output.zs_pred
                 outputs = self.model_woddp.compute_loss(stage1_encodings, stage2_output, inputs)
                 loss = outputs["loss_total"] # always use float for loss
             loss.backward()

@@ -28,6 +28,7 @@ with torch.no_grad():
     print('stage2_model_wrapper:', stage2_model_wrapper)
     param, trainable_param = count_params(stage2_model_wrapper)
     print(f"Total params: {param/1e6:.2f}M, Trainable params: {trainable_param/1e6:.2f}M")
+def test_all(stage2_model_wrapper:Stage2ModelWrapper, im_size:tuple):
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
     stage2_model = stage2_model_wrapper.stage_2_model
@@ -92,3 +93,10 @@ with torch.no_grad():
             generated_output = stage2_model.infer(data)
         print(generated_output.zs_pred.shape, generated_output.zs_pred.min(), generated_output.zs_pred.max())
     print("=" * 10, 'all set!', "=" * 10)
+print("=" * 10, 'testing stage2 model in eval mode', "=" * 10)
+stage2_model_wrapper.eval()
+test_all(stage2_model_wrapper, im_size)
+print("=" * 10, 'testing stage2 model in train mode', "=" * 10)
+stage2_model_wrapper.train()
+test_all(stage2_model_wrapper, im_size)
+print("=" * 10, 'all set!', "=" * 10)
