@@ -818,8 +818,131 @@ class DiT_convMLP(nn.Module):
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
         eps = torch.cat([half_eps, half_eps], dim=0)
         return torch.cat([eps, rest], dim=1)
+from einops.layers.torch import Rearrange
+class ConvStem(nn.Module):
+    """
+    Follow implementation of https://github.com/Jack-Etheredge/early_convolutions_vit_pytorch/blob/main/vitc/early_convolutions.py#L84
+    """
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False):
+        super().__init__()
+        n_filter_list = (in_channels, 768, 768, 768, 768)  # hardcoding for now because that's what the paper used
+        self.conv_layers = nn.Sequential(
+            *[nn.Sequential(
+                nn.Conv2d(in_channels=n_filter_list[i],
+                          out_channels=n_filter_list[i + 1],
+                          kernel_size=3,  # hardcoding for now because that's what the paper used
+                          stride=2,  # hardcoding for now because that's what the paper used
+                          padding=1),  # hardcoding for now because that's what the paper used
+            )
+                for i in range(len(n_filter_list)-1)
+            ])
+        total_stride = 1
+        compression_factor = 2 ** (len(n_filter_list)-1) 
+        self.patch_size = (compression_factor, compression_factor) 
+        # those conv layers should equals to a 16x16 patching
+        self.conv_layers.add_module("conv_1x1", torch.nn.Conv2d(in_channels=n_filter_list[-1], 
+                                    out_channels=out_channels, 
+                                    stride=1,  # hardcoding for now because that's what the paper used 
+                                    kernel_size=1,  # hardcoding for now because that's what the paper used 
+                                    padding=0))  # hardcoding for now because that's what the paper used
+        self.conv_layers.add_module("flatten image", 
+                                    Rearrange('batch channels height width -> batch (height width) channels'))
+    def forward(self, x):
+        for layer in self.conv_layers:
+            x = layer(x)
+        return x
+class ConvStemAsPatchEmbed(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=16, stride=16):
+        super().__init__()
+        dim = in_channels * stride ** 2
+        self.conv = nn.Conv2d(in_channels, dim, kernel_size, stride, padding=0, bias=True) # stride = patch_size
+        self.ln_in = nn.Linear(dim, out_channels)
+        self.patch_size = (stride, stride)
+    def forward(self, x):
+        x = self.conv(x) # (N, C, H, W) -> (N, D, H', W')
+        x = x.flatten(2).transpose(1, 2) # (N, D, H', W') -> (N, H'*W', D)
+        x = self.ln_in(x) # (N, H'*W', D) -> (N, H'*W', out_channels)
+        return x
+class DiTConvStem(DiT):
+    """
+    replace patch embedding with a convolutional stem
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        in_channels = kwargs.get('in_channels', None)
+        out_channels = kwargs.get('hidden_size', None)
+        self.x_embedder = ConvStem(3, out_channels) # replace patch embedding with a convolutional stem, in channel should be 3
+        self.in_channels = 3 # reload for generation
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.x_embedder.patch_size[0] ** 2, out_channels), requires_grad=False)
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.x_embedder.patch_size[0]))
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+    def unpatchify(self, x):
+        """
+        x: (N, H*W/p**2, p**2*3)
+        imgs: (N, H, W, 3)
+        """
+        c = 3 # for pixel rgb
+        p = self.x_embedder.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
 
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum('nhwpqc->nchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
+class DiTConvStemAsPatchEmbed(DiT):
+    """
+    replace patch embedding with a convolutional stem
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        in_channels = kwargs.get('in_channels', None)
+        out_channels = kwargs.get('hidden_size', None)
+        self.x_embedder = ConvStemAsPatchEmbed(3, out_channels) # replace patch embedding with a convolutional stem, in channel should be 3
+        self.in_channels = 3 # reload for generation
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.x_embedder.patch_size[0] ** 2, out_channels), requires_grad=False)
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.x_embedder.patch_size[0]))
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+    def unpatchify(self, x):
+        """
+        x: (N, H*W/p**2, p**2*3)
+        imgs: (N, H, W, 3)
+        """
+        c = 3 # for pixel rgb
+        p = self.x_embedder.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
 
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum('nhwpqc->nchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
+
+class DiTwReg(DiT):
+    """
+    DiT with registers
+    """
+    def __init__(self, **kwargs):
+        register_size = kwargs.pop('register_size', 256)
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        self.register_size = register_size
+        self.register = nn.Parameter(torch.zeros(1, register_size, hidden_size))
+    def forward(self, x, t, y):
+        x = self.x_embedder(x) + self.pos_embed
+        t = self.t_embedder(t)
+        y = self.y_embedder(y, self.training)
+        c = t + y
+        # cat register to x
+        reg = self.register.expand(x.shape[0], -1, -1)
+        x = torch.cat([reg, x], dim=1)
+        for block in self.blocks:
+            x = block(x, c)
+        # drop register
+        x = x[:, self.register_size:]
+        x = self.final_layer(x, c)
+        x = self.unpatchify(x)
+        return x
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #
 #################################################################################
