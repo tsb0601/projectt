@@ -19,32 +19,28 @@ dataset_trn, dataset_val = create_dataset(config)
 print('dataset_trn:', len(dataset_trn),type(dataset_trn))
 print('dataset_val:', len(dataset_val),type(dataset_val))
 # test one sample
-sample = dataset_trn[114514]
+sample = dataset_trn[114514 % len(dataset_trn)]
 sample: LabeledImageData
 print(f'train data sample:\
 img shape: {sample.img.shape},\
 img dtype: {sample.img.dtype},\
-condition shape: {sample.condition.shape},\
-condition dtype: {sample.condition.dtype},\
+condition: {sample.condition if hasattr(sample, "condition") else None},\
 img[0,0]: {sample.img[0,0]},\
-condition: {sample.condition},\
 img_path: {sample.img_path}')
 sample = dataset_val[0]
 sample: LabeledImageData
 print(f'train data sample:\
 img shape: {sample.img.shape},\
 img dtype: {sample.img.dtype},\
-condition shape: {sample.condition.shape},\
-condition dtype: {sample.condition.dtype},\
+condition shape: {sample.condition if hasattr(sample, "condition") else None},\
 img[0,0]: {sample.img[0,0]},\
-condition: {sample.condition},\
 img_path: {sample.img_path}')
 
 # try loading for some iter to test the speed
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 dataloader = DataLoader(dataset_trn, batch_size=32, shuffle=True, num_workers=4, collate_fn=dataset_trn.collate_fn if hasattr(dataset_trn, 'collate_fn') else dataset_trn.default_collate_fn)
-total_iter = 1e4
+total_iter = min(1e4, len(dataloader))
 import time
 start = time.time()
 for i, batch in enumerate(tqdm(dataloader)):

@@ -9,8 +9,6 @@
 # MAE: https://github.com/facebookresearch/mae/blob/main/models_mae.py
 # --------------------------------------------------------
 
-from sys import orig_argv
-from requests import patch
 import torch
 import torch.nn as nn
 import numpy as np
@@ -21,6 +19,7 @@ from .diffusion import create_diffusion
 from .blocks import ConvEncoder, ConvDecoder
 from header import *
 from rqvae.models.basicblocks.basics import ConvMlp
+from transformers import Dinov2Model
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
@@ -688,7 +687,6 @@ class DiTwWideBlockonLargeTimeStep(DiT):
         empty_x = torch.where(t < self.t_sep, thin_x, wide_x)
         final_x = self.unpatchify(empty_x)
         return final_x
-import torch_xla._internal.tpu
 class DiTwoMlp(DiT):
     """
     DiT without MLPs, simply stacking attention mechanisms.

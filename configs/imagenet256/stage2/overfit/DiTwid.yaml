@@ -1,29 +1,29 @@
 dataset:
   type: imagenet_overfit
   transforms:
-    type: imagenet256x256
+    type: imagenet320x320
 
 arch:
   stage: 2
   stage_1:
     target: rqvae.models.identity.Identity_Stage1
     params:
-      hidden_dim: 768
-      input_size: 256
+      hidden_dim: 1200
+      input_size: 320
       in_channels: 3
     checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 780
+      hidden_size: 1200
       input_size: 16
       patch_size: 1
       depth: 12
       num_heads: 12
       num_classes: 1000
       cfg: 0.0
-      in_channels: 768
+      in_channels: 1200
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
