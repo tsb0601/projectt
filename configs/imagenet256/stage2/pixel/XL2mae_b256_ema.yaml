@@ -25,9 +25,9 @@ arch:
       in_channels: 768
       learn_sigma: true
       noise_schedule: 'linear'
-      inference_step: 2
+      inference_step: 250
       class_cls_str: 'rqvae.models.DiT.models.DiTwMAE'
-      mae_ckpt: '/home/bytetriper/model_zoo/mae_large_224'
+      mae_ckpt: 'ckpt_gcs/model_zoo/mae_large_224'
   checkpointing: false
   ema: 0.9999
 optimizer:
