@@ -943,6 +943,106 @@ class DiTwReg(DiT):
         x = self.final_layer(x, c)
         x = self.unpatchify(x)
         return x
+from transformers import Dinov2Model, ViTImageProcessor, ViTMAEModel
+class DiTwDino(DiT):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        dino_ckpt = kwargs.pop('dino_ckpt', None)
+        self.dino = Dinov2Model.from_pretrained(dino_ckpt)
+        dino_processor = ViTImageProcessor.from_pretrained(dino_ckpt)
+        dino_mean, dino_std = dino_processor.image_mean, dino_processor.image_std
+        self.dino_mean = self.register_buffer('dino_mean', torch.tensor(dino_mean).view(1, 3, 1, 1))
+        self.dino_std = self.register_buffer('dino_std', torch.tensor(dino_std).view(1, 3, 1, 1))
+        assert hidden_size == self.dino.config.hidden_size, 'DiT hidden size should be the same as dino'
+        patch_size = self.x_embedder.patch_size[0]
+        assert patch_size == self.dino.config.patch_size, 'DiT patch size should be the same as dino'
+    def forward(self, x, t, y):
+        # x: (N, C, H, W)
+        x = (x - self.dino_mean) / self.dino_std
+        x = self.dino(x).last_hidden_state # (N, T + 1, D)
+        # remove CLS
+        x = x[:, 1:] # (N, T, D)
+        t = self.t_embedder(t)
+        y = self.y_embedder(y, self.training)
+        c = t + y
+        for block in self.blocks:
+            x = block(x, c) # (N, T, D)
+        x = self.final_layer(x, c)
+        x = self.unpatchify(x) # (N, C, H, W)
+        return x
+    def unpatchify(self, x):
+        """
+        x: (N, H*W/p**2, p**2*3)
+        imgs: (N, H, W, 3)
+        """
+        c = 3 # for pixel rgb
+        p = self.x_embedder.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum('nhwpqc->nchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
+
+class DiTwMAE(DiT):
+    """
+    DiT with MAE
+    """
+    def __init__(self, **kwargs):
+        mae_ckpt = kwargs.pop('mae_ckpt', None)
+        super().__init__(**kwargs)
+        self.in_channels = 3 # hack
+        hidden_size = self.hidden_size
+        input_size = kwargs.get('input_size', None)
+        self.mae = ViTMAEModel.from_pretrained(mae_ckpt)
+        mae_processor = ViTImageProcessor.from_pretrained(mae_ckpt)
+        mae_mean, mae_std = mae_processor.image_mean, mae_processor.image_std
+        self.register_buffer('mae_mean', torch.tensor(mae_mean).view(1, 3, 1, 1))
+        self.register_buffer('mae_std', torch.tensor(mae_std).view(1, 3, 1, 1))
+        self.patch_size = self.mae.config.patch_size
+        patch_num = (input_size // self.patch_size) **2
+        noise = torch.arange(patch_num)
+        self.register_buffer('noise', noise)
+        assert hidden_size == self.mae.config.hidden_size, 'DiT hidden size should be the same as mae, got %s and %s' % (hidden_size, self.mae.config.hidden_size)
+    def forward(self, x, t, y):
+        # x: (N, C, H, W)
+        # input is in [-1, 1]
+        # first normalize to [0, 1]
+        #print('input x', x.shape)
+        x = (x + 1) / 2
+        # then normalize to mae
+        x = (x - self.mae_mean) / self.mae_std
+        noise = self.noise.unsqueeze(0).expand(x.shape[0], -1)
+        #print('x', x.shape)
+        x = self.mae(x, noise = noise, interpolate_pos_encoding = True).last_hidden_state # (N, T + 1, D)
+        #print('after mae', x.shape)
+        # remove CLS
+        x = x[:, 1:] # (N, T, D)
+        t = self.t_embedder(t)
+        y = self.y_embedder(y, self.training)
+        c = t + y
+        for block in self.blocks:
+            x = block(x, c) # (N, T, D)
+        x = self.final_layer(x, c)
+        #print('final layer', x.shape)
+        x = self.unpatchify(x) # (N, C, H, W)
+        #print('unpatchify', x.shape)
+        return x
+    def unpatchify(self, x):
+        """
+        x: (N, H*W/p**2, p**2*3)
+        imgs: (N, H, W, 3)
+        """
+        c = 6 if self.learn_sigma else 3 
+        p = self.patch_size
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum('nhwpqc->nchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
+    
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #
 #################################################################################

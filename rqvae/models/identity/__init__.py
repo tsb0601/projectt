@@ -71,6 +71,7 @@ class SimpleIdentity_Stage1(Stage1Model):
         assume the input is a 3D tensor of shape (B, in_channel, input_size, input_size)
         """
         super().__init__()
+        self.dummy_param = torch.nn.Parameter(torch.empty(0)) # require a dummy parameter for optimizer
     def forward(self, inputs: LabeledImageData) -> Stage1ModelOutput:
         """
         Just return x
