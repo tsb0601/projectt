@@ -17,6 +17,7 @@ import os
 import torch
 from torch.utils.data import Subset
 import torchvision
+import torch_xla._internal.tpu
 from torchvision.datasets import ImageNet,ImageFolder
 from .imagenet import ImageNet_wImagepath, ImageNet_Fake
 from .dummy import Dummy_Dataset

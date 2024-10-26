@@ -29,7 +29,7 @@ arch:
       class_cls_str: 'rqvae.models.DiT.models.DiTwMAE'
       mae_ckpt: 'ckpt_gcs/model_zoo/mae_large_224'
   checkpointing: false
-  ema: 0.114514
+  ema: 0.9999
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
