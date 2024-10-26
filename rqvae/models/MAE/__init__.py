@@ -211,9 +211,9 @@ class MAEEncoder_ForProbing(nn.Module):
         self.model.requires_grad_(requires_grad)
         self.model: ViTMAEModel
         self.model.embeddings.position_embeddings.requires_grad_(False)
-
+from .blocks import ConvUp
 class Stage1MAEwEnhancedDec(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, layers_channels :list = None, use_conv:bool = False)->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -235,6 +235,9 @@ class Stage1MAEwEnhancedDec(Stage1Model):
         if os.path.isfile(tensor_path):
             _, keys = load_model_from_ckpt(self.model, tensor_path, strict = False)
             print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
+        out_channels = self.model.config.patch_size * self.model.config.patch_size * self.model.config.num_channels
+        conv_up_decoder = ConvUp(in_channels = self.model.config.decoder_hidden_size, out_channel = out_channels, kernel_size = 3 if use_conv else 1, layers_channels = layers_channels)
+        self.model.decoder.decoder_pred = conv_up_decoder # replace the decoder_pred with the upsampled version
         self.model.decoder.requires_grad_(True)
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)

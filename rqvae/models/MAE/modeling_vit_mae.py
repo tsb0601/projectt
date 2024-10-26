@@ -952,7 +952,7 @@ class ViTMAEDecoder(nn.Module):
         logits = self.decoder_pred(hidden_states)
 
         # remove cls token
-        logits = logits[:, 1:, :]
+        logits = logits[:, 1:, :] 
 
         if not return_dict:
             return tuple(v for v in [logits, all_hidden_states, all_self_attentions] if v is not None)
