@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_overfit
+  type: imagenet
   transforms:
     type: imagenetDiT256x256
 
