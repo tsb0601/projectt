@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_test
   transforms:
     type: imagenet256x256
 
@@ -75,3 +75,4 @@ gan:
     perceptual_weight: .75
     disc_start: 100000
     lpips_start: 0
+    disc_upd_start: 100000
