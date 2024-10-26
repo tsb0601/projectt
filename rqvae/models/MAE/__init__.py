@@ -313,7 +313,8 @@ class Stage1MAEwEnhancedDec(Stage1Model):
         xs_recon = xs_recon.clamp(0, 1)
         return xs , xs_recon
     def get_last_layer(self) ->torch.Tensor:
-        return self.model.decoder.decoder_pred.weight
+        decoder_pred: ConvUp = self.model.decoder.decoder_pred
+        return decoder_pred.up_conv_out.weight
     @torch.no_grad()
     def infer(self, xs):
         return self(xs)
