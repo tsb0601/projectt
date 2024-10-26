@@ -36,6 +36,7 @@ def create_vqgan_loss(loss_config):
         raise ValueError(f"Unknown GAN loss '{gen_loss_type}'.")
 
     perceptual_loss = LPIPS()
+    perceptual_loss.eval()
 
     return disc_loss, gen_loss, perceptual_loss
 

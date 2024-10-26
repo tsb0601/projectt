@@ -49,10 +49,9 @@ def calculate_adaptive_weight(nll_loss, g_loss, last_layer, nll_scale=1.0):
     nll_grads = torch.autograd.grad(nll_loss, last_layer, retain_graph=True)[0]
     g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
 
-    d_weight = torch.norm(nll_grads) / (torch.norm(g_grads) + 1e-4)
+    d_weight = torch.norm(nll_grads) / (torch.norm(g_grads) + 1e-6)
     d_weight = torch.clamp(d_weight, 0.0, 1e4).detach()
     return d_weight
-
 
 class Trainer(TrainerTemplate):
 

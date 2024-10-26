@@ -388,10 +388,11 @@ class DiTwSkipConnectionConv(DiT):
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        assert len(self.blocks) % 2 == 0, "The number of transformer blocks must be even for skip connection."
+        assert len(self.blocks) % 2 == 1, "The number of transformer blocks must be even for skip connection."
         self.lns = nn.ModuleList([
             nn.Linear(self.hidden_size * 2, self.hidden_size) for _ in range(len(self.blocks) // 2)
         ])
+        
     # reload forward
     def forward(self, x, t, y):
         """
@@ -405,16 +406,19 @@ class DiTwSkipConnectionConv(DiT):
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
         depth = len(self.blocks)
-        half_depth = depth // 2 # must be divisible by 2
-        hs = []
-        for i, block in enumerate(self.blocks):
-            if i < half_depth:
-                hs.append(x)
+        half_depth = depth // 2 
+        down_blocks = self.blocks[:half_depth]
+        mid_block = self.blocks[half_depth]
+        up_blocks = self.blocks[half_depth + 1:]
+        skips = []
+        for i, block in enumerate(down_blocks):
             x = block(x, c)                      # (N, T, D)
-            if i >= half_depth:
-                h = hs.pop()
-                x = torch.cat([x, h], dim= -1)   # (N, T, 2*D)
-                x = self.lns[i - half_depth](x) # (N, T, D)
+            skips.append(x)
+        x = mid_block(x, c)
+        for i, block in enumerate(up_blocks):
+            x = torch.cat([x, skips.pop()], dim= -1)   # (N, T, 2*D)
+            x = self.lns[i](x) # (N, T, D)
+            x = block(x, c)                      # (N, T, D)
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x

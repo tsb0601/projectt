@@ -1,59 +1,60 @@
 dataset:
   type: imagenet_overfit
   transforms:
-    type: imagenetDiT256x256
-
+    type: imagenet256x256
 arch:
   stage: 2
   stage_1:
     target: rqvae.models.identity.Identity_Stage1
     params:
-      hidden_dim: 3
+      hidden_dim: 768
       input_size: 256
       in_channels: 3
+    checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 1024
-      input_size: 256
+      hidden_size: 768
+      input_size: 16
       patch_size: 1
-      depth: 2
+      depth: 7
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
       in_channels: 768
-      learn_sigma: true
+      learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
-      class_cls_str: 'rqvae.models.DiT.models.DiTwMAE'
-      mae_ckpt: 'ckpt_gcs/model_zoo/mae_large_224'
-  checkpointing: false
+      #do_beta_rescaling: true
+      class_cls_str: 'rqvae.models.DiT.models.DiTwSkipConnectionConv'
+    checkpointing: false
+  connector:
+    target: rqvae.models.connectors.id_connector
   ema: 0.114514
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.0e-4
+  init_lr: 2.0e-4
   weight_decay: 0.0
-  betas: [0.9, 0.999]
+  betas: [0.9, 0.95]
   max_gn: None
   amp: true
   warmup:
-    epoch: 80
+    epoch: 1
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.0e-4
+    min_lr: 0.
     mode: fix
     start_from_zero: false
 
 experiment:
-  batch_size: 8
+  batch_size: 1
   accu_step: 1
-  epochs: 80
-  save_ckpt_freq: 40
-  test_freq: 10
+  epochs: 3
+  save_ckpt_freq: 1000
+  test_freq: 1
   amp: false
-  actual_batch_size: 4
 
 gan:
   disc:
@@ -75,7 +76,7 @@ gan:
         epoch: 5  # 5% of total epochs
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 2.0e-4
+        min_lr: 0.
         mode: fix
         start_from_zero: true
     experiment:
