@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: '/home/bytetriper/model_zoo/mae_base_256_d128'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_d128'
       no_cls: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
