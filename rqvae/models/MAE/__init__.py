@@ -82,7 +82,7 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, loss_type: str = 'l1')->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -117,6 +117,8 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
+        self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
+        assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -166,7 +168,7 @@ class Stage1MAE(Stage1Model):
         xs = inputs.img
         xs_recon = outputs.xs_recon
         MAE_outputs = outputs.additional_attr['outputs']
-        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
+        loss_recon = self.loss(xs_recon, xs) if self.model.config.mask_ratio == 0. else MAE_outputs.loss
         #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
@@ -213,7 +215,7 @@ class MAEEncoder_ForProbing(nn.Module):
         self.model.embeddings.position_embeddings.requires_grad_(False)
 from .blocks import ConvUp
 class Stage1MAEwEnhancedDec(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, layers_channels :list = None, use_conv:bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, layers_channels :list = None, use_conv:bool = False, loss_type: str = 'l1')->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -251,6 +253,8 @@ class Stage1MAEwEnhancedDec(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
+        self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
+        assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -300,7 +304,7 @@ class Stage1MAEwEnhancedDec(Stage1Model):
         xs = inputs.img
         xs_recon = outputs.xs_recon
         MAE_outputs = outputs.additional_attr['outputs']
-        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
+        loss_recon = self.loss(xs_recon, xs) if self.model.config.mask_ratio == 0. else MAE_outputs.loss
         #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
@@ -319,7 +323,7 @@ class Stage1MAEwEnhancedDec(Stage1Model):
     def infer(self, xs):
         return self(xs)
 class Stage1MAEwEnhancedEncDec(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, up_layers_channels :list = None, down_layers_channels :list = None ,use_conv:bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, up_layers_channels :list = None, down_layers_channels :list = None ,use_conv:bool = False, loss_type: str = 'l1')->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -359,6 +363,8 @@ class Stage1MAEwEnhancedEncDec(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
+        self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
+        assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -408,7 +414,7 @@ class Stage1MAEwEnhancedEncDec(Stage1Model):
         xs = inputs.img
         xs_recon = outputs.xs_recon
         MAE_outputs = outputs.additional_attr['outputs']
-        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
+        loss_recon = self.loss(xs_recon, xs) if self.model.config.mask_ratio == 0. else MAE_outputs.loss
         #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
@@ -514,8 +520,8 @@ class Stage1MAEwBottleNeck(Stage1Model):
         xs = inputs.img
         xs_recon = outputs.xs_recon
         MAE_outputs = outputs.additional_attr['outputs']
-        #loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
-        loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
+        loss_recon = self.loss(xs_recon, xs) if self.model.config.mask_ratio == 0. else MAE_outputs.loss
+        #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
             'loss_total': loss_recon + loss_latent,
