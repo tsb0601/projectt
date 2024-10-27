@@ -318,6 +318,114 @@ class Stage1MAEwEnhancedDec(Stage1Model):
     @torch.no_grad()
     def infer(self, xs):
         return self(xs)
+class Stage1MAEwEnhancedEncDec(Stage1Model):
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, up_layers_channels :list = None, down_layers_channels :list = None ,use_conv:bool = False)->None:
+        super().__init__()
+        tensor_path = os.path.join(ckpt_path, 'model.safetensors')
+        config_path = os.path.join(ckpt_path, 'config.json')
+        if not os.path.isfile(tensor_path):
+            tensor_path = os.path.join(ckpt_path, 'model.pt') # try another name
+        if not os.path.isfile(tensor_path):
+            print(f'init from scratch according to {config_path}')
+        else:
+            print(f'init from {tensor_path} according to {config_path}')
+        config = AutoConfig.from_pretrained(config_path)
+        model = ViTMAEForPreTraining(config)
+        if no_cls:
+            model.decoder.set_trainable_cls_token()
+        self.model = model
+        self.model.config.mask_ratio = mask_ratio
+        assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
+        self.model.vit.requires_grad_(train_encoder) # freeze encoder
+        self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
+        if os.path.isfile(tensor_path):
+            _, keys = load_model_from_ckpt(self.model, tensor_path, strict = False)
+            print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
+        out_channels = self.model.config.patch_size * self.model.config.patch_size * self.model.config.num_channels
+        conv_up_decoder = ConvUp(in_channels = self.model.config.decoder_hidden_size, out_channel = out_channels, kernel_size = 3 if use_conv else 1, layers_channels = up_layers_channels)
+        conv_down_encoder = ConvUp(in_channels = self.model.config.hidden_size, out_channel = self.model.config.decoder_hidden_size, kernel_size = 3 if use_conv else 1, layers_channels = down_layers_channels)
+        self.model.decoder.decoder_pred = conv_up_decoder # replace the decoder_pred with the upsampled version
+        self.model.decoder.decoder_embed = conv_down_encoder # replace the decoder_embed with the downsampled version
+        self.model.decoder.requires_grad_(True)
+        self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
+        processor = ViTImageProcessor.from_pretrained(ckpt_path)
+        patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
+        noise = torch.arange(patch_num)
+        default_id_restore = torch.arange(patch_num)
+        image_mean, image_std = processor.image_mean, processor.image_std
+        self.register_buffer('image_mean', torch.tensor(image_mean).view(1, 3, 1, 1))
+        self.register_buffer('image_std', torch.tensor(image_std).view(1, 3, 1, 1))
+        self.register_buffer('noise', noise)
+        self.register_buffer('default_id_restore', default_id_restore)
+        # get the final layernorm's affine parameters
+        self.no_cls = no_cls
+        print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
+    def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
+        xs = inputs.img
+        image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
+        image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        xs = (xs - image_mean) / image_std
+        noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
+        outputs = self.model(xs, noise, drop_cls_token = self.no_cls) if self.model.config.mask_ratio == 0. else self.model(xs)
+        logits = outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
+        xs_recon = self.model.unpatchify(logits)
+        xs_recon = xs_recon * image_std + image_mean
+        output = Stage1ModelOutput(
+            xs_recon = xs_recon,
+            additional_attr= {'outputs': outputs}
+        )
+        return output
+    def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
+        # mask_ratio must be zero
+        xs = inputs.img
+        image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
+        image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        xs = (xs - image_mean) / image_std
+        noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
+        outputs = self.model.vit(xs, noise=noise)
+        latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
+        encodings = Stage1Encodings(
+            zs = latent,
+            additional_attr = {'outputs': outputs,
+        }
+        )
+        return encodings
+    def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
+        zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
+        ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
+        image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
+        image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
+        outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls)
+        logits = outputs.logits
+        xs_recon = self.model.unpatchify(logits)
+        xs_recon = xs_recon * image_std + image_mean
+        outputs = Stage1ModelOutput(
+            xs_recon = xs_recon,
+            additional_attr = {'outputs': outputs}
+        )
+        return outputs
+    def compute_loss(self, outputs: Stage1ModelOutput, inputs: LabeledImageData , valid:bool = True) -> dict:
+        xs = inputs.img
+        xs_recon = outputs.xs_recon
+        MAE_outputs = outputs.additional_attr['outputs']
+        loss_recon = (xs_recon - xs).abs().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L1
+        #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
+        loss_latent = torch.Tensor([0.]).to(xs.device)
+        return {
+            'loss_total': loss_recon + loss_latent,
+            'loss_recon': loss_recon,
+            'loss_latent': loss_latent
+        }
+    def get_recon_imgs(self, xs: torch.Tensor , xs_recon: torch.Tensor):
+        xs = xs.clamp(0, 1)
+        xs_recon = xs_recon.clamp(0, 1)
+        return xs , xs_recon
+    def get_last_layer(self) ->torch.Tensor:
+        decoder_pred: ConvUp = self.model.decoder.decoder_pred
+        return decoder_pred.up_conv_out.weight
+    @torch.no_grad()
+    def infer(self, xs):
+        return self(xs)
 class Stage1MAEwBottleNeck(Stage1Model):
     def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, mlp_layers:int = 0, mlp_ratio:float = 4, bottleneck_ratio:float = 4)->None:
         super().__init__()
