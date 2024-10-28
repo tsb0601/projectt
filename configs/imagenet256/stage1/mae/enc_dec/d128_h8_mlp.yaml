@@ -13,11 +13,13 @@ arch:
       up_layers_channels: [384,512,768]
       down_layers_channels: [512,384,128]
       use_conv: false
+      do_decoder_embed_in_encode: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
       split: 1
       remove_cls: true
+  ckpt_path: './ckpt_gcs/mae_width/d128_h8_mlp/d128_b4096_lr16e-4_h8_mlpup+down_layer3_27102024_041129/ep_last-checkpoint/0-model.pt'
   checkpointing: false
   ema: 0.114514
 optimizer:

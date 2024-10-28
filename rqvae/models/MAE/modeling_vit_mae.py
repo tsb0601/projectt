@@ -893,9 +893,10 @@ class ViTMAEDecoder(nn.Module):
         return_dict=True,
         interpolate_pos_encoding: bool = False,
         drop_cls_token: bool = False,
+        do_decoder_embed: bool = True,
     ):
         # embed tokens
-        x = self.decoder_embed(hidden_states)
+        x = self.decoder_embed(hidden_states) if do_decoder_embed else hidden_states
 
         # append mask tokens to sequence
         # mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
