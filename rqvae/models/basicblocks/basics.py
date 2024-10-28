@@ -202,7 +202,8 @@ def ConvLayer(
     kernel_size: int,
     stride: int = 1,
 ):
-    padding = kernel_size // 2
+    # calculate padding w.r.t. 'same' padding, w.r.t. stride and kernel size
+    padding = (kernel_size - 1) // 2
     return nn.Conv2d(
         in_channels,
         out_channels,
@@ -285,9 +286,38 @@ class DCAE_ChannelDownsampleLayer(nn.Module):
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=3,
-            stride=downsample_factor,
+            stride=1, # always use stride 1 conv
         )
-        
+        self.shortcut = PixelUnshuffleChannelAveragingDownSampleLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            factor=1,
+        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.conv(x) + self.shortcut(x)
+class DCAE_ChannelUpsampleLayer(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        upsample_factor: int,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.upsample_factor = upsample_factor
+        out_channels = in_channels * upsample_factor
+        self.conv = ConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            stride=1, # always use stride 1 conv
+        )
+        self.shortcut = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            factor=1,
+        )
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.conv(x) + self.shortcut(x)
         
 class ConvResnetBlock(nn.Module):
     def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,

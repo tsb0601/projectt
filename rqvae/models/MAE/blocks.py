@@ -2,7 +2,7 @@ from functools import partial
 from torch import nn
 import torch
 from rqvae.models.basicblocks.utils import zero_module
-from rqvae.models.basicblocks.basics import ConvResnetBlock
+from rqvae.models.basicblocks.basics import ConvResnetBlock, DCAE_ChannelDownsampleLayer, DCAE_ChannelUpsampleLayer
 class SimpleMLP(nn.Module):
     def __init__(self, input_dim:int, layers:int = 1, mlp_ratio: float = 4.0, bottleneck_ratio: float = 16.0):
         super(SimpleMLP, self).__init__()
@@ -133,6 +133,40 @@ class ConvUp(nn.Module):
         for layer in self.up:
             x = layer(x)
         x = self.up_conv_out(x)
+        if need_transform:
+            x = P_to_L(x)
+            if include_cls:
+                x = torch.cat([torch.zeros_like(x[:,0:1]), x], dim=1)
+        return x
+class DCAE_ChannelDownsampleLayerwReshape(DCAE_ChannelDownsampleLayer):
+    def forward(self, x):
+        need_transform = len(x.shape) == 3
+        include_cls = False
+        if need_transform:
+            # [B, T, D]
+            # check if CLS token is included
+            if x.shape[1] % 2 == 1:
+                x = x[:,1:]
+                include_cls = True
+            x = L_to_P(x)
+        x = super().forward(x)
+        if need_transform:
+            x = P_to_L(x)
+            if include_cls:
+                x = torch.cat([torch.zeros_like(x[:,0:1]), x], dim=1)
+        return x
+class DCAE_ChannelUpsampleLayerwReshape(DCAE_ChannelUpsampleLayer):
+    def forward(self, x):
+        need_transform = len(x.shape) == 3
+        include_cls = False
+        if need_transform:
+            # [B, T, D]
+            # check if CLS token is included
+            if x.shape[1] % 2 == 1:
+                x = x[:,1:]
+                include_cls = True
+            x = L_to_P(x)
+        x = super().forward(x)
         if need_transform:
             x = P_to_L(x)
             if include_cls:
