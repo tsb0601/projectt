@@ -37,7 +37,7 @@ arch:
   do_normalize: true
   checkpointing: false
   ema: 0.9999
-  ckpt_path: './home/bytetriper/VAE-enhanced/ckpt_gcs/mae_width/d128_h8_mlp/d128_b4096_lr16e-4_h8_mlpup+down_layer3_27102024_041129/ep_last-checkpoint/0-model.pt'
+  ckpt_path: './ckpt_gcs/mae_width/d128_h8_mlp/d128_b4096_lr16e-4_h8_mlpup+down_layer3_27102024_041129/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
