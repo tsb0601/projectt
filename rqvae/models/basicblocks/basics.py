@@ -227,7 +227,6 @@ class PixelUnshuffleChannelAveragingDownSampleLayer(nn.Module):
         self.group_size = in_channels * factor**2 // out_channels
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.pixel_unshuffle(x, self.factor)
         B, C, H, W = x.shape
         x = x.view(B, self.out_channels, self.group_size, H, W)
         x = x.mean(dim=2)
@@ -270,7 +269,6 @@ class ChannelDuplicatingPixelUnshuffleUpSampleLayer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.repeat_interleave(self.repeats, dim=1)
-        x = F.pixel_shuffle(x, self.factor)
         return x
 class DCAE_ChannelDownsampleLayer(nn.Module):
     def __init__(
