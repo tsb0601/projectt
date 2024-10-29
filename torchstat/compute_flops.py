@@ -94,9 +94,11 @@ def compute_Pool2d_flops(module, inp, out):
 
 def compute_Linear_flops(module, inp, out):
     assert isinstance(module, nn.Linear)
-    assert len(inp.size()) <= 3 and len(out.size()) <= 3
+    assert len(inp.size()) <= 4 and len(out.size()) <= 4
     batch_size = inp.size()[0]
-    seq_len = 1 if len(inp.size()) == 2 else inp.size()[1]
+    seq_len = 1
+    for i in range(1, len(inp.size())-1):
+        seq_len *= inp.size()[i]
     return batch_size * inp.size()[-1] * out.size()[-1] * seq_len
 
 def compute_Upsample_flops(module, inp, out):

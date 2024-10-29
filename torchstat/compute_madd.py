@@ -138,13 +138,12 @@ def compute_Linear_madd(module, inp, out): # linear can be applied to 1d, 2d ten
     assert isinstance(module, nn.Linear)
     #print('compute_Linear_madd',inp.size(),out.size())
     assert len(inp.size()) == len(out.size()), f'input and output should have same dimensions, inp: {inp.size()}, out: {out.size()}'
-    assert len(inp.size()) <= 3 and len(out.size()) <= 3, f'inp: {inp.size()}, out: {out.size()}, only 1d, 2d, tensors are supported for Linear layer'
+    assert len(inp.size()) <= 4 and len(out.size()) <= 4, f'inp: {inp.size()}, out: {out.size()}, only 1d, 2d, tensors are supported for Linear layer'
     num_in_features = inp.size()[-1]
     num_out_features = out.size()[-1]
-    if len(inp.size()) == 3:
-        L = inp.size()[1]
-    else:
-        L = 1
+    L = 1
+    for i in range(1, len(inp.size())-1):
+        L *= inp.size()[i]
     mul = num_in_features
     add = num_in_features - 1
     return num_out_features * (mul + add) * L

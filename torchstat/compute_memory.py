@@ -88,7 +88,7 @@ def compute_GroupNorm_memory(module, inp, out):
 
 def compute_Linear_memory(module, inp, out):
     assert isinstance(module, nn.Linear)
-    assert len(inp.size()) <= 3 and len(out.size()) <= 3
+    assert len(inp.size()) <= 4 and len(out.size()) <= 4
     batch_size = inp.size()[0]
     mread = batch_size * (inp.size()[1:].numel() + num_params(module))
     mwrite = out.size().numel()

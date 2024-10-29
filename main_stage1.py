@@ -110,7 +110,7 @@ def main(rank, args, extra_args):
         logger.info(optimizer.__repr__())
     model = dist_utils.dataparallel_and_sync(distenv, model)
     if model_ema:
-        model_ema.update(model, -1) # should be the same as the model at init
+        model_ema = dist_utils.dataparallel_and_sync(distenv, model_ema)
     trainer = trainer(model, model_ema, dataset_trn, dataset_val, config, writer,
                       device, distenv, disc_state_dict=disc_state_dict, eval = is_eval ,use_ddp=args.use_ddp, use_autocast=args.use_autocast,do_online_eval=args.do_online_eval, fid_gt_act_path=args.fid_gt_act_path) 
     xm.master_print(f'[!]trainer created')
