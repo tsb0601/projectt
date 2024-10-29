@@ -85,7 +85,7 @@ def test_all(stage2_model_wrapper:Stage2ModelWrapper, im_size:tuple):
     except NotImplementedError:
         print('loss not implemented')
     print("=" * 10, 'testing stage2 loss', "=" * 10)
-    loss = stage2_model.compute_loss(latent_output ,forward_output, data)['loss_total']
+    loss = stage2_model.compute_loss(connected_latent_output ,forward_output, data)['loss_total']
     print(loss)
     do_infer = sys.argv[3] if len(sys.argv) > 3 else False
     print("=" * 10, f'testing stage2 infer {"(skipped)" if not do_infer else ""}', "=" * 10)
