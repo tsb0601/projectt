@@ -191,3 +191,32 @@ class Downsample_with_Conv_Connector(base_connector):
         additional_attr = encodings.additional_attr if isinstance(encodings, Stage1Encodings) else update_additional_attr(encodings.additional_attr, {'zs_degraded': encodings.zs_degraded})
         stage1_encodings = Stage1Encodings(zs=zs, additional_attr=additional_attr)
         return stage1_encodings
+
+class RandomUpsample_Connector(base_connector):
+    def __init__(self, input_hidden_channel:int, output_hidden_channel:int):
+        super().__init__()
+        self.input_hidden_channel = input_hidden_channel
+        self.output_hidden_channel = output_hidden_channel
+        # input : [batch_size, input_hidden_channel, sqrt(patch_size), sqrt(patch_size)]
+        # output : [batch_size, output_hidden_channel, sqrt(patch_size), sqrt(patch_size)], do it with a linear layer w/o bias. 
+        self.linear = nn.Linear(input_hidden_channel, output_hidden_channel, bias=False)
+        linear_weight = torch.randn(output_hidden_channel, input_hidden_channel)
+        self.linear.weight.data = linear_weight
+        reverse_weight = torch.pinverse(linear_weight)
+        self.reverse_linear = nn.Linear(output_hidden_channel, input_hidden_channel, bias=False)
+        self.reverse_linear.weight.data = reverse_weight
+        self.reverse_linear.requires_grad_(False)
+        self.linear.requires_grad_(False) # do not update the weights
+    def forward(self, encodings: Stage1Encodings) -> Stage1Encodings:
+        zs = encodings.zs
+        # do channel last transform
+        zs = zs.permute(0,2,3,1).contiguous()
+        zs = self.linear(zs)
+        zs = zs.permute(0,3,1,2).contiguous()
+        return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
+    def reverse(self, encodings: Union[Stage1Encodings,Stage2ModelOutput]) -> Stage1Encodings:
+        zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
+        zs = zs.permute(0,2,3,1).contiguous()
+        zs = self.reverse_linear(zs)
+        zs = zs.permute(0,3,1,2).contiguous()
+        return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
