@@ -21,7 +21,7 @@ im_size = tuple(map(int, sys.argv[2].split(','))) if len(sys.argv) > 2 else (256
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
-    stage1_model_wrapper, _  = create_model(config, is_master=True)
+    stage1_model_wrapper, _  = create_model(config, is_master=True) # load ckpt if available
     stage1_model_wrapper:Stage1ModelWrapper
     print('stage1 model:',stage1_model_wrapper)
     stage1_model = stage1_model_wrapper.stage_1_model

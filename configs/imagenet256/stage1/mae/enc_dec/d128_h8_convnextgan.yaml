@@ -20,6 +20,7 @@ arch:
     params:
       split: 1
       remove_cls: true
+  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/mae_width/d128_h8_convnext/d128_b4096_lr16e-4_h8_DCAEConvNext_28102024_224054/ep_last-checkpoint/0-model.pt'
   checkpointing: false
   ema: 0.9
 optimizer:
@@ -78,6 +79,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .2
     perceptual_weight: 1.
-    disc_start: 50
+    disc_start: 0
     lpips_start: 0
-    disc_upd_start: 50
+    disc_upd_start: 0
