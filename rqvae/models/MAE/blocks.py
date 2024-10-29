@@ -285,7 +285,6 @@ class ConvNextDownSampler(nn.Module):
             x = P_to_L(x)
             if include_cls:
                 x = torch.cat([torch.zeros_like(x[:,0:1]), x], dim=1)
-        print(f'Downsample output shape: {x.shape}')
         return x
 class ConvNextUpSampler(nn.Module):
     """
@@ -339,5 +338,4 @@ class ConvNextUpSampler(nn.Module):
             x = P_to_L(x)
             if include_cls:
                 x = torch.cat([torch.zeros_like(x[:,0:1]), x], dim=1)
-        print(f'Upsample output shape: {x.shape}')
         return x
