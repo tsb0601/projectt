@@ -552,7 +552,7 @@ class Stage1MAEwDCAE(Stage1Model):
         return self(xs)
 
 class Stage1MAEwConvNextDCAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, loss_type: str = 'l1', down_layers_channels :list = None, up_layers_channels :list = None, down_depths: list = None, up_depths: list = None,do_decoder_embed_in_encode: bool = False)->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, loss_type: str = 'l1', down_layers_channels :list = None, up_layers_channels :list = None, down_depths: list = None, up_depths: list = None,do_decoder_embed_in_encode: bool = False, second_stage:bool = False)->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -580,8 +580,12 @@ class Stage1MAEwConvNextDCAE(Stage1Model):
         Convnext_DCAE_decoder = ConvNextUpSampler(in_channels = self.model.config.decoder_hidden_size, out_channels = out_channels, layer_channels = up_layers_channels, stage_depths = up_depths)
         self.model.decoder.decoder_pred = Convnext_DCAE_decoder # replace the decoder_pred with the upsampled version
         self.model.decoder.decoder_embed = Convnext_DCAE_encoder # replace the decoder_embed with the downsampled version
-        self.model.decoder.requires_grad_(True)
-        self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
+        if second_stage:
+            self.model.decoder.requires_grad_(False)
+            self.model.decoder.decoder_pred.conv_out.requires_grad_(True) # only train a head
+        else:
+            self.model.decoder.requires_grad_(True)
+            self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
         patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
         noise = torch.arange(patch_num)

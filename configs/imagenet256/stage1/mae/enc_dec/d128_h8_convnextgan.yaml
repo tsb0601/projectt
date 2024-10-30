@@ -15,6 +15,7 @@ arch:
       down_layers_channels: [256,128]
       down_depths: [3, 3]
       up_depths: [3]
+      second_stage: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
@@ -60,10 +61,10 @@ gan:
       spectral_norm: false
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
-      type: adam
+      type: adamw
       init_lr: 4.0e-4
       weight_decay: 0.0
-      betas: [0.5, 0.9]
+      betas: [0.9, 0.95]
       max_gn: None
       amp: true
       warmup:
