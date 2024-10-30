@@ -14,7 +14,7 @@ arch:
     params:
       input_hidden_channel: 4
       output_hidden_channel: 16
-      dummy_sample: false
+      dummy_sample: true
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
