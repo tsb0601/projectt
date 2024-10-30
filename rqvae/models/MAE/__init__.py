@@ -582,7 +582,7 @@ class Stage1MAEwConvNextDCAE(Stage1Model):
         self.model.decoder.decoder_embed = Convnext_DCAE_encoder # replace the decoder_embed with the downsampled version
         if second_stage:
             self.model.decoder.requires_grad_(False)
-            self.model.decoder.decoder_pred.conv_out.requires_grad_(True) # only train a head
+            self.model.decoder.decoder_pred.requires_grad_(True)
         else:
             self.model.decoder.requires_grad_(True)
             self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
