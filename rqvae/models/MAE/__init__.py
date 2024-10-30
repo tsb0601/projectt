@@ -667,6 +667,7 @@ class Stage1MAEwConvNextDCAE(Stage1Model):
     def train(self, mode: bool = True):
         super().train(mode)
         self.model.vit.train(False) # freeze the encoder
+        self.model.decoder.decoder_embed.train(False) # freeze the decoder embed
 class Stage1MAEwBottleNeck(Stage1Model):
     def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, mlp_layers:int = 0, mlp_ratio:float = 4, bottleneck_ratio:float = 4)->None:
         super().__init__()

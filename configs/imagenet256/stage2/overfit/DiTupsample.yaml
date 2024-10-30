@@ -8,24 +8,25 @@ arch:
     target: rqvae.models.klvae.Stage1_KLVAE
     params:
       ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+      sample: false
   connector:
     target: rqvae.models.connectors.RandomUpsample_Connector
     params:
       input_hidden_channel: 4
-      output_hidden_channel: 192
-      #dummy_sample: true
+      output_hidden_channel: 16
+      dummy_sample: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 1024
+      hidden_size: 768
       input_size: 32
       patch_size: 2
       depth: 2
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
-      in_channels: 192
+      in_channels: 16
       learn_sigma: true
       noise_schedule: 'linear'
       inference_step: 250

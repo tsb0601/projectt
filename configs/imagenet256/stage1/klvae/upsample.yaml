@@ -6,14 +6,15 @@ dataset:
 arch:
   stage: 1
   stage_1:
-    target: rqvae.models.klvae.Stage1_KLVAE_OnlyDecoder
+    target: rqvae.models.klvae.Stage1_KLVAE
     params:
       ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
   connector:
     target: rqvae.models.connectors.RandomUpsample_Connector
     params:
       input_hidden_channel: 4
-      output_hidden_channel: 768
+      output_hidden_channel: 16
+      #dummy_sample: true
   checkpointing: false
   ema: 0.9999
 optimizer:

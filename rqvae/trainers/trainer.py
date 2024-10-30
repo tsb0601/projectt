@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from enum import auto
-from math import ceil
 import os
 import logging
 import random
@@ -22,7 +20,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader
-from torch.cuda.amp import GradScaler
 from torch_xla.distributed.parallel_loader import ParallelLoader
 import torch.distributed as dist
 import torch_xla.core.xla_model as xm

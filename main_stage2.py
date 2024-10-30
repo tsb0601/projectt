@@ -23,6 +23,7 @@ import time
 from rqvae.trainers import TrainerStage2
 from rqvae.models.interfaces import Stage2ModelWrapper
 import torch_xla.distributed.xla_multiprocessing as xmp
+xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assure accuracy
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)
@@ -105,7 +106,9 @@ def main(rank, args, extra_args):
     xm.master_print(f'[!]model loaded')
     if distenv.master:
         print(model)
+        print(f'[!]model dtype: {next(model.parameters()).dtype}')
         compute_model_size(model, logger)
+    
     if distenv.master and not is_eval:
         logger.info(optimizer.__repr__())
     model = dist_utils.dataparallel_and_sync(distenv, model)

@@ -210,6 +210,8 @@ class RandomUpsample_Connector(base_connector):
         reverse_weight = torch.pinverse(linear_weight)
         self.reverse_linear = nn.Linear(output_hidden_channel, input_hidden_channel, bias=False)
         self.reverse_linear.weight.data = reverse_weight
+        #nn.init.constant_(self.linear.bias, 0)
+        #nn.init.constant_(self.reverse_linear.bias, 0)
         self.reverse_linear.requires_grad_(False)
         self.linear.requires_grad_(False) # do not update the weights
         self.dummy_sample = dummy_sample
@@ -217,6 +219,12 @@ class RandomUpsample_Connector(base_connector):
         zs = encodings.zs
         # do channel last transform
         zs = zs.permute(0,2,3,1).contiguous() # [B, H, W, C]
+        #lineared_zs = self.linear(zs)
+        #reverse_zs = self.reverse_linear(lineared_zs)
+        #abs_diff = torch.abs(reverse_zs - zs).sum()
+        #relative_diff = abs_diff / zs.abs().sum()
+        #print('abs_diff:', abs_diff, 'relative_diff:', relative_diff)
+        #assert torch.allclose(reverse_zs, zs, atol = 1e-6), 'reverse should be the same as input, difference: {}'.format(torch.#abs(reverse_zs - zs).sum())
         zs = self.linear(zs)
         zs = zs.permute(0,3,1,2).contiguous()
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)

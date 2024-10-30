@@ -22,6 +22,7 @@ from rqvae.utils.setup import setup , wandb_dir
 #wandb.require('core')
 import time
 import torch_xla.distributed.xla_multiprocessing as xmp
+xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assure accuracy
 CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
 project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)

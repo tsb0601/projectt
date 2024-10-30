@@ -1,28 +1,31 @@
 from diffusers import AutoencoderKL
 from ..interfaces import *
 class Stage1_KLVAE(Stage1Model):
-    def __init__(self, ckpt_path:str):
+    def __init__(self, ckpt_path:str, sample:bool = True):
         super().__init__()
         #ckpt_path = f'stabilityai/sd-vae-ft-{vae_type}'
         vae = AutoencoderKL.from_pretrained(ckpt_path)
         vae: AutoencoderKL
         self.vae = vae
+        self.sample = sample
     def forward(self, inputs: LabeledImageData):
         x = inputs.img
-        x = x.mul_(2).sub_(1)
-        x = self.vae(x).sample
-        x = x.mul_(0.5).add_(0.5)
+        x = x * 2 - 1
+        x = self.vae(x).sample 
+        x = x * .5 + .5
         return Stage1ModelOutput(xs_recon=x, additional_attr={})
     def encode(self, inputs: LabeledImageData):
         x = inputs.img
-        x = x.mul_(2).sub_(1)
-        x = self.vae.encode(x).latent_dist.sample().mul_(0.18215)
+        x = x * 2 - 1
+        x = self.vae.encode(x).latent_dist
+        x = x.sample() if self.sample else x.mean
+        x = x * .18215
         return Stage1Encodings(zs=x, additional_attr={})
     def decode(self, outputs: Stage1Encodings):
         z = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred
-        z = z.div_(0.18215)
+        z = z / .18215
         x = self.vae.decode(z).sample
-        x = x.mul_(0.5).add_(0.5)
+        x = x * .5 + .5
         return Stage1ModelOutput(xs_recon=x, additional_attr={})
     def get_last_layer(self):
         return self.vae.decoder.conv_out.weight
