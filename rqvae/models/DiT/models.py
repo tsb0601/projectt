@@ -1047,6 +1047,14 @@ class DiTwMAE(DiT):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
     
+class DiTWideAtLast(DiT):
+    """
+    normal DiT at first, few wide blocks at last
+    """    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        hidden_size = self.hidden_size
+        
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #
 #################################################################################

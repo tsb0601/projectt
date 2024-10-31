@@ -22,6 +22,7 @@ arch:
       remove_cls: true
   checkpointing: false
   ema: 0.114514
+  ckpt_path: './ckpt_gcs/mae_width/d16_h8_convnext/d16_b4096_lr16e-4_h8_DCAEConvNext_30102024_084148/ep_last-checkpoint/0-model.pt'
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
