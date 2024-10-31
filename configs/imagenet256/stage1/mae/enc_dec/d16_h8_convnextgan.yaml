@@ -15,6 +15,7 @@ arch:
       down_layers_channels: [192,48,16]
       down_depths: [3, 3, 3]
       up_depths: [3, 3]
+      second_stage: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
@@ -32,12 +33,12 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 5  # 5% of total epochs
+    epoch: 10  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
     mode: fix
-    start_from_zero: true
+    start_from_zero: false
 
 experiment:
   batch_size: 32
