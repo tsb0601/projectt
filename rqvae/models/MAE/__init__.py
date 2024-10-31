@@ -597,7 +597,7 @@ class Stage1MAEwConvNextDCAE(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
-        self.do_encoder_embed_in_decode = do_decoder_embed_in_encode
+        self.do_encoder_embed_in_encode = do_decoder_embed_in_encode
         self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
         assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
@@ -625,7 +625,12 @@ class Stage1MAEwConvNextDCAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
-        latent = self.model.decoder.decoder_embed(latent) if self.do_encoder_embed_in_decode else latent
+        #latent = self.model.decoder.decoder_embed(latent) if self.do_encoder_embed_in_decode else latent
+        if self.do_encoder_embed_in_encode:
+            #print('do encoder embed in encode, zs shape:', latent.shape)
+            ids_restore = self.default_id_restore.unsqueeze(0).expand(latent.shape[0],-1)
+            latent = self.model.decoder(latent, ids_restore, drop_cls_token=self.no_cls, do_decoder_pred = False).logits
+            #print('after decoder, zs shape:', latent.shape)
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -637,8 +642,14 @@ class Stage1MAEwConvNextDCAE(Stage1Model):
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
-        outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls, do_decoder_embed = not self.do_encoder_embed_in_decode)
-        logits = outputs.logits
+        if self.do_encoder_embed_in_encode:
+            #print('do encoder embed in encode, zs shape:', zs.shape)
+            logits = self.model.decoder.decoder_pred(zs)
+            logits = logits[:,1:,:] # remove the cls token
+            #print('after decoder, zs shape:', logits.shape)
+        else:
+            outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls)
+            logits = outputs.logits
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
         outputs = Stage1ModelOutput(

@@ -894,6 +894,7 @@ class ViTMAEDecoder(nn.Module):
         interpolate_pos_encoding: bool = False,
         drop_cls_token: bool = False,
         do_decoder_embed: bool = True,
+        do_decoder_pred: bool = True,
     ):
         # embed tokens
         x = self.decoder_embed(hidden_states) if do_decoder_embed else hidden_states
@@ -948,13 +949,13 @@ class ViTMAEDecoder(nn.Module):
             all_hidden_states = all_hidden_states + (hidden_states,)
 
         hidden_states = self.decoder_norm(hidden_states)
-
-        # predictor projection
-        logits = self.decoder_pred(hidden_states)
-
-        # remove cls token
-        logits = logits[:, 1:, :] 
-
+        if do_decoder_pred:
+            # predictor projection
+            logits = self.decoder_pred(hidden_states)
+            # remove cls token
+            logits = logits[:, 1:, :] 
+        else:
+            logits = hidden_states
         if not return_dict:
             return tuple(v for v in [logits, all_hidden_states, all_self_attentions] if v is not None)
         return ViTMAEDecoderOutput(
