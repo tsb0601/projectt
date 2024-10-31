@@ -251,7 +251,8 @@ class DiT(nn.Module):
         self.patch_size = patch_size
         self.num_heads = num_heads
         self.hidden_size = hidden_size
-        
+        self.input_size = input_size
+        self.num_classes = num_classes
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
         self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
@@ -1052,8 +1053,36 @@ class DiTWideAtLast(DiT):
     normal DiT at first, few wide blocks at last
     """    
     def __init__(self, **kwargs):
+        second_patch_size = kwargs.pop('second_patch_size', 16)
+        second_depth = kwargs.pop('second_depth', 4)
         super().__init__(**kwargs)
         hidden_size = self.hidden_size
+        self.second_x_embedder = PatchEmbed(self.input_size, second_patch_size, self.in_channels, hidden_size, bias=True)
+        self.second_blocks = nn.ModuleList([
+            DiTBlock(hidden_size, self.num_heads, mlp_ratio=4.0) for _ in range(second_depth)
+        ])
+        self.second_pos_embed = nn.Parameter(torch.zeros(1, self.second_x_embedder.num_patches, hidden_size), requires_grad=False)
+        self.second_final_layer = FinalLayer(hidden_size, second_patch_size, self.out_channels)
+        #init pos embed
+        pos_embed = get_2d_sincos_pos_embed(self.second_pos_embed.shape[-1], int(self.second_x_embedder.num_patches ** 0.5))
+        self.second_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        # init DiT blocks
+        for block in self.second_blocks:
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        # init final layer
+        nn.init.constant_(self.second_final_layer.adaLN_modulation[-1].weight, 0)
+    def forward(self, x, t, y):
+        x = self.x_embedder(x) + self.pos_embed
+        t = self.t_embedder(t)
+        y = self.y_embedder(y, self.training)
+        c = t + y
+        for block in self.blocks:
+            x = block(x, c)
+        # x: (N, T, D)
+        x = self.unpatchify(x) # (N, C, H, W)
+        x = self.second_x_embedder(x) + self.pos_embed
+        return x
         
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #

@@ -39,7 +39,7 @@ optimizer:
     min_lr: 0.
     mode: fix
     decay_mode: reduce
-    decay_schel: [624]
+    #decay_schel: [624]
     start_from_zero: false
 
 experiment:
@@ -74,7 +74,7 @@ gan:
         min_lr: 0.
         mode: fix
         decay_mode: reduce
-        decay_schel: [624]
+        #decay_schel: [624]
         start_from_zero: false
     experiment:
       test_freq: 1
