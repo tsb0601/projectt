@@ -1047,7 +1047,7 @@ class DiTwMAE(DiT):
         x = torch.einsum('nhwpqc->nchpwq', x)
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
-    
+
 class DiTWideAtLast(DiT):
     """
     normal DiT at first, few wide blocks at last
@@ -1056,6 +1056,8 @@ class DiTWideAtLast(DiT):
         second_patch_size = kwargs.pop('second_patch_size', 16)
         second_depth = kwargs.pop('second_depth', 4)
         super().__init__(**kwargs)
+        self.factor = second_patch_size // self.patch_size
+        assert second_patch_size % self.patch_size == 0, 'second patch size should be divisible by first patch size'
         hidden_size = self.hidden_size
         self.second_x_embedder = PatchEmbed(self.input_size, second_patch_size, self.in_channels, hidden_size, bias=True)
         self.second_blocks = nn.ModuleList([
@@ -1072,20 +1074,31 @@ class DiTWideAtLast(DiT):
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
         # init final layer
         nn.init.constant_(self.second_final_layer.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.second_final_layer.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.second_final_layer.linear.weight, 0)
+        nn.init.constant_(self.second_final_layer.linear.bias, 0)
+        self.pixel_shuffle = nn.PixelShuffle(self.factor)
     def forward(self, x, t, y):
+        print('input x shape', x.shape)
+        N, C, H, W = x.shape
         x = self.x_embedder(x) + self.pos_embed
         t = self.t_embedder(t)
         y = self.y_embedder(y, self.training)
         c = t + y
         for block in self.blocks:
             x = block(x, c)
-        # x: (N, T, D)
-        x = self.unpatchify(x) # (N, C, H, W)
+        x = self.final_layer(x, c)
+        # x: (N, T, patch_size ** 2 * hidden_size)
+        # do pixel shuffle
+        x = self.pixel_shuffle(x)
+        print('first part done, x shape', x.shape)
         x = self.second_x_embedder(x) + self.second_pos_embed
         for block in self.second_blocks:
             x = block(x, c)
         x = self.second_final_layer(x, c)
         x = self.second_unpatchify(x)
+        if self.learn_sigma:
+            x, _ = torch.chunk(x, 2, dim=1)
         return x
     def second_unpatchify(self, x):
         """

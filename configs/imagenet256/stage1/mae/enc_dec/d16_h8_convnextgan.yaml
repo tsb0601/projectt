@@ -82,7 +82,7 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: .2
+    disc_weight: .75
     perceptual_weight: 1.
     disc_start: 1
     lpips_start: 0

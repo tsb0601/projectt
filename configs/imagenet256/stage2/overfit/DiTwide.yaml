@@ -5,31 +5,27 @@ dataset:
 arch:
   stage: 2
   stage_1:
-    target: rqvae.models.klvae.Stage1_KLVAE
+    target: rqvae.models.identity.Identity_Stage1
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
-      sample: false
-  connector:
-    target: rqvae.models.connectors.RandomUpsample_Connector
-    params:
-      input_hidden_channel: 4
-      output_hidden_channel: 192
-      dummy_sample: false
+      hidden_dim: 3
+      input_size: 256
+      in_channels: 3
+    checkpointing: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 2048
-      input_size: 32
-      patch_size: 2
+      hidden_size: 768
+      input_size: 256
+      patch_size: 16
       depth: 2
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
-      in_channels: 192
-      learn_sigma: true
+      in_channels: 3
+      learn_sigma: false
       noise_schedule: 'linear'
-      inference_step: 250
+      inference_step: 2
       class_cls_str: 'rqvae.models.DiT.models.DiTWideAtLast'
       second_patch_size: 4
       second_depth: 2
