@@ -38,6 +38,8 @@ optimizer:
     buffer_epoch: 0
     min_lr: 0.
     mode: fix
+    decay_mode: reduce
+    decay_schel: [624]
     start_from_zero: false
 
 experiment:
@@ -82,6 +84,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .2
     perceptual_weight: 1.
-    disc_start: 0
+    disc_start: 1
     lpips_start: 0
     disc_upd_start: 0
