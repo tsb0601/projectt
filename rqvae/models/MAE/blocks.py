@@ -339,3 +339,16 @@ class ConvNextUpSampler(nn.Module):
             if include_cls:
                 x = torch.cat([torch.zeros_like(x[:,0:1]), x], dim=1)
         return x
+class ConvNextMidBlocks(nn.Module):
+    """
+    stack a few ConvNeXt blocks
+    """
+    def __init__(self, in_channels:int, depth:int):
+        super(ConvNextMidBlocks, self).__init__()
+        self.blocks = nn.ModuleList()
+        for i in range(depth):
+            self.blocks.append(ConvNeXtBlock(in_channels))
+    def forward(self, x):
+        for block in self.blocks:
+            x = block(x)
+        return x
