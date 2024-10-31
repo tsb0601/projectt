@@ -34,7 +34,7 @@ arch:
       in_channels: 16
       learn_sigma: true
       noise_schedule: 'linear'
-      inference_step: 2
+      inference_step: 250
   checkpointing: false
   ema: 0.99
   ckpt_path: './ckpt_gcs/mae_width/d16_h8_convnext/d16_b4096_lr16e-4_h8_DCAEConvNext_30102024_084148/ep_last-checkpoint/0-model.pt'
