@@ -751,7 +751,6 @@ class Stage1MAEwConvNextDecoder(Stage1Model):
             zs = layer(zs)
         # zs: [N, C, H, W], reshape to [N, C//p**2, H*p, W*p]
         xs_recon = self.unpatchify(zs, self.model.config.patch_size, 3)
-        assert torch.max(xs_recon) == 0., 'max value should be 0, but got {}'.format(torch.max(xs_recon))
         xs_recon = xs_recon * image_std + image_mean
         outputs = Stage1ModelOutput(
             xs_recon = xs_recon,
