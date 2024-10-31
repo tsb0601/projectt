@@ -1081,8 +1081,26 @@ class DiTWideAtLast(DiT):
             x = block(x, c)
         # x: (N, T, D)
         x = self.unpatchify(x) # (N, C, H, W)
-        x = self.second_x_embedder(x) + self.pos_embed
+        x = self.second_x_embedder(x) + self.second_pos_embed
+        for block in self.second_blocks:
+            x = block(x, c)
+        x = self.second_final_layer(x, c)
+        x = self.second_unpatchify(x)
         return x
+    def second_unpatchify(self, x):
+        """
+        x: (N, T, patch_size**2 * C)
+        imgs: (N, H, W, C)
+        """
+        c = self.out_channels
+        p = self.second_x_embedder.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum('nhwpqc->nchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
         
 #################################################################################
 #                   Sine/Cosine Positional Embedding Functions                  #
