@@ -1060,6 +1060,7 @@ class DiTWideAtLast(DiT):
         assert self.patch_size % second_patch_size == 0, 'second patch size should be divisible by first patch size'
         hidden_size = self.hidden_size
         second_num_patches = (self.x_embedder.num_patches * self.factor ** 2)
+        self.second_num_patches = second_num_patches
         self.second_blocks = nn.ModuleList([
             DiTBlock(hidden_size, self.num_heads, mlp_ratio=4.0) for _ in range(second_depth)
         ])
@@ -1078,7 +1079,13 @@ class DiTWideAtLast(DiT):
         nn.init.constant_(self.second_final_layer.linear.weight, 0)
         nn.init.constant_(self.second_final_layer.linear.bias, 0)
         self.pixel_shuffle = nn.PixelShuffle(self.factor)
-        self.second_x_embed = nn.Linear(hidden_size//self.factor**2, hidden_size)
+        second_input_size = self.x_embedder.num_patches ** 0.5 * self.factor
+        self.second_x_embedder = PatchEmbed(second_input_size, 1, self.hidden_size // self.factor**2, hidden_size, bias=True)
+        # init second x embedder
+        w = self.second_x_embedder.proj.weight.data
+        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        nn.init.constant_(self.second_x_embedder.proj.bias, 0)
+        
     def forward(self, x, t, y):
         print('input x shape', x.shape)
         N, C, H, W = x.shape
@@ -1088,9 +1095,11 @@ class DiTWideAtLast(DiT):
         c = t + y
         for block in self.blocks:
             x = block(x, c)
-        x = self.final_layer(x, c)
-        # x: (N, T, patch_size ** 2 * hidden_size)
-        x = self.unpatchify(x)
+        # x: (N, T, D)
+        h = w = int(x.shape[1] ** 0.5)
+        x = x.reshape(N, h, w, -1)
+        x = x.permute(0, 3, 1, 2)
+        x = self.pixel_shuffle(x)
         print('first part done, x shape', x.shape)
         x = self.second_x_embedder(x) + self.second_pos_embed
         for block in self.second_blocks:
@@ -1104,7 +1113,7 @@ class DiTWideAtLast(DiT):
         imgs: (N, H, W, C)
         """
         c = self.out_channels
-        p = self.second_x_embedder.patch_size[0]
+        p = self.second_num_patches
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
 
