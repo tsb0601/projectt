@@ -13,7 +13,8 @@ arch:
     target: rqvae.models.connectors.RandomUpsample_Connector
     params:
       input_hidden_channel: 4
-      output_hidden_channel: 128
+      output_hidden_channel: 64
+      dummy_sample: true
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
@@ -25,10 +26,11 @@ arch:
       num_heads: 12
       num_classes: 1000
       cfg: 0.0
-      in_channels: 128
+      in_channels: 64
       learn_sigma: true
       noise_schedule: 'linear'
       inference_step: 250
+      n_samples: 1
   checkpointing: false
   ema: 0.99
 optimizer:
