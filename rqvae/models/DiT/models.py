@@ -1056,17 +1056,17 @@ class DiTWideAtLast(DiT):
         second_patch_size = kwargs.pop('second_patch_size', 16)
         second_depth = kwargs.pop('second_depth', 4)
         super().__init__(**kwargs)
-        self.factor = second_patch_size // self.patch_size
-        assert second_patch_size % self.patch_size == 0, 'second patch size should be divisible by first patch size'
+        self.factor = self.patch_size // second_patch_size
+        assert self.patch_size % second_patch_size == 0, 'second patch size should be divisible by first patch size'
         hidden_size = self.hidden_size
-        self.second_x_embedder = PatchEmbed(self.input_size, second_patch_size, self.in_channels, hidden_size, bias=True)
+        second_num_patches = (self.x_embedder.num_patches * self.factor ** 2)
         self.second_blocks = nn.ModuleList([
             DiTBlock(hidden_size, self.num_heads, mlp_ratio=4.0) for _ in range(second_depth)
         ])
-        self.second_pos_embed = nn.Parameter(torch.zeros(1, self.second_x_embedder.num_patches, hidden_size), requires_grad=False)
+        self.second_pos_embed = nn.Parameter(torch.zeros(1, second_num_patches, hidden_size), requires_grad=False)
         self.second_final_layer = FinalLayer(hidden_size, second_patch_size, self.out_channels)
         #init pos embed
-        pos_embed = get_2d_sincos_pos_embed(self.second_pos_embed.shape[-1], int(self.second_x_embedder.num_patches ** 0.5))
+        pos_embed = get_2d_sincos_pos_embed(self.second_pos_embed.shape[-1], int(second_num_patches ** 0.5))
         self.second_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
         # init DiT blocks
         for block in self.second_blocks:
@@ -1078,6 +1078,7 @@ class DiTWideAtLast(DiT):
         nn.init.constant_(self.second_final_layer.linear.weight, 0)
         nn.init.constant_(self.second_final_layer.linear.bias, 0)
         self.pixel_shuffle = nn.PixelShuffle(self.factor)
+        self.second_x_embed = nn.Linear(hidden_size//self.factor**2, hidden_size)
     def forward(self, x, t, y):
         print('input x shape', x.shape)
         N, C, H, W = x.shape
@@ -1089,16 +1090,13 @@ class DiTWideAtLast(DiT):
             x = block(x, c)
         x = self.final_layer(x, c)
         # x: (N, T, patch_size ** 2 * hidden_size)
-        # do pixel shuffle
-        x = self.pixel_shuffle(x)
+        x = self.unpatchify(x)
         print('first part done, x shape', x.shape)
         x = self.second_x_embedder(x) + self.second_pos_embed
         for block in self.second_blocks:
             x = block(x, c)
         x = self.second_final_layer(x, c)
         x = self.second_unpatchify(x)
-        if self.learn_sigma:
-            x, _ = torch.chunk(x, 2, dim=1)
         return x
     def second_unpatchify(self, x):
         """
