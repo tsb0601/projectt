@@ -733,7 +733,9 @@ class Stage1MAEwConvNextDecoder(Stage1Model):
         # reshape to [N, C, H, W]
         h = w = int(math.sqrt(latent.shape[1]))
         latent = latent.view(latent.shape[0], h, w, latent.shape[-1]).permute(0, 3, 1, 2)
-        latent = self.model.decoder[0](latent) if self.do_encoder_embed_in_decode else latent
+        if self.do_encoder_embed_in_decode:
+            latent = self.model.decoder[0](latent)
+            latent = self.model.decoder[1](latent)
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -744,7 +746,7 @@ class Stage1MAEwConvNextDecoder(Stage1Model):
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
-        st_layer = 1 if self.do_encoder_embed_in_decode else 0
+        st_layer = 2 if self.do_encoder_embed_in_decode else 0
         for layer in self.model.decoder[st_layer:]:
             zs = layer(zs)
         # zs: [N, C, H, W], reshape to [N, C//p**2, H*p, W*p]
