@@ -13,11 +13,11 @@ arch:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
-      hidden_size: 1152
+      hidden_size: 768
       input_size: 32
       patch_size: 2
-      depth: 28
-      num_heads: 16
+      depth: 12
+      num_heads: 12
       num_classes: 1000
       cfg: 0.0
       in_channels: 4
@@ -25,32 +25,32 @@ arch:
       noise_schedule: 'linear'
       inference_step: 250
   checkpointing: false
-  ema: 0.9999
-  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/DiT_XL_2_klvae/klvaeXL2_b256_ema/rep_b256_ep80_lr1e-4_ema9999_latent_18102024_072658/ep_last-checkpoint/0-model.pt'
+  ema: 0.9
 optimizer:
-  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.0e-4
+  init_lr: 1.6e-3
   weight_decay: 0.0
-  betas: [0.9, 0.999]
+  betas: [0.9, 0.95]
   max_gn: None
   amp: true
   warmup:
-    epoch: 80
+    epoch: 2
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.0e-4
+    min_lr: 0.0
     mode: fix
-    start_from_zero: false
+    decay_mode: linear
+    start_from_zero: true
+
 
 experiment:
-  batch_size: 8
+  batch_size: 2
   accu_step: 1
   epochs: 80
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  actual_batch_size: 256
+  actual_batch_size: 4096
 
 gan:
   disc:
@@ -72,7 +72,7 @@ gan:
         epoch: 5  # 5% of total epochs
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 2.0e-4
+        min_lr: 0.
         mode: fix
         start_from_zero: true
     experiment:

@@ -253,6 +253,7 @@ class DiT(nn.Module):
         self.hidden_size = hidden_size
         self.input_size = input_size
         self.num_classes = num_classes
+        self.class_dropout_prob = class_dropout_prob
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
         self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
@@ -1055,24 +1056,28 @@ class DiTWideAtLast(DiT):
     def __init__(self, **kwargs):
         second_patch_size = kwargs.pop('second_patch_size', 16)
         second_depth = kwargs.pop('second_depth', 4)
+        second_hidden_size = kwargs.pop('second_hidden_size', 768)
         self.second_patch_size = second_patch_size
-        
         super().__init__(**kwargs)
         self.factor = self.patch_size // second_patch_size
         assert self.patch_size % second_patch_size == 0, 'second patch size should be divisible by first patch size'
-        hidden_size = self.hidden_size
         second_num_patches = (self.x_embedder.num_patches * self.factor ** 2)
         self.second_num_patches = second_num_patches
         self.second_blocks = nn.ModuleList([
-            DiTBlock(hidden_size, self.num_heads, mlp_ratio=4.0) for _ in range(second_depth)
+            DiTBlock(second_hidden_size, self.num_heads, mlp_ratio=4.0) for _ in range(second_depth)
         ])
-        self.second_pos_embed = nn.Parameter(torch.zeros(1, second_num_patches, hidden_size), requires_grad=False)
-        self.second_final_layer = FinalLayer(hidden_size, second_patch_size, self.out_channels)
+        self.second_pos_embed = nn.Parameter(torch.zeros(1, second_num_patches, second_hidden_size), requires_grad=False)
+        self.second_final_layer = FinalLayer(second_hidden_size, second_patch_size, self.out_channels)
         #init pos embed
         pos_embed = get_2d_sincos_pos_embed(self.second_pos_embed.shape[-1], int(second_num_patches ** 0.5))
         self.second_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
         # init DiT blocks
         for block in self.second_blocks:
+            for module in block.modules():
+                if isinstance(module, nn.Linear):
+                    torch.nn.init.xavier_uniform_(module.weight)
+                    if module.bias is not None:
+                        nn.init.constant_(module.bias, 0)
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
         # init final layer
@@ -1080,18 +1085,26 @@ class DiTWideAtLast(DiT):
         nn.init.constant_(self.second_final_layer.adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.second_final_layer.linear.weight, 0)
         nn.init.constant_(self.second_final_layer.linear.bias, 0)
-        self.pixel_shuffle = nn.PixelShuffle(self.factor)
+        #self.pixel_shuffle = nn.PixelShuffle(self.factor)
         second_input_size = self.x_embedder.num_patches ** 0.5 * self.factor
-        self.second_x_embedder = PatchEmbed(second_input_size, 1, self.hidden_size // self.factor**2, hidden_size, bias=True)
+        self.second_x_embedder = PatchEmbed(second_input_size, 1, self.hidden_size // self.factor**2, second_hidden_size, bias=True)
+        self.second_t_embedder = TimestepEmbedder(second_hidden_size)
+        self.second_y_embedder = LabelEmbedder(self.num_classes, second_hidden_size, self.class_dropout_prob)
         # init second x embedder
         w = self.second_x_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         nn.init.constant_(self.second_x_embedder.proj.bias, 0)
-        
+        # init second t embedder
+        nn.init.normal_(self.second_t_embedder.mlp[0].weight, std=0.02)
+        nn.init.normal_(self.second_t_embedder.mlp[2].weight, std=0.02)
+        # init second y embedder
+        nn.init.normal_(self.second_y_embedder.embedding_table.weight, std=0.02)
     def forward(self, x, t, y):
         N, C, H, W = x.shape
+        timestep = t 
+        condition = y
         x = self.x_embedder(x) + self.pos_embed
-        t = self.t_embedder(t)
+        t = self.t_embedder(timestep)
         y = self.y_embedder(y, self.training)
         c = t + y
         for block in self.blocks:
@@ -1099,9 +1112,12 @@ class DiTWideAtLast(DiT):
         # x: (N, T, D)
         x = self.unpatchify(x)
         x = self.second_x_embedder(x) + self.second_pos_embed
+        second_t = self.second_t_embedder(timestep)
+        second_y = self.second_y_embedder(condition, self.training)
+        second_c = second_t + second_y
         for block in self.second_blocks:
-            x = block(x, c)
-        x = self.second_final_layer(x, c)
+            x = block(x, second_c)
+        x = self.second_final_layer(x, second_c)
         x = self.second_unpatchify(x)
         return x
     def unpatchify(self, x):
@@ -1113,7 +1129,6 @@ class DiTWideAtLast(DiT):
         p = self.factor
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
-
         x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
         x = torch.einsum('nhwpqc->nchpwq', x)
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
