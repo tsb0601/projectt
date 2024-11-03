@@ -33,7 +33,7 @@ with torch.no_grad():
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
     stage2_model = stage2_model_wrapper.stage_2_model
-    image = get_default_image(im_size)
+    image = get_default_image(im_size)[0:1, ...] # B \equiv 1
     print(image.shape, image.min(), image.max())
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)

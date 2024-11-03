@@ -47,6 +47,28 @@ def compute_ConvTranspose2d_madd(module, inp, out):
 
     return total_mul + total_add
 
+def compute_LayerNorm_madd(module, inp, out):
+    assert isinstance(module, nn.LayerNorm)
+    #print('compute_LayerNorm_madd', inp.size(), out.size())
+    assert len(inp.size()) == len(out.size()), f'input and output should have same dimensions, inp: {inp.size()}, out: {out.size()}'
+    
+    # Extract dimensions
+    num_elements = inp.numel()  # Total elements in the input tensor
+    num_features = module.normalized_shape[-1]  # Features being normalized per element
+
+    # MADD calculations for LayerNorm
+    # 1. Mean: sum all elements in each feature dimension -> num_features adds per element in batch
+    mean_madd = num_elements  # One add per element for mean
+    
+    # 2. Variance: requires one subtract and one square (multiply) per element
+    variance_madd = num_elements * 2  # One add and one multiply per element for variance
+    
+    # 3. Normalization (for each element): subtract mean, divide by standard deviation, multiply by gamma, add beta
+    normalize_madd = num_elements * 4  # One subtract, one divide, one multiply, one add per element
+
+    # Total MADD
+    madd = mean_madd + variance_madd + normalize_madd
+    return madd
 
 def compute_BatchNorm2d_madd(module, inp, out):
     assert isinstance(module, nn.BatchNorm2d)
@@ -120,7 +142,19 @@ def compute_ReLU_madd(module, inp, out):
         count *= i
     return count
 
-
+def compute_GELU_madd(module, inp, out):
+    assert isinstance(module, nn.GELU)
+    #print('compute_GELU_madd', inp.size(), out.size())
+    assert len(inp.size()) == len(out.size()), f'input and output should have same dimensions, inp: {inp.size()}, out: {out.size()}'
+    
+    # MADD calculations for GELU
+    # Assuming the approximate formulation: x * 0.5 * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+    num_elements = inp.numel()
+    
+    # MADD per element: 5 multiplies, 3 adds
+    madd_per_element = 5 + 3
+    madd = num_elements * madd_per_element
+    return madd
 def compute_Softmax_madd(module, inp, out):
     assert isinstance(module, nn.Softmax)
     assert len(inp.size()) > 1
@@ -165,6 +199,10 @@ def compute_Bilinear_madd(module, inp1, inp2, out):
     add = num_in_features_1 * num_in_features_2 + num_in_features_2 - 1
     return num_out_features * (mul + add) * L
 
+def compute_Embedding_madd(module, inp, out):
+    assert isinstance(module, nn.Embedding)
+    assert len(inp.size()) == len(out.size()) - 1 , f'input size should be smaller than output size by 1, inp: {inp.size()}, out: {out.size()}'
+    return 0 # Embedding layer does not have any actual MAdd, but lookups
 
 def compute_madd(module, inp, out):
     if isinstance(module, nn.Conv2d):
@@ -173,12 +211,16 @@ def compute_madd(module, inp, out):
         return compute_ConvTranspose2d_madd(module, inp, out)
     elif isinstance(module, nn.BatchNorm2d):
         return compute_BatchNorm2d_madd(module, inp, out)
+    elif isinstance(module, nn.LayerNorm):
+        return compute_LayerNorm_madd(module, inp, out)
     elif isinstance(module, nn.MaxPool2d):
         return compute_MaxPool2d_madd(module, inp, out)
     elif isinstance(module, nn.AvgPool2d):
         return compute_AvgPool2d_madd(module, inp, out)
     elif isinstance(module, (nn.ReLU, nn.ReLU6)):
         return compute_ReLU_madd(module, inp, out)
+    elif isinstance(module, nn.GELU):
+        return compute_GELU_madd(module, inp, out)
     elif isinstance(module, nn.Softmax):
         return compute_Softmax_madd(module, inp, out)
     elif isinstance(module, nn.Linear):
@@ -189,6 +231,8 @@ def compute_madd(module, inp, out):
         return compute_GroupNorm_madd(module, inp, out)
     elif isinstance(module, nn.Identity):
         return 0 # Identity layer does not have any MAdd
+    elif isinstance(module, nn.Embedding):
+        return compute_Embedding_madd(module, inp, out)
     else:
         unsupported_op_madd:set = globals().get('unsupported_ops_madd')
         if unsupported_op_madd is None:

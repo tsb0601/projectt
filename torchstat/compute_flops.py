@@ -12,6 +12,8 @@ def compute_flops(module, inp, out):
         return compute_Pool2d_flops(module, inp, out)
     elif isinstance(module, (nn.ReLU, nn.ReLU6, nn.PReLU, nn.ELU, nn.LeakyReLU)):
         return compute_ReLU_flops(module, inp, out)
+    elif isinstance(module, nn.GELU):
+        return compute_GELU_flops(module, inp, out)
     elif isinstance(module, nn.Upsample):
         return compute_Upsample_flops(module, inp, out)
     elif isinstance(module, nn.Linear):
@@ -20,6 +22,10 @@ def compute_flops(module, inp, out):
         return compute_GroupNorm_flops(module, inp, out)
     elif isinstance(module, nn.Identity):
         return 0 # Identity layer does not have any flops
+    elif isinstance(module, nn.LayerNorm):
+        return compute_LayerNorm_flops(module, inp, out)
+    elif isinstance(module, nn.Embedding):
+        return compute_Embedding_flops(module, inp, out)
     else:
         unsupported_ops_flops:set = globals().get('unsupported_ops_flops')
         if unsupported_ops_flops is None:
@@ -56,7 +62,23 @@ def compute_Conv2d_flops(module, inp, out):
     total_flops = total_conv_flops + bias_flops
     return total_flops
 
+def compute_LayerNorm_flops(module, inp, out):
+    assert isinstance(module, nn.LayerNorm)
+    #print('compute_LayerNorm_flops', inp.size(), out.size())
+    assert len(inp.size()) == len(out.size()), f'input and output should have same dimensions, inp: {inp.size()}, out: {out.size()}'
+    
+    # Extract dimensions
+    num_elements = inp.numel()
+    num_features = module.normalized_shape[-1]
+    
+    # FLOPs include both multiply and add operations, calculated similarly to MADD
+    mean_flops = num_elements  # One add per element for mean
+    variance_flops = num_elements * 2  # One subtract and one square per element for variance
+    normalize_flops = num_elements * 5  # Extra multiply for standard deviation correction (sqrt)
 
+    # Total FLOPs
+    flops = mean_flops + variance_flops + normalize_flops
+    return flops
 def compute_BatchNorm2d_flops(module, inp, out):
     assert isinstance(module, nn.BatchNorm2d)
     assert len(inp.size()) == 4 and len(inp.size()) == len(out.size())
@@ -85,6 +107,18 @@ def compute_ReLU_flops(module, inp, out):
 
     return active_elements_count
 
+def compute_GELU_flops(module, inp, out):
+    assert isinstance(module, nn.GELU)
+    #print('compute_GELU_flops', inp.size(), out.size())
+    assert len(inp.size()) == len(out.size()), f'input and output should have same dimensions, inp: {inp.size()}, out: {out.size()}'
+    
+    # FLOPs calculations for GELU
+    # Including tanh approximation: 6 multiplies, 4 adds, 1 exp (approximated by 4 flops)
+    num_elements = inp.numel()
+    
+    flops_per_element = 6 + 4 + 4  # 6 multiplications, 4 additions, and 4 for the exp approximation in tanh
+    flops = num_elements * flops_per_element
+    return flops
 
 def compute_Pool2d_flops(module, inp, out):
     assert isinstance(module, nn.MaxPool2d) or isinstance(module, nn.AvgPool2d)
@@ -110,3 +144,7 @@ def compute_Upsample_flops(module, inp, out):
         output_elements_count *= s
 
     return output_elements_count
+
+def compute_Embedding_flops(module, inp, out):
+    assert isinstance(module, nn.Embedding)
+    return 0 # Embedding layer does not have any flops
