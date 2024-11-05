@@ -81,6 +81,7 @@ class SimpleDiffusion(GaussianDiffusion):
             #weighted_t = weighted_t.view(-1, 1, 1, 1)
             #weighted_t = torch.ones_like(weighted_t)
             bias = - int(math.log2(1 / self.size_ratio)) - 1
+            #print(f'logsnr_t: {logsnr_t}, bias: {bias}')
             sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
             weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
         else:

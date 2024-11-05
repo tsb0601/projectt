@@ -27,7 +27,7 @@ arch:
       noise_schedule: 'linear'
       inference_step: 250
       n_samples: 2
-      #do_beta_rescaling: true
+      do_beta_rescaling: true
       use_simple_diffusion: true
   checkpointing: false
   ema: 0.99
