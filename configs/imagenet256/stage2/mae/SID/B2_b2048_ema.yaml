@@ -9,6 +9,12 @@ arch:
     target: rqvae.models.klvae.Stage1_KLVAE_OnlyDecoder
     params:
       ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+  connector:
+    target: rqvae.models.connectors.ReshapeAndSplit_connector
+    params:
+      split: 1
+      remove_cls: true
+    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
