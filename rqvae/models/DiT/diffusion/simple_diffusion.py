@@ -97,12 +97,22 @@ class SimpleDiffusion(GaussianDiffusion):
             'loss': loss,
         }
         return terms
+    def lambda_t(self, t: torch.Tensor) -> torch.Tensor: # for cosine schedule only
+        return - torch.log(torch.tan(t * math.pi / 2))
+    def alpha_t(self, t: torch.Tensor) -> torch.Tensor:
+        return torch.cos(.5 * math.pi * t)
+    def sigma_t(self, t: torch.Tensor) -> torch.Tensor:
+        return torch.sin(.5 * math.pi * t)
+    def sqrt_snr(self, t: torch.Tensor) -> torch.Tensor: # signal to noise ratio ** 1/2
+        return torch.tan(.5 * math.pi * t)
     def ddim_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
         logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
         logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
         #print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
         model_pred = model(x_t, logsnr_t, **model_kwargs)
-        c = torch.exp(logsnr_t - logsnr_s).view(-1, 1, 1, 1).to(x_t.device)
+        lambda_t = self.lambda_t(t)
+        lambda_s = self.lambda_t(s)
+        c = - torch.expm1(-2 * (lambda_s - lambda_t)).view(-1, 1, 1, 1).to(x_t.device)
         alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
@@ -114,14 +124,17 @@ class SimpleDiffusion(GaussianDiffusion):
         if clip_denoised:
             x_pred = x_pred.clamp(-1, 1)        
         # for mu, variance, see https://arxiv.org/pdf/2410.19324
-        mu = alpha_s * (c* x_t  + (1-c) * x_pred)
+        #print(f'c: {c.shape}, alpha_t: {alpha_t.shape}, sigma_t: {sigma_t.shape}, model_pred: {model_pred.shape}')
+        mu = (alpha_s / alpha_t) * (x_t - sigma_t * model_pred * c)
+        std_lower = sigma_s * torch.sqrt(c)
+        std_higher = sigma_t * torch.sqrt(c)
         gamma = .3 
-        alpha_ts = alpha_t / alpha_s # \alpha_{t\mid s}
-        sigma_ts_sq = sigma_t **2 - alpha_ts * sigma_s **2 # \sigma_{t\mid s}^2
-        sigma_t2s_sq = 1 / (1/ sigma_s**2 + alpha_ts **2 / sigma_ts_sq) # \sigma_{t\to s}^2
-        log_sigma_t2s= torch.log(sigma_t2s_sq) 
-        log_sigma_ts = torch.log(sigma_ts_sq) 
-        logvar = gamma * log_sigma_t2s + (1 - gamma) * log_sigma_ts
+        #alpha_ts = alpha_t / alpha_s # \alpha_{t\mid s}
+        #sigma_ts_sq = sigma_t **2 - alpha_ts * sigma_s **2 # \sigma_{t\mid s}^2
+        #sigma_t2s_sq = 1 / (1/ sigma_s**2 + alpha_ts **2 / sigma_ts_sq) # \sigma_{t\to s}^2
+        #log_sigma_t2s= torch.log(sigma_t2s_sq) 
+        #log_sigma_ts = torch.log(sigma_ts_sq) 
+        logvar = (gamma * torch.log(std_lower) + (1 - gamma) * torch.log(std_higher)) * 2
         variance = torch.exp(logvar) # \sigma_{t\to s}^\gamma \sigma_{t\mid s}^{1-\gamma}
         return mu, variance
     def p_sample_loop(self, model, shape, noise=None, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, device=None, progress=False, eta=0):
