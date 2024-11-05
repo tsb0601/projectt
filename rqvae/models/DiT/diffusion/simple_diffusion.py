@@ -40,11 +40,11 @@ class SimpleDiffusion(GaussianDiffusion):
             logSNR_t = - 2 log (tan(pi * t / 2)) # use consine schedule
             if shifted cosine, logSNR_t_shifted = logSNR_t + 2 self.log_ratio
         """
-        logsnr_max = log_max + self.log_ratio
-        logsnr_min = log_min + self.log_ratio
+        logsnr_max = log_max
+        logsnr_min = log_min
         t_min = math.atan(math.exp(logsnr_min / 2)) 
         t_max = math.atan(math.exp(logsnr_max / 2))
-        t = t if isinstance(t, torch.Tensor) else torch.tensor(t)
+        t = t if isinstance(t, torch.Tensor) else torch.tensor(t) # avoid copy construct
         t_boundary = t_min + (t_max - t_min) * t
         logsnr_t = -2 * torch.log(torch.tan(t_boundary))
         if schedule == ScheduleType.SHIFTED_CONSINE:
@@ -62,7 +62,6 @@ class SimpleDiffusion(GaussianDiffusion):
             t = torch.rand(x_start.size(0), device=x_start.device) # sample t from uniform distribution
         else:
             assert t.dtype is not torch.long and t.dtype is not torch.int, f'Invalid t dtype {t.dtype}'
-        
         logsnr_t = self.logsnr_t(t, self.schedule)
         alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_start.device)
         sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_start.device) 
@@ -75,16 +74,15 @@ class SimpleDiffusion(GaussianDiffusion):
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         
-        snr = torch.exp(logsnr_t) # see https://arxiv.org/pdf/2303.09556
+        # see https://arxiv.org/pdf/2303.09556
         if self.pred_term == ModelMeanType.EPSILON:
             #weighted_t = torch.clamp(snr, max = 5) / snr
             #weighted_t = weighted_t.view(-1, 1, 1, 1)
             #weighted_t = torch.ones_like(weighted_t)
-            bias = - int(math.log2(1 / self.size_ratio)) - 1
-            #print(f'logsnr_t: {logsnr_t}, bias: {bias}')
+            bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1
             sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
             weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
-            weighted_t = torch.ones_like(weighted_t)
+            #weighted_t = torch.ones_like(weighted_t)
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
 
@@ -120,7 +118,7 @@ class SimpleDiffusion(GaussianDiffusion):
         gamma = .3 
         alpha_ts = alpha_t / alpha_s # \alpha_{t\mid s}
         sigma_ts_sq = sigma_t **2 - alpha_ts * sigma_s **2 # \sigma_{t\mid s}^2
-        sigma_t2s_sq = 1/ (1/ sigma_s**2 + alpha_ts **2 / sigma_ts_sq) # \sigma_{t\to s}^2
+        sigma_t2s_sq = 1 / (1/ sigma_s**2 + alpha_ts **2 / sigma_ts_sq) # \sigma_{t\to s}^2
         log_sigma_t2s= torch.log(sigma_t2s_sq) 
         log_sigma_ts = torch.log(sigma_ts_sq) 
         logvar = gamma * log_sigma_t2s + (1 - gamma) * log_sigma_ts

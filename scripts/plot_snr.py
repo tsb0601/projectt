@@ -8,16 +8,13 @@ def logsnr_t(t: Union[torch.Tensor, float], schedule: bool = False, log_min: flo
         if shifted cosine, logSNR_t_shifted = logSNR_t + 2 self.log_ratio
     """
     log_ratio = math.log(64/256)
-    logsnr_max = log_max 
-    logsnr_min = log_min 
-    t_min = math.atan(math.exp(logsnr_min / 2)) 
-    t_max = math.atan(math.exp(logsnr_max / 2))
+    logsnr_max = log_max
+    logsnr_min = log_min
+    t_min = math.atan(math.exp(-logsnr_max / 2)) 
+    t_max = math.atan(math.exp(-logsnr_min / 2))
     t = t if isinstance(t, torch.Tensor) else torch.tensor(t)
     t_boundary = t_min + (t_max - t_min) * t
-    #print(t_boundary)
-    logsnr_t = torch.tan(t_boundary)
-    #print(logsnr_t)
-    logsnr_t = -2 * torch.log(logsnr_t)
+    logsnr_t = -2 * torch.log(torch.tan(t_boundary))
     #print(logsnr_t)
     #logsnr_t = -2 * torch.log(torch.tan(t_boundary))
     if schedule:
