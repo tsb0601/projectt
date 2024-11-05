@@ -1,0 +1,58 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenetDiT256x256
+
+arch:
+  stage: 2
+  stage_1:
+    target: rqvae.models.identity.Identity_Stage1
+    params:
+      hidden_dim: 192
+      input_size: 256
+      in_channels: 3
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT B/1 Recipe
+      hidden_size: 1024
+      input_size: 32
+      patch_size: 1
+      depth: 24
+      num_heads: 16
+      num_classes: 1000
+      cfg: 0.0
+      in_channels: 192
+      learn_sigma: false
+      noise_schedule: 'linear'
+      inference_step: 250
+      n_samples: 2
+      do_beta_rescaling: false
+      use_simple_diffusion: true
+  checkpointing: false
+  ema: 0.99
+
+optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+  type: adamw
+  init_lr: 8.0e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.95]
+  max_gn: None
+  amp: true
+  warmup:
+    epoch: 80
+    multiplier: 1
+    buffer_epoch: 0
+    min_lr: 1.0e-4
+    mode: fix
+    start_from_zero: false
+
+experiment:
+  batch_size: 2
+  accu_step: 1
+  epochs: 80
+  save_ckpt_freq: 40
+  test_freq: 10
+  amp: false
+  actual_batch_size: 1024
