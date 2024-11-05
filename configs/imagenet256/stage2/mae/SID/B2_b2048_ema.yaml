@@ -6,9 +6,10 @@ dataset:
 arch:
   stage: 2
   stage_1:
-    target: rqvae.models.klvae.Stage1_KLVAE_OnlyDecoder
+    target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+      no_cls: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
@@ -20,13 +21,13 @@ arch:
     params:
       # DiT B/1 Recipe
       hidden_size: 1024
-      input_size: 32
-      patch_size: 2
+      input_size: 16
+      patch_size: 1
       depth: 24
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
-      in_channels: 4
+      in_channels: 768
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
