@@ -124,7 +124,7 @@ class SimpleDiffusion(GaussianDiffusion):
         log_sigma_ts = torch.log(sigma_ts_sq) 
         logvar = gamma * log_sigma_t2s + (1 - gamma) * log_sigma_ts
         variance = torch.exp(logvar) # \sigma_{t\to s}^\gamma \sigma_{t\mid s}^{1-\gamma}
-        return mu, torch.zeros_like(variance)
+        return mu, variance
     def p_sample_loop(self, model, shape, noise=None, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, device=None, progress=False, eta=0):
         if noise is None:
             noise = torch.randn(shape, device=device)
