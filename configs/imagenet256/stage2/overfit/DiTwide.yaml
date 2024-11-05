@@ -17,9 +17,9 @@ arch:
       # DiT B/1 Recipe
       hidden_size: 768
       input_size: 256
-      patch_size: 16
-      depth: 1
-      num_heads: 16
+      patch_size: 4
+      depth: 2
+      num_heads: 12
       num_classes: 1000
       cfg: 0.0
       in_channels: 3
@@ -28,9 +28,9 @@ arch:
       inference_step: 250
       n_samples: 1
       class_cls_str: 'rqvae.models.DiT.models.DiTWideAtLast'
-      second_patch_size: 4
-      second_depth: 2
-      second_hidden_size: 768
+      second_patch_size: 16
+      second_depth: 1
+      second_hidden_size: 780
     checkpointing: false
   ema: 0.114514
 optimizer:

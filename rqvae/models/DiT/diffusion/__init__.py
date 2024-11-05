@@ -5,7 +5,7 @@
 
 from . import gaussian_diffusion as gd
 from .respace import SpacedDiffusion, space_timesteps
-
+from .simple_diffusion import SimpleDiffusion
 
 def create_diffusion(
     timestep_respacing,
@@ -17,7 +17,20 @@ def create_diffusion(
     rescale_learned_sigmas=False,
     diffusion_steps=1000,
     input_base_dimension_ratio: float = 1.0,
-):
+    use_simple_diffusion: bool = False,
+) -> gd.GaussianDiffusion:
+    if timestep_respacing is None or timestep_respacing == "":
+        timestep_respacing = [diffusion_steps]
+    if use_simple_diffusion:
+        diffusion = SimpleDiffusion(
+            size_ratio=input_base_dimension_ratio,
+            schedule=gd.ScheduleType.SHIFTED_CONSINE,
+            pred_term=gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X,
+            loss_type=gd.LossType.WEIGHTED_MSE if not use_kl else gd.LossType.RESCALED_KL,
+            diffusion_steps=diffusion_steps,
+            used_timesteps = space_timesteps(diffusion_steps, timestep_respacing)
+        )
+        return diffusion
     betas = gd.get_named_beta_schedule(noise_schedule, diffusion_steps)
     if use_kl:
         loss_type = gd.LossType.RESCALED_KL
@@ -25,8 +38,6 @@ def create_diffusion(
         loss_type = gd.LossType.RESCALED_MSE
     else:
         loss_type = gd.LossType.MSE
-    if timestep_respacing is None or timestep_respacing == "":
-        timestep_respacing = [diffusion_steps]
     return SpacedDiffusion(
         use_timesteps=space_timesteps(diffusion_steps, timestep_respacing),
         betas=betas,

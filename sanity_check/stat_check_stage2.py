@@ -22,14 +22,15 @@ def count_params(model: torch.nn.Module):
 config_path = sys.argv[1]
 # accept a tuple of image size from sys.argv[2], if not provided, default to (256, 256, 3)
 im_size = tuple(map(int, sys.argv[2].split(','))) if len(sys.argv) > 2 else (256, 256)
+detailed_stat = len(sys.argv) > 3 and sys.argv[3] == 'detailed'
 assert os.path.isfile(config_path), f'Invalid config path {config_path}'
 with torch.no_grad():
     config = OmegaConf.load(config_path).arch
     stage2_model_wrapper, _  = create_model(config, is_master=False) # does not load ckpt
     stage2_model_wrapper:Stage2ModelWrapper
-    print('stage2_model_wrapper:', stage2_model_wrapper)
+    print('stage2_model_wrapper:', stage2_model_wrapper) if detailed_stat else None
     param, trainable_param = count_params(stage2_model_wrapper)
-    print(f"Total params: {param/1e6:.2f}M, Trainable params: {trainable_param/1e6:.2f}M")
+    print(f"Total params: {param/1e6:.2f}M, Trainable params: {trainable_param/1e6:.2f}M") if detailed_stat else None
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
     stage2_model = stage2_model_wrapper.stage_2_model
@@ -43,7 +44,7 @@ with torch.no_grad():
     #print("=" * 10, 'testing stage1 encoding', "=" * 10)
     latent_output = stage1_model.encode(data)
     #stat(stage1_model, data, model_fn='encode', simple=True)
-    print("=" * 10, 'testing connector', "=" * 10)
+    print("=" * 10, 'testing connector', "=" * 10) 
     forward_output = connector.forward(latent_output)
     stat(connector, latent_output, model_fn='forward', simple=True)
     print("=" * 10, 'testing reverse', "=" * 10)

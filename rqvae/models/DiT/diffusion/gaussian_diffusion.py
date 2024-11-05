@@ -20,7 +20,10 @@ def mean_flat(tensor):
     """
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
-
+class ScheduleType(enum.Enum):
+    COSINE = enum.auto() # cosine schedule
+    LINEAR = enum.auto() # linear schedule
+    SHIFTED_CONSINE = enum.auto() # shifted cosine schedule
 class ModelMeanType(enum.Enum):
     """
     Which type of output the model predicts.
@@ -51,7 +54,7 @@ class LossType(enum.Enum):
     )  # use raw MSE loss (with RESCALED_KL when learning variances)
     KL = enum.auto()  # use the variational lower-bound
     RESCALED_KL = enum.auto()  # like KL, but rescale to estimate the full VLB
-
+    WEIGHTED_MSE = enum.auto()  # use MSE loss with a weight term
     def is_vb(self):
         return self == LossType.KL or self == LossType.RESCALED_KL
 

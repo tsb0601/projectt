@@ -326,7 +326,9 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        print(t.shape)
         t = self.t_embedder(t)                   # (N, D)
+        print(t.shape)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
         for block in self.blocks:
@@ -1059,9 +1061,11 @@ class DiTWideAtLast(DiT):
         second_hidden_size = kwargs.pop('second_hidden_size', 768)
         self.second_patch_size = second_patch_size
         super().__init__(**kwargs)
-        self.factor = self.patch_size // second_patch_size
-        assert self.patch_size % second_patch_size == 0, 'second patch size should be divisible by first patch size'
-        second_num_patches = (self.x_embedder.num_patches * self.factor ** 2)
+        input_size = kwargs.get('input_size', None)
+        self.factor = self.patch_size / second_patch_size
+        assert self.factor * second_patch_size == self.patch_size, 'second patch size should be divisible by first patch size'
+        #assert self.patch_size % second_patch_size == 0, 'second patch size should be divisible by first patch size'
+        second_num_patches = int(self.x_embedder.num_patches * self.factor ** 2)
         self.second_num_patches = second_num_patches
         self.second_blocks = nn.ModuleList([
             DiTBlock(second_hidden_size, self.num_heads, mlp_ratio=4.0) for _ in range(second_depth)
@@ -1086,8 +1090,8 @@ class DiTWideAtLast(DiT):
         nn.init.constant_(self.second_final_layer.linear.weight, 0)
         nn.init.constant_(self.second_final_layer.linear.bias, 0)
         #self.pixel_shuffle = nn.PixelShuffle(self.factor)
-        second_input_size = self.x_embedder.num_patches ** 0.5 * self.factor
-        self.second_x_embedder = PatchEmbed(second_input_size, 1, self.hidden_size // self.factor**2, second_hidden_size, bias=True)
+        self.second_input_channels = int(self.hidden_size // self.patch_size ** 2)
+        self.second_x_embedder = PatchEmbed(input_size, second_patch_size, self.second_input_channels, second_hidden_size, bias=True)
         self.second_t_embedder = TimestepEmbedder(second_hidden_size)
         self.second_y_embedder = LabelEmbedder(self.num_classes, second_hidden_size, self.class_dropout_prob)
         # init second x embedder
@@ -1122,11 +1126,11 @@ class DiTWideAtLast(DiT):
         return x
     def unpatchify(self, x):
         """
-        x: (N, H*W/p**2, p**2*D)
-        imgs: (N, H, W, D)
+        x: (N, T, patch_size**2 * C)
+        imgs: (N, H, W, C)
         """
-        c = self.hidden_size // self.factor ** 2
-        p = self.factor
+        c = self.second_input_channels
+        p = self.x_embedder.patch_size[0]
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
         x = x.reshape(shape=(x.shape[0], h, w, p, p, c))

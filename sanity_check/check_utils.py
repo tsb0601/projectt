@@ -12,6 +12,6 @@ def get_default_image(im_size:tuple) -> Image.Image:
     else:
         image = Image.open(image_path).resize(im_size).convert('RGB')
         #repeat 2 times to asssure model works with batch size > 1
-        image = ToTensor()(image).unsqueeze(0).repeat(1,1,1,1)
+        image = ToTensor()(image).unsqueeze(0).repeat(2,1,1,1)
     return image
 

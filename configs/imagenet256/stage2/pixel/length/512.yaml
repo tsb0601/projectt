@@ -1,0 +1,26 @@
+arch:
+  stage: 2
+  stage_1:
+    target: rqvae.models.identity.Identity_Stage1
+    params:
+      hidden_dim: 3
+      input_size: 512
+      in_channels: 3
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT B/1 Recipe
+      hidden_size: 768
+      input_size: 512
+      patch_size: 1
+      depth: 1
+      num_heads: 16
+      num_classes: 1000
+      cfg: 0.0
+      in_channels: 3
+      learn_sigma: true
+      noise_schedule: 'linear'
+      inference_step: 250
+      n_samples: 1
+  checkpointing: false
+  ema: 0.9999

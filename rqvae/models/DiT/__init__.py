@@ -27,6 +27,7 @@ class DiT_Stage2(Stage2Model):
         inference_step: int = 250,
         n_samples: int = 125,
         do_beta_rescaling: bool = False,
+        use_simple_diffusion: bool = False,
         class_cls_str: str = "rqvae.models.DiT.models.DiT",
         **kwargs,
     ):
@@ -38,7 +39,7 @@ class DiT_Stage2(Stage2Model):
         if do_beta_rescaling:
             base_dim = 4096  # 32 x 32 x 4, klvaef8 input dim
             input_dim = input_size * input_size * in_channels  # input channels
-            input_base_dimension_ratio = input_dim / base_dim
+            input_base_dimension_ratio = math.sqrt(input_dim / base_dim)
         else:
             input_base_dimension_ratio = 1.0 # do not do rescaling
         self.hidden_size = hidden_size
@@ -66,13 +67,16 @@ class DiT_Stage2(Stage2Model):
             learn_sigma=learn_sigma,
             noise_schedule=noise_schedule,
             input_base_dimension_ratio=input_base_dimension_ratio,
+            use_simple_diffusion=use_simple_diffusion,
         )  # like DiT we set default 1000 timesteps
         self.infer_diffusion = create_diffusion(
             timestep_respacing=str(self.inference_step),
             learn_sigma=learn_sigma,
             noise_schedule=noise_schedule,
             input_base_dimension_ratio=input_base_dimension_ratio,
+            use_simple_diffusion=use_simple_diffusion,
         )
+        self.use_simple_diffusion = use_simple_diffusion
         self.input_size = input_size
         self.num_classes = num_classes
         self.use_cfg = self.cfg >= 1.0
@@ -106,7 +110,7 @@ class DiT_Stage2(Stage2Model):
             ).long()
         t = torch.randint(
             0, self.diffusion.num_timesteps, (zs.shape[0],), device=zs.device
-        )
+        ) if not self.use_simple_diffusion else torch.rand(zs.shape[0], device=zs.device) 
         model_kwargs = dict(y=labels)
         terms = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
         loss = terms["loss"].mean()
