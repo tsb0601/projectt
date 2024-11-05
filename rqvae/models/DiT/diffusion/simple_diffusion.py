@@ -84,6 +84,7 @@ class SimpleDiffusion(GaussianDiffusion):
             #print(f'logsnr_t: {logsnr_t}, bias: {bias}')
             sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
             weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
+            weighted_t = torch.ones_like(weighted_t)
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
 
