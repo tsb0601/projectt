@@ -123,8 +123,10 @@ class Stage1MAE(Stage1Model):
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
-        image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
-        image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        #image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
+        #image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        image_mean = self.image_mean
+        image_std = self.image_std
         xs = (xs - image_mean) / image_std
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model(xs, noise, drop_cls_token = self.no_cls) if self.model.config.mask_ratio == 0. else self.model(xs)
@@ -139,8 +141,10 @@ class Stage1MAE(Stage1Model):
     def encode(self, inputs: LabeledImageData) -> Stage1Encodings:
         # mask_ratio must be zero
         xs = inputs.img
-        image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
-        image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        #image_mean = self.image_mean.expand(xs.shape[0], -1, -1, -1)
+        #image_std = self.image_std.expand(xs.shape[0], -1, -1, -1)
+        image_mean = self.image_mean
+        image_std = self.image_std
         xs = (xs - image_mean) / image_std
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
