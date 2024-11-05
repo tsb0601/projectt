@@ -326,9 +326,9 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        print(t.shape)
+        #print(t.shape)
         t = self.t_embedder(t)                   # (N, D)
-        print(t.shape)
+        #print(t.shape)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
         for block in self.blocks:

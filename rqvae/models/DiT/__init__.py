@@ -2,7 +2,7 @@ from rqvae.models.basicblocks.utils import zero_module
 from .models import *
 import torch
 from ..interfaces import *
-from .diffusion import create_diffusion
+from .diffusion import create_diffusion, SimpleDiffusion
 from typing import List, Optional
 import torch_xla.core.xla_model as xm
 from .blocks import ConvEncoder, ConvDecoder, ConvDecoder_wSkipConnection
@@ -37,9 +37,9 @@ class DiT_Stage2(Stage2Model):
         # learn_sigma = kwargs.pop("learn_sigma", True) # learn sigma is True by default and is a required argument in DiT
         # noise_schedule = kwargs.pop("noise_schedule", "linear")
         if do_beta_rescaling:
-            base_dim = 4096  # 32 x 32 x 4, klvaef8 input dim
+            base_dim = 128 * 128 * 3  # 3 following https://arxiv.org/pdf/2301.11093
             input_dim = input_size * input_size * in_channels  # input channels
-            input_base_dimension_ratio = math.sqrt(input_dim / base_dim)
+            input_base_dimension_ratio = math.sqrt(base_dim / input_dim) # do rescaling
         else:
             input_base_dimension_ratio = 1.0 # do not do rescaling
         self.hidden_size = hidden_size
@@ -157,7 +157,7 @@ class DiT_Stage2(Stage2Model):
             sample_fn,
             z.shape,
             z,
-            clip_denoised=False,
+            clip_denoised=isinstance(self.diffusion, SimpleDiffusion),
             model_kwargs=model_kwargs,
             progress=False,
             device=device,

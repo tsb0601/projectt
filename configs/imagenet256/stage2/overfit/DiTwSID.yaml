@@ -27,7 +27,7 @@ arch:
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
-      #do_beta_rescaling: true
+      do_beta_rescaling: false
       use_simple_diffusion: true
     checkpointing: false
   connector:

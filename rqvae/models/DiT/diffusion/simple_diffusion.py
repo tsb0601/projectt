@@ -33,7 +33,6 @@ class SimpleDiffusion(GaussianDiffusion):
         used_timesteps = set(timestep + 1 for timestep in used_timesteps) if used_timesteps is not None else set(range(1, diffusion_steps + 1)) # default to all timesteps
         # sort the timesteps in ascending order
         self.used_timesteps = sorted(used_timesteps)
-        print(f'Used timesteps: {self.used_timesteps}')
         
     def logsnr_t(self, t: Union[torch.Tensor, float], schedule: ScheduleType, log_min: float = -15, log_max: float=15) -> torch.Tensor:
         """
@@ -43,10 +42,10 @@ class SimpleDiffusion(GaussianDiffusion):
         """
         logsnr_max = log_max + self.log_ratio
         logsnr_min = log_min + self.log_ratio
-        t_min = math.atan(math.exp(-logsnr_min / 2)) 
-        t_max = math.atan(math.exp(-logsnr_max / 2))
-        t = torch.tensor(t.clone().detach() if isinstance(t, torch.Tensor) else t)
-        t_boundary = torch.tensor(t_min + (t_max - t_min) * t)
+        t_min = math.atan(math.exp(logsnr_min / 2)) 
+        t_max = math.atan(math.exp(logsnr_max / 2))
+        t = t if isinstance(t, torch.Tensor) else torch.tensor(t)
+        t_boundary = t_min + (t_max - t_min) * t
         logsnr_t = -2 * torch.log(torch.tan(t_boundary))
         if schedule == ScheduleType.SHIFTED_CONSINE:
             logsnr_t += 2 * self.log_ratio
@@ -72,20 +71,25 @@ class SimpleDiffusion(GaussianDiffusion):
         assert model_pred.size() == x_start.size(), f'Invalid model prediction size {model_pred.size()}, expected {x_start.size()}'
         if self.pred_term == ModelMeanType.EPSILON:
             eps_pred = model_pred
+            target = noise
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         
         snr = torch.exp(logsnr_t) # see https://arxiv.org/pdf/2303.09556
         if self.pred_term == ModelMeanType.EPSILON:
-            weighted_t = torch.clamp(snr, min = 5) / snr
-            weighted_t = weighted_t.view(-1, 1, 1, 1)
+            #weighted_t = torch.clamp(snr, max = 5) / snr
+            #weighted_t = weighted_t.view(-1, 1, 1, 1)
+            #weighted_t = torch.ones_like(weighted_t)
+            bias = - int(math.log2(1 / self.size_ratio)) - 1
+            sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
+            weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
-        
+
         if self.loss_type == LossType.WEIGHTED_MSE:
-            loss = torch.mean(weighted_t * (eps_pred - x_start) ** 2)
+            loss = mean_flat(weighted_t * (eps_pred - target) ** 2)
         elif self.loss_type == LossType.MSE:
-            loss = torch.mean((eps_pred - x_start) ** 2)
+            loss = mean_flat((eps_pred - target) ** 2)
         else:
             raise NotImplementedError(f'Invalid loss type {self.loss_type}')
         terms = {
@@ -96,9 +100,9 @@ class SimpleDiffusion(GaussianDiffusion):
     def ddim_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
         logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
         logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
-        print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
+        #print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
         model_pred = model(x_t, logsnr_t, **model_kwargs)
-        c = -torch.special.expm1(logsnr_t - logsnr_s).view(-1, 1, 1, 1).to(x_t.device)
+        c = torch.exp(logsnr_t - logsnr_s).view(-1, 1, 1, 1).to(x_t.device)
         alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
@@ -108,17 +112,25 @@ class SimpleDiffusion(GaussianDiffusion):
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         if clip_denoised:
-            x_pred = x_pred.clamp(-1, 1)
-        mu = alpha_s * (x_t * (1 - c) / alpha_t + c * x_pred)
-        variance = (sigma_s ** 2) * c
-        return mu, variance
+            x_pred = x_pred.clamp(-1, 1)        
+        # for mu, variance, see https://arxiv.org/pdf/2410.19324
+        mu = alpha_s * (c* x_t  + (1-c) * x_pred)
+        gamma = .3 
+        alpha_ts = alpha_t / alpha_s # \alpha_{t\mid s}
+        sigma_ts_sq = sigma_t **2 - alpha_ts * sigma_s **2 # \sigma_{t\mid s}^2
+        sigma_t2s_sq = 1/ (1/ sigma_s**2 + alpha_ts **2 / sigma_ts_sq) # \sigma_{t\to s}^2
+        log_sigma_t2s= torch.log(sigma_t2s_sq) 
+        log_sigma_ts = torch.log(sigma_ts_sq) 
+        logvar = gamma * log_sigma_t2s + (1 - gamma) * log_sigma_ts
+        variance = torch.exp(logvar) # \sigma_{t\to s}^\gamma \sigma_{t\mid s}^{1-\gamma}
+        return mu, torch.zeros_like(variance)
     def p_sample_loop(self, model, shape, noise=None, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, device=None, progress=False, eta=0):
         if noise is None:
             noise = torch.randn(shape, device=device)
         x = noise.to(device)
         progess_bar = tqdm(reversed(range(1, len(self.used_timesteps)))) if progress else reversed(range(1, len(self.used_timesteps)))
         for i in progess_bar:
-            print(f'Processing timestep {i}:{self.used_timesteps[i]} to timestep {i - 1}:{self.used_timesteps[i - 1]}')
+            #print(f'Processing timestep {i}:{self.used_timesteps[i]} to timestep {i - 1}:{self.used_timesteps[i - 1]}')
             u_t = self.used_timesteps[i] / self.diffusion_steps # current t
             u_s = self.used_timesteps[i - 1] / self.diffusion_steps # next t
             u_t = torch.tensor(u_t).to(device).repeat(x.size(0)) # repeat for batch size
