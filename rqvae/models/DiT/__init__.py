@@ -157,7 +157,7 @@ class DiT_Stage2(Stage2Model):
             sample_fn,
             z.shape,
             z,
-            clip_denoised=isinstance(self.diffusion, SimpleDiffusion),
+            clip_denoised=False,
             model_kwargs=model_kwargs,
             progress=False,
             device=device,
