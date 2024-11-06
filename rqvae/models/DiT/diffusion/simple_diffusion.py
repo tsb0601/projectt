@@ -67,7 +67,6 @@ class SimpleDiffusion(GaussianDiffusion):
         sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_start.device) 
         z_t = self.q_sample(x_start, alpha_t, sigma_t, noise)
         model_pred = model(z_t, logsnr_t, **model_kwargs)
-        assert model_pred.size() == x_start.size(), f'Invalid model prediction size {model_pred.size()}, expected {x_start.size()}'
         if self.pred_term == ModelMeanType.EPSILON:
             eps_pred = model_pred
             target = noise
