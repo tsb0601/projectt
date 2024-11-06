@@ -82,7 +82,7 @@ class SimpleDiffusion(GaussianDiffusion):
             bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1
             sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
             weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
-            #weighted_t = torch.ones_like(weighted_t)
+            weighted_t = torch.ones_like(weighted_t)
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
 
@@ -112,7 +112,7 @@ class SimpleDiffusion(GaussianDiffusion):
         model_pred = model(x_t, logsnr_t, **model_kwargs)
         lambda_t = self.lambda_t(t)
         lambda_s = self.lambda_t(s)
-        c = - torch.expm1(-2 * (lambda_s - lambda_t)).view(-1, 1, 1, 1).to(x_t.device)
+        c = - torch.expm1(2 * (lambda_t - lambda_s)).view(-1, 1, 1, 1).to(x_t.device)
         alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
@@ -123,20 +123,37 @@ class SimpleDiffusion(GaussianDiffusion):
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         if clip_denoised:
             x_pred = x_pred.clamp(-1, 1)        
+        
+    def ddpm_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
+        logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
+        logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
+        model_pred = model(x_t, logsnr_t, **model_kwargs)
+        alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
+        sigma_s = torch.sqrt(torch.sigmoid(-logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
+        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
+        sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
+        
+        x0_pred = (x_t - sigma_t * model_pred) / alpha_t
+        mu_t2s = x0_pred * ()
+    def ddim_sample_r(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
+        logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
+        logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
+        #print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
+        model_pred = model(x_t, logsnr_t, **model_kwargs)
+        alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
+        sigma_s = torch.sqrt(torch.sigmoid(-logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
+        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
+        sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
+        if self.pred_term == ModelMeanType.EPSILON:
+            x_pred = (x_t - sigma_t * model_pred) / alpha_t
+        else:
+            raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
+        if clip_denoised:
+            x_pred = x_pred.clamp(-1, 1)        
         # for mu, variance, see https://arxiv.org/pdf/2410.19324
         #print(f'c: {c.shape}, alpha_t: {alpha_t.shape}, sigma_t: {sigma_t.shape}, model_pred: {model_pred.shape}')
-        mu = (alpha_s / alpha_t) * (x_t - sigma_t * model_pred * c)
-        std_lower = sigma_s * torch.sqrt(c)
-        std_higher = sigma_t * torch.sqrt(c)
-        gamma = .3 
-        #alpha_ts = alpha_t / alpha_s # \alpha_{t\mid s}
-        #sigma_ts_sq = sigma_t **2 - alpha_ts * sigma_s **2 # \sigma_{t\mid s}^2
-        #sigma_t2s_sq = 1 / (1/ sigma_s**2 + alpha_ts **2 / sigma_ts_sq) # \sigma_{t\to s}^2
-        #log_sigma_t2s= torch.log(sigma_t2s_sq) 
-        #log_sigma_ts = torch.log(sigma_ts_sq) 
-        logvar = (gamma * torch.log(std_lower) + (1 - gamma) * torch.log(std_higher)) * 2
-        variance = torch.exp(logvar) # \sigma_{t\to s}^\gamma \sigma_{t\mid s}^{1-\gamma}
-        return mu, variance
+        xt_ = alpha_s * x_pred + sigma_s * model_pred
+        return xt_, torch.zeros_like(xt_)
     def p_sample_loop(self, model, shape, noise=None, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, device=None, progress=False, eta=0):
         if noise is None:
             noise = torch.randn(shape, device=device)
@@ -148,7 +165,7 @@ class SimpleDiffusion(GaussianDiffusion):
             u_s = self.used_timesteps[i - 1] / self.diffusion_steps # next t
             u_t = torch.tensor(u_t).to(device).repeat(x.size(0)) # repeat for batch size
             u_s = torch.tensor(u_s).to(device).repeat(x.size(0))
-            z_mu, z_var = self.ddim_sample(model, x, u_t, u_s, clip_denoised, denoised_fn, cond_fn, model_kwargs, eta)
+            z_mu, z_var = self.ddim_sample_r(model, x, u_t, u_s, clip_denoised, denoised_fn, cond_fn, model_kwargs, eta)
             x = z_mu + torch.randn_like(z_mu) * torch.sqrt(z_var)
             xm.mark_step()
         t_lowest = self.used_timesteps[0] / self.diffusion_steps
