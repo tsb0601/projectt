@@ -19,7 +19,7 @@ arch:
       hidden_size: 1024
       input_size: 16
       patch_size: 1
-      depth: 2
+      depth: 4
       num_heads: 16
       num_classes: 1000
       cfg: 0.0

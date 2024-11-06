@@ -82,7 +82,6 @@ class SimpleDiffusion(GaussianDiffusion):
             bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1
             sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
             weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
-            weighted_t = torch.ones_like(weighted_t)
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
 
@@ -97,23 +96,13 @@ class SimpleDiffusion(GaussianDiffusion):
             'loss': loss,
         }
         return terms
-    def lambda_t(self, t: torch.Tensor) -> torch.Tensor: # for cosine schedule only
-        return - torch.log(torch.tan(t * math.pi / 2))
-    def alpha_t(self, t: torch.Tensor) -> torch.Tensor:
-        return torch.cos(.5 * math.pi * t)
-    def sigma_t(self, t: torch.Tensor) -> torch.Tensor:
-        return torch.sin(.5 * math.pi * t)
-    def sqrt_snr(self, t: torch.Tensor) -> torch.Tensor: # signal to noise ratio ** 1/2
-        return torch.tan(.5 * math.pi * t)
-    def ddim_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
+    def ddpm_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
         logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
         logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
         #print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
         model_pred = model(x_t, logsnr_t, **model_kwargs)
-        lambda_t = self.lambda_t(t)
-        lambda_s = self.lambda_t(s)
-        c = - torch.expm1(2 * (lambda_t - lambda_s)).view(-1, 1, 1, 1).to(x_t.device)
-        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
+        c = torch.exp(logsnr_t - logsnr_s).view(-1, 1, 1, 1).to(x_t.device)
+        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device) 
         sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
         alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
         sigma_s = torch.sqrt(torch.sigmoid(-logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
@@ -123,18 +112,14 @@ class SimpleDiffusion(GaussianDiffusion):
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         if clip_denoised:
             x_pred = x_pred.clamp(-1, 1)        
-        
-    def ddpm_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
-        logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
-        logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
-        model_pred = model(x_t, logsnr_t, **model_kwargs)
-        alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
-        sigma_s = torch.sqrt(torch.sigmoid(-logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
-        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
-        sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
-        
-        x0_pred = (x_t - sigma_t * model_pred) / alpha_t
-        mu_t2s = x0_pred * ()
+        mu = c * alpha_s * x_t * torch.reciprocal(alpha_t) + (1-c) * alpha_s * x_pred
+        logvar_min = (1 - c) + F.logsigmoid(-logsnr_s).view(-1, 1, 1, 1)
+        logvar_max = (1 - c) + F.logsigmoid(-logsnr_t).view(-1, 1, 1, 1)
+        gamma = .2
+        logvar = gamma * logvar_max + (1 - gamma) * logvar_min
+        variance = torch.exp(logvar)
+        return mu, variance
+
     def ddim_sample_r(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
         logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
         logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
@@ -165,7 +150,7 @@ class SimpleDiffusion(GaussianDiffusion):
             u_s = self.used_timesteps[i - 1] / self.diffusion_steps # next t
             u_t = torch.tensor(u_t).to(device).repeat(x.size(0)) # repeat for batch size
             u_s = torch.tensor(u_s).to(device).repeat(x.size(0))
-            z_mu, z_var = self.ddim_sample_r(model, x, u_t, u_s, clip_denoised, denoised_fn, cond_fn, model_kwargs, eta)
+            z_mu, z_var = self.ddpm_sample(model, x, u_t, u_s, clip_denoised, denoised_fn, cond_fn, model_kwargs, eta)
             x = z_mu + torch.randn_like(z_mu) * torch.sqrt(z_var)
             xm.mark_step()
         t_lowest = self.used_timesteps[0] / self.diffusion_steps
