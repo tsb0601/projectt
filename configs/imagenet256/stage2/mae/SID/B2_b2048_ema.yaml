@@ -34,6 +34,7 @@ arch:
       n_samples: 2
       do_beta_rescaling: false
       use_simple_diffusion: true
+      use_loss_weighting: true
   checkpointing: false
   ema: 0.99
 optimizer:
