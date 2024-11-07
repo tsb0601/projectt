@@ -1,7 +1,7 @@
 dataset:
-  type: imagenet
+  type: imagenet_overfit
   transforms:
-    type: imagenetDiT256x256
+    type: imagenet256x256
 
 arch:
   stage: 2
@@ -23,7 +23,7 @@ arch:
       hidden_size: 1024
       input_size: 16
       patch_size: 1
-      depth: 24
+      depth: 4
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
@@ -32,32 +32,64 @@ arch:
       noise_schedule: 'linear'
       inference_step: 250
       n_samples: 2
-      do_beta_rescaling: true
+      do_beta_rescaling: false
       use_simple_diffusion: true
-      use_loss_weighting: true
-  checkpointing: false
-  ema: 0.99
+      use_loss_weighting: false
+    checkpointing: false
+  ema: 0.9999
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 8.0e-4
+  init_lr: 2.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
   amp: true
   warmup:
-    epoch: 80
+    epoch: 1
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.0e-4
+    min_lr: 0.
     mode: fix
     start_from_zero: false
 
 experiment:
-  batch_size: 2
+  batch_size: 1
   accu_step: 1
-  epochs: 80
-  save_ckpt_freq: 40
-  test_freq: 10
+  epochs: 3
+  save_ckpt_freq: 1000
+  test_freq: 1
   amp: false
-  actual_batch_size: 2048
+
+gan:
+  disc:
+    arch:
+      in_channels: 3
+      num_layers: 2
+      use_actnorm: false
+      ndf: 64
+      spectral_norm: false
+      amp: true
+    optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adamw
+      init_lr: 1.0e-3
+      weight_decay: 0.0
+      betas: [0.9, 0.95]
+      max_gn: None
+      warmup:
+        epoch: 5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 0.
+        mode: fix
+        start_from_zero: true
+    experiment:
+      test_freq: 1
+      amp: false
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: .75
+    perceptual_weight: 0.
+    disc_start: 100000

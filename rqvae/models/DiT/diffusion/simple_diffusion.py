@@ -104,12 +104,13 @@ class SimpleDiffusion(GaussianDiffusion):
         """
         get w^(λ_t)
         by default weighting, w^(λ_t) = p(λ_t) , in eps prediction loss
-        every other weight is divided by p(λ_t) so you can directly use get_weight(t) * (pred - eps) ** 2
+        the returned weight is divided by p(λ_t) so you can directly use get_weight(t) * (pred - eps) ** 2
         """
         lambda_t = self.logsnr_t(t, self.schedule).view(-1, 1, 1, 1).to(t.device)
         if self.loss_type == LossType.WEIGHTED_MSE:
             # do sigmoid weighting
             bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1
+            #print(f'bias: {bias}')
             sigmoid_weight_t = torch.sigmoid(-lambda_t + bias)
             # mse prediction weight is sech(lambda_t/2) = 2 / (exp(lambda_t/2) + exp(-lambda_t/2))
             mse_weight_t = 2 / (torch.exp(lambda_t / 2) + torch.exp(-lambda_t / 2))
