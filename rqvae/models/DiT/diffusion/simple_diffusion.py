@@ -114,7 +114,7 @@ class SimpleDiffusion(GaussianDiffusion):
             # mse prediction weight is sech(lambda_t/2) = 2 / (exp(lambda_t/2) + exp(-lambda_t/2))
             mse_weight_t = 2 / (torch.exp(lambda_t / 2) + torch.exp(-lambda_t / 2))
             weight_t = sigmoid_weight_t / mse_weight_t 
-            weight_t = torch.ones_like(lambda_t)
+            #weight_t = torch.ones_like(lambda_t)
             return weight_t
         elif self.loss_type == LossType.MSE:
             return torch.ones_like(lambda_t)
