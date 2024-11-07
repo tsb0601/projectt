@@ -128,7 +128,7 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     return betas
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
+def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.99999):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function,
     which defines the cumulative product of (1-beta) over time from t = [0,1].
@@ -182,10 +182,6 @@ class GaussianDiffusion:
         self.input_base_dimension_ratio = input_base_dimension_ratio
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         # scale according to the input base dimension ratio
-        # alphas_cumprod_new = alphas_cumprod / (d + (1 - d) * alphas_cumprod)
-        self.alphas_cumprod = self.alphas_cumprod / ( 
-            input_base_dimension_ratio  + (1 - input_base_dimension_ratio ) * self.alphas_cumprod
-        )
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
         self.alphas_cumprod_next = np.append(self.alphas_cumprod[1:], 0.0)
         assert self.alphas_cumprod_prev.shape == (self.num_timesteps,)
@@ -790,7 +786,13 @@ class GaussianDiffusion:
         terms = {}
         x_t = self.q_sample(x_start, t, noise=noise)
         terms['x_t'] = x_t
-
+        # calculate lambda_t = log (alpha_t**2 / sigma_t**2)
+        alpha_t_sq = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape) # [N x]
+        sigma_t_sq = 1 - alpha_t_sq
+        lambda_t = th.log(alpha_t_sq / sigma_t_sq)
+        sigmoid_weight = th.sigmoid(-lambda_t - 1)
+        sigmoid_weight = th.ones_like(sigmoid_weight)
+        #print(f"lambda_t: {lambda_t}, t: {t}, sigmoid_weight: {sigmoid_weight}")
         if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
             terms["loss"] = self._vb_terms_bpd(
                 model=model,
@@ -835,7 +837,7 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
-            terms["mse"] = mean_flat((target - model_output) ** 2)
+            terms["mse"] = mean_flat(sigmoid_weight *  (target - model_output) ** 2)
             if "vb" in terms:
                 terms["loss"] = terms["mse"] + terms["vb"]
             else:

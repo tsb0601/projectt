@@ -25,8 +25,8 @@ def create_diffusion(
         diffusion = SimpleDiffusion(
             size_ratio=input_base_dimension_ratio,
             schedule=gd.ScheduleType.COSINE,
-            pred_term=gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X,
-            loss_type=gd.LossType.WEIGHTED_MSE if not use_kl else gd.LossType.RESCALED_KL,
+            pred_term=gd.ModelMeanType.VELOCITY,
+            loss_type=gd.LossType.WEIGHTED_MSE,
             diffusion_steps=diffusion_steps,
             used_timesteps = space_timesteps(diffusion_steps, timestep_respacing)
         )

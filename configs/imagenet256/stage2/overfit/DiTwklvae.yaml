@@ -6,25 +6,23 @@ dataset:
 arch:
   stage: 2
   stage_1:
-    target: rqvae.models.identity.Identity_Stage1
+    target: rqvae.models.klvae.Stage1_KLVAE
     params:
-      hidden_dim: 768
-      input_size: 256
-      in_channels: 3
-    checkpointing: false
+      ckpt_path: './ckpt_gcs/model_zoo/klvae/mse'
+      sample: false
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
       # DiT B/1 Recipe
       hidden_size: 1024
-      input_size: 16
-      patch_size: 1
+      input_size: 32
+      patch_size: 2
       depth: 2
       num_heads: 16
       num_classes: 1000
       cfg: 0.0
-      in_channels: 768
-      learn_sigma: true
+      in_channels: 4
+      learn_sigma: false
       noise_schedule: 'squaredcos_cap_v2'
       inference_step: 250
       #do_beta_rescaling: true

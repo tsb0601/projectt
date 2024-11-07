@@ -1,6 +1,5 @@
-from ast import List, Set, Tuple
 from git import Union
-from platformdirs import user_documents_dir
+from matplotlib.font_manager import weight_dict
 from tqdm import tqdm
 from .gaussian_diffusion import *
 import torch
@@ -50,6 +49,7 @@ class SimpleDiffusion(GaussianDiffusion):
         if schedule == ScheduleType.SHIFTED_CONSINE:
             logsnr_t += 2 * self.log_ratio
         return logsnr_t
+    
     def q_sample(self, x_start, alpha_t, sigma_t, noise= None):
         if noise is None:
             noise = torch.randn_like(x_start)
@@ -70,53 +70,84 @@ class SimpleDiffusion(GaussianDiffusion):
         if self.pred_term == ModelMeanType.EPSILON:
             eps_pred = model_pred
             target = noise
+        elif self.pred_term == ModelMeanType.VELOCITY: # SID uses mse loss for velocity
+            target = noise
+            eps_pred = sigma_t * z_t + alpha_t * model_pred
+            
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         
         # see https://arxiv.org/pdf/2303.09556
-        if self.pred_term == ModelMeanType.EPSILON:
-            #weighted_t = torch.clamp(snr, max = 5) / snr
-            #weighted_t = weighted_t.view(-1, 1, 1, 1)
-            #weighted_t = torch.ones_like(weighted_t)
-            bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1
-            sigmoid_weight_t = torch.sigmoid(-logsnr_t + bias)
-            weighted_t = sigmoid_weight_t.view(-1, 1, 1, 1)
-        else:
-            raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
-
-        if self.loss_type == LossType.WEIGHTED_MSE:
-            loss = mean_flat(weighted_t * (eps_pred - target) ** 2)
-        elif self.loss_type == LossType.MSE:
-            loss = mean_flat((eps_pred - target) ** 2)
-        else:
-            raise NotImplementedError(f'Invalid loss type {self.loss_type}')
+        mse_target = (eps_pred - target) ** 2
+        weight = self.get_weight(t)
+        loss = mean_flat(weight * mse_target)
         terms = {
             'mse': loss,
             'loss': loss,
         }
         return terms
+    def get_alpha_sigma_from_logsnr(self, logsnr_t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(logsnr_t.device)
+        sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(logsnr_t.device)
+        return alpha_t, sigma_t
+    def x0_from_pred(self, x_t: torch.Tensor, t: torch.Tensor, model_pred: torch.Tensor)-> torch.Tensor:
+        logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
+        alpha_t, sigma_t = self.get_alpha_sigma_from_logsnr(logsnr_t)
+        if self.pred_term == ModelMeanType.EPSILON:
+            x_pred = (x_t - sigma_t * model_pred) / alpha_t
+        elif self.pred_term == ModelMeanType.VELOCITY:
+            x_pred = alpha_t * x_t - sigma_t * model_pred
+        else:
+            raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
+        return x_pred
+    def get_weight(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        get w^(λ_t)
+        by default weighting, w^(λ_t) = p(λ_t) , in eps prediction loss
+        every other weight is divided by p(λ_t) so you can directly use get_weight(t) * (pred - eps) ** 2
+        """
+        lambda_t = self.logsnr_t(t, self.schedule) 
+        if self.loss_type == LossType.WEIGHTED_MSE:
+            # do sigmoid weighting
+            bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1
+            sigmoid_weight_t = torch.sigmoid(-lambda_t + bias)
+            # mse prediction weight is sech(lambda_t/2) = 2 / (exp(lambda_t/2) + exp(-lambda_t/2))
+            mse_weight_t = 2 / (torch.exp(lambda_t / 2) + torch.exp(-lambda_t / 2))
+            weight_t = sigmoid_weight_t / mse_weight_t 
+            weight_t = torch.ones_like(lambda_t)
+            return weight_t
+        elif self.loss_type == LossType.MSE:
+            return torch.ones_like(lambda_t)
+        else:
+            raise NotImplementedError(f'Invalid loss type {self.loss_type}')
+    def q_mean_variance(self, x_start: torch.Tensor, x_t: torch.Tensor, t: torch.Tensor, s:torch.Tensor, gamma: float = .3) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        gives q(x_s | x_start, x_t)
+        x_start can be x_pred or actual x_0
+        """
+        logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
+        logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
+        alpha_t, sigma_t = self.get_alpha_sigma_from_logsnr(logsnr_t)
+        alpha_s, sigma_s = self.get_alpha_sigma_from_logsnr(logsnr_s)
+        alpha_ts = alpha_t / alpha_s
+        sigma_st = sigma_s / sigma_t # <1, numerically accuracy higher than it's reciprocal in bf16
+        assert torch.all(sigma_st < 1), f'sigma_st: {sigma_st}'
+        sigma_ts_sq = 1 - alpha_ts ** 2
+        mu = (sigma_st ** 2 * alpha_ts) * x_t + (sigma_ts_sq * alpha_s / sigma_t ** 2) * x_start
+        max_var_log = torch.log(sigma_ts_sq)
+        min_var_log = max_var_log + torch.log(sigma_st) * 2
+        logvar = gamma * max_var_log + (1 - gamma) * min_var_log
+        variance = torch.exp(logvar)
+        return mu, variance
     def ddpm_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
         logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
         logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
         #print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
         model_pred = model(x_t, logsnr_t, **model_kwargs)
-        c = torch.exp(logsnr_t - logsnr_s).view(-1, 1, 1, 1).to(x_t.device)
-        alpha_t = torch.sqrt(torch.sigmoid(logsnr_t)).view(-1, 1, 1, 1).to(x_t.device) 
-        sigma_t = torch.sqrt(torch.sigmoid(-logsnr_t)).view(-1, 1, 1, 1).to(x_t.device)
-        alpha_s = torch.sqrt(torch.sigmoid(logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
-        sigma_s = torch.sqrt(torch.sigmoid(-logsnr_s)).view(-1, 1, 1, 1).to(x_t.device)
-        if self.pred_term == ModelMeanType.EPSILON:
-            x_pred = (x_t - sigma_t * model_pred) / alpha_t
-        else:
-            raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
+        x_pred = self.x0_from_pred(x_t, t, model_pred)
         if clip_denoised:
             x_pred = x_pred.clamp(-1, 1)        
-        mu = c * alpha_s * x_t * torch.reciprocal(alpha_t) + (1-c) * alpha_s * x_pred
-        logvar_min = (1 - c) + F.logsigmoid(-logsnr_s).view(-1, 1, 1, 1)
-        logvar_max = (1 - c) + F.logsigmoid(-logsnr_t).view(-1, 1, 1, 1)
-        gamma = .2
-        logvar = gamma * logvar_max + (1 - gamma) * logvar_min
-        variance = torch.exp(logvar)
+        mu, variance = self.q_mean_variance(x_pred, x_t, t, s)
         return mu, variance
 
     def ddim_sample_r(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
@@ -155,13 +186,8 @@ class SimpleDiffusion(GaussianDiffusion):
         t_lowest = self.used_timesteps[0] / self.diffusion_steps
         t_lowest = torch.tensor(t_lowest).to(device).repeat(x.size(0))
         logsnr_t_lowest = self.logsnr_t(t_lowest, self.schedule).to(device)
-        alpha_lowest = torch.sqrt(torch.sigmoid(logsnr_t_lowest)).view(-1, 1, 1, 1).to(device)
-        sigma_lowest = torch.sqrt(torch.sigmoid(-logsnr_t_lowest)).view(-1, 1, 1, 1).to(device)
         model_pred = model(x, logsnr_t_lowest, **model_kwargs)
-        if self.pred_term == ModelMeanType.EPSILON:
-            x_pred = (x - sigma_lowest * model_pred) / alpha_lowest
-        else:
-            raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
+        x_pred = self.x0_from_pred(x, t_lowest, model_pred) # zero variance
         if clip_denoised:
             x_pred = x_pred.clamp(-1, 1)
         return x_pred
