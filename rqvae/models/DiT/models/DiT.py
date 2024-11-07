@@ -278,7 +278,7 @@ class DiT(nn.Module):
         self.class_dropout_prob = class_dropout_prob
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
-        self.t_embedder = GaussianFourierEmbedding(hidden_size)
+        #self.t_embedder = GaussianFourierEmbedding(hidden_size)
         self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
         
         num_patches = self.x_embedder.num_patches
