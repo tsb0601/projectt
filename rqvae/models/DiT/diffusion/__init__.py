@@ -18,6 +18,7 @@ def create_diffusion(
     diffusion_steps=1000,
     input_base_dimension_ratio: float = 1.0,
     use_simple_diffusion: bool = False,
+    use_loss_weighting: bool = False,
 ) -> gd.GaussianDiffusion:
     if timestep_respacing is None or timestep_respacing == "":
         timestep_respacing = [diffusion_steps]
@@ -26,7 +27,7 @@ def create_diffusion(
             size_ratio=input_base_dimension_ratio,
             schedule=gd.ScheduleType.COSINE,
             pred_term=gd.ModelMeanType.VELOCITY,
-            loss_type=gd.LossType.WEIGHTED_MSE,
+            loss_type=gd.LossType.WEIGHTED_MSE if use_loss_weighting else gd.LossType.MSE,
             diffusion_steps=diffusion_steps,
             used_timesteps = space_timesteps(diffusion_steps, timestep_respacing)
         )

@@ -80,6 +80,7 @@ class SimpleDiffusion(GaussianDiffusion):
         # see https://arxiv.org/pdf/2303.09556
         mse_target = (eps_pred - target) ** 2
         weight = self.get_weight(t)
+        print(f'weight: {weight}')
         loss = mean_flat(weight * mse_target)
         terms = {
             'mse': loss,
@@ -106,7 +107,7 @@ class SimpleDiffusion(GaussianDiffusion):
         by default weighting, w^(λ_t) = p(λ_t) , in eps prediction loss
         every other weight is divided by p(λ_t) so you can directly use get_weight(t) * (pred - eps) ** 2
         """
-        lambda_t = self.logsnr_t(t, self.schedule) 
+        lambda_t = self.logsnr_t(t, self.schedule).view(-1, 1, 1, 1).to(t.device)
         if self.loss_type == LossType.WEIGHTED_MSE:
             # do sigmoid weighting
             bias = - 2 * int(math.log2(1 / self.size_ratio))  + 1

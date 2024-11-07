@@ -1,3 +1,4 @@
+from sympy import use
 from rqvae.models.basicblocks.utils import zero_module
 from .models import *
 import torch
@@ -28,6 +29,7 @@ class DiT_Stage2(Stage2Model):
         n_samples: int = 125,
         do_beta_rescaling: bool = False,
         use_simple_diffusion: bool = False,
+        use_loss_weighting: bool = False,
         class_cls_str: str = "rqvae.models.DiT.models.DiT",
         **kwargs,
     ):
@@ -68,6 +70,7 @@ class DiT_Stage2(Stage2Model):
             noise_schedule=noise_schedule,
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
+            use_loss_weighting=use_loss_weighting,
         )  # like DiT we set default 1000 timesteps
         self.infer_diffusion = create_diffusion(
             timestep_respacing=str(self.inference_step),
@@ -75,6 +78,7 @@ class DiT_Stage2(Stage2Model):
             noise_schedule=noise_schedule,
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
+            use_loss_weighting=use_loss_weighting,
         )
         self.use_simple_diffusion = use_simple_diffusion
         self.input_size = input_size
