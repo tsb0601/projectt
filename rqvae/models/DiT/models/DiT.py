@@ -70,7 +70,26 @@ class GaussianFourierEmbedding(nn.Module):
     """
     Gaussian Fourier Embedding for timesteps. 
     """
-
+    embedding_size: int = 256
+    scale: float = 1.0
+    def __init__(self, hidden_size: int, embedding_size: int = 256, scale: float = 1.0):
+        super().__init__()
+        self.embedding_size = embedding_size
+        self.scale = scale
+        self.W = nn.Parameter(torch.normal(0, self.scale, (embedding_size,)), requires_grad=False)
+        self.mlp = nn.Sequential(
+            nn.Linear(embedding_size * 2, hidden_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size, bias=True),
+        )
+    def forward(self, t):
+        with torch.no_grad():
+            W = self.W # stop gradient manually
+        t = t[:, None] * W[None, :] * 2 * torch.pi
+        # Concatenate sine and cosine transformations
+        t_embed =  torch.cat([torch.sin(t), torch.cos(t)], dim=-1)
+        t_embed = self.mlp(t_embed)
+        return t_embed
 class LabelEmbedder(nn.Module):
     """
     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
@@ -259,7 +278,9 @@ class DiT(nn.Module):
         self.class_dropout_prob = class_dropout_prob
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
+        self.t_embedder = GaussianFourierEmbedding(hidden_size)
         self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
+        
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
