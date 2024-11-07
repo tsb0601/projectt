@@ -15,8 +15,8 @@ import numpy as np
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 from rqvae.models.interfaces import Stage2Model
-from .diffusion import create_diffusion
-from .blocks import ConvEncoder, ConvDecoder
+from ..diffusion import create_diffusion
+from ..blocks import ConvEncoder, ConvDecoder
 from header import *
 from rqvae.models.basicblocks.basics import ConvMlp
 from transformers import Dinov2Model
@@ -66,7 +66,10 @@ class TimestepEmbedder(nn.Module):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         t_emb = self.mlp(t_freq)
         return t_emb
-
+class GaussianFourierEmbedding(nn.Module):
+    """
+    Gaussian Fourier Embedding for timesteps. 
+    """
 
 class LabelEmbedder(nn.Module):
     """

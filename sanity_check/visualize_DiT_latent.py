@@ -15,7 +15,7 @@ import sys
 import os
 from omegaconf import OmegaConf
 from check_utils import *
-from rqvae.models.DiT.models import DiT
+from rqvae.models.DiT.models.DiT import DiT
 import torch.nn.functional as F
 from sklearn.decomposition import PCA
 from timm.models.vision_transformer import  Attention

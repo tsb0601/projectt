@@ -1,6 +1,5 @@
-from sympy import use
 from rqvae.models.basicblocks.utils import zero_module
-from .models import *
+from .models.DiT import *
 import torch
 from ..interfaces import *
 from .diffusion import create_diffusion, SimpleDiffusion
@@ -30,7 +29,7 @@ class DiT_Stage2(Stage2Model):
         do_beta_rescaling: bool = False,
         use_simple_diffusion: bool = False,
         use_loss_weighting: bool = False,
-        class_cls_str: str = "rqvae.models.DiT.models.DiT",
+        class_cls_str: str = "rqvae.models.DiT.models.DiT.DiT",
         **kwargs,
     ):
         super().__init__()

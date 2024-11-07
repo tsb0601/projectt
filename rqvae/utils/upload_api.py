@@ -1,6 +1,5 @@
 import asyncio
 import sys
-from rqvae.utils.upload import USER_NAME
 async def upload_file(args: tuple):
     # Construct the command with the arguments
     command = [sys.executable, './rqvae/utils/upload.py'] + list(args)
