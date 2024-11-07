@@ -80,7 +80,6 @@ class SimpleDiffusion(GaussianDiffusion):
         # see https://arxiv.org/pdf/2303.09556
         mse_target = (eps_pred - target) ** 2
         weight = self.get_weight(t)
-        print(f'weight: {weight}')
         loss = mean_flat(weight * mse_target)
         terms = {
             'mse': loss,
