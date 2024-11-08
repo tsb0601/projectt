@@ -10,6 +10,7 @@ arch:
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
+      do_decoder_embed_in_encode: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
@@ -75,3 +76,4 @@ gan:
     perceptual_weight: .75
     disc_start: 100000
     lpips_start: 0
+    disc_upd_start: 100000

@@ -361,7 +361,7 @@ class MultiStageDiT_Stage2(Stage2Model):
         )
 
     def get_last_layer(self):
-        return self.model.stages[-1].final_layer.weight
+        return self.model.final_layer.weight
 
     def requires_grad_(self, requires_grad: bool = True):
         super().requires_grad_(requires_grad)

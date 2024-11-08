@@ -83,7 +83,7 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, loss_type: str = 'l1')->None:
+    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, loss_type: str = 'l1', do_decoder_embed_in_encode: bool = False)->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -118,6 +118,7 @@ class Stage1MAE(Stage1Model):
         self.register_buffer('default_id_restore', default_id_restore)
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
+        self.do_encoder_embed_in_decode = do_decoder_embed_in_encode
         self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
         assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
@@ -149,6 +150,7 @@ class Stage1MAE(Stage1Model):
         noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
         outputs = self.model.vit(xs, noise=noise)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
+        latent = self.model.decoder.decoder_embed(latent) if self.do_encoder_embed_in_decode else latent
         encodings = Stage1Encodings(
             zs = latent,
             additional_attr = {'outputs': outputs,
@@ -160,7 +162,7 @@ class Stage1MAE(Stage1Model):
         ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
-        outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls)
+        outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls, do_decoder_embed = not self.do_encoder_embed_in_decode)
         logits = outputs.logits
         xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean

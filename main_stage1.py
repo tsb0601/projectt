@@ -137,7 +137,7 @@ def main(rank, args, extra_args):
         xm.master_print(f'[!]caching latent for train and valid dataset')
         trainer.cache_latent(feature_path=train_save_path, valid=False)
         xm.master_print(f'[!]caching latent for valid dataset')
-        trainer.cache_latent(feature_path=valid_save_path, valid = True)
+        trainer.cache_latent(feature_path=valid_save_path, valid =True)
     elif args.action == 'gen':
         trainer.batch_infer(valid=True, save_root=args.result_path)
     elif args.action == 'eval':

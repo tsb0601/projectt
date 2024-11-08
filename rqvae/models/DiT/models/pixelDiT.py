@@ -216,13 +216,18 @@ class SingleStage(nn.Module):
         self.final_layer = final_layer
         self.components = [x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer]
     def forward(self, x, t, y):
+        #print('x', x.shape, 't', t.shape, 'y', y.shape)
         x = self.x_embedder(x) + self.pos_embed
+        #print('embeded x', x.shape)
         t = self.t_embedder(t)
         y = self.y_embedder(y, self.training)
         c = t + y
+        #print('c', c.shape)
         for block in self.blocks:
             x = block(x, c)
+            #print('block', x.shape)
         x = self.final_layer(x)
+        #print('final layer', x.shape)
         return x
     def __getitem__(self, idx): # support dataclass-like indexing
         return self.components[idx]
@@ -310,22 +315,31 @@ class MultiStageDiT(nn.Module):
         num_stages = len(patch_sizes)
         self.stages:nn.ModuleList[SingleStage] = nn.ModuleList()
         for i in range(num_stages):
+            assert widths[i] % num_heads[i] == 0, f'widths[{i}]={widths[i]} must be divisible by num_heads[{i}]={num_heads[i]}'
+            assert widths[i] % patch_sizes[i] == 0, f'widths[{i}]={widths[i]} must be divisible by patch_sizes[{i}]={patch_sizes[i]}'
             stage = self.build_single_stage(
                 input_size = input_size,
                 patch_size = patch_sizes[i],
-                input_token_dimension = in_channels,
+                input_token_dimension = widths[i-1] // (patch_sizes[i-1] ** 2) if i > 0 else in_channels,
                 depth = depths[i],
                 width = widths[i],
                 window_size = window_sizes[i],
                 num_heads = num_heads[i],
                 mlp_ratio = mlp_ratios[i],
                 num_classes = num_classes,
-                class_dropout_prob = class_dropout_prob
+                class_dropout_prob = class_dropout_prob,
+                is_last_stage = i == num_stages - 1
             )
             self.stages.append(stage)
+        self.final_layer = nn.Linear(widths[-1], patch_sizes[-1] ** 2 * in_channels)
+        # init final layer
+        nn.init.constant_(self.final_layer.weight, 0)
+        nn.init.constant_(self.final_layer.bias, 0)
     def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor):
-        for stage in self.stages:
+        for i, stage in enumerate(self.stages):
             x = stage(x, t, y)
+            if i == len(self.stages) - 1:
+                x = self.final_layer(x)
             x = self.unpatchify(x, stage) # unpatchify to (N, C, H, W)
         return x
     @staticmethod
@@ -349,6 +363,7 @@ class MultiStageDiT(nn.Module):
         mlp_ratio: float,
         num_classes: int,
         class_dropout_prob: float,
+        is_last_stage: bool = False
     ):
         x_embedder = PatchEmbed(
             img_size= input_size,
@@ -370,11 +385,7 @@ class MultiStageDiT(nn.Module):
             ) for _ in range(depth)
         ])
         # use a linear final layer instead of a mlp
-        final_layer = nn.Linear(
-            in_features = width,
-            out_features = patch_size * patch_size * input_token_dimension,
-            bias = True
-        )
+        final_layer =nn.Identity() # for non-last stages, the output is the input to the next stage
         stage = SingleStage(x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer)
         self.init_single_stage(stage)
         return stage
@@ -385,7 +396,8 @@ class MultiStageDiT(nn.Module):
         """
         x_embedder: PatchEmbed = stage.x_embedder
         p = x_embedder.patch_size[0]
-        c = self.in_channels
+        c = x.shape[-1] // (p * p)
+        assert c * p * p == x.shape[-1], f'c={c}, p={p}, x.shape={x.shape}'
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
         x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
@@ -427,9 +439,10 @@ class MultiStageDiT(nn.Module):
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
             
-        final_layer: nn.Linear
+        final_layer: Union[nn.Linear, nn.Identity]
         # Zero-out output layers:
-        nn.init.constant_(final_layer.weight, 0)
-        nn.init.constant_(final_layer.bias, 0)
+        if isinstance(final_layer, nn.Linear):
+            nn.init.constant_(final_layer.weight, 0)
+            nn.init.constant_(final_layer.bias, 0)
     
         
