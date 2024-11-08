@@ -6,11 +6,16 @@ dataset:
 arch:
   stage: 2
   stage_1:
-    target: rqvae.models.identity.Identity_Stage1
+    target: rqvae.models.MAE.Stage1MAE
     params:
-      hidden_dim: 3
-      input_size: 256
-      in_channels: 3
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+      no_cls: true
+  connector:
+    target: rqvae.models.connectors.ReshapeAndSplit_connector
+    params:
+      split: 1
+      remove_cls: true
+    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   stage_2:
     target: rqvae.models.DiT.MultiStageDiT_Stage2
     params:
