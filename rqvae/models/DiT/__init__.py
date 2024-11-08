@@ -70,6 +70,7 @@ class DiT_Stage2(Stage2Model):
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
             use_loss_weighting=use_loss_weighting,
+            #predict_xstart= True
         )  # like DiT we set default 1000 timesteps
         self.infer_diffusion = create_diffusion(
             timestep_respacing=str(self.inference_step),
@@ -78,6 +79,7 @@ class DiT_Stage2(Stage2Model):
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
             use_loss_weighting=use_loss_weighting,
+            #predict_xstart= True
         )
         self.use_simple_diffusion = use_simple_diffusion
         self.input_size = input_size
