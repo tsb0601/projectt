@@ -1,6 +1,8 @@
 from sqlite3 import Time
 from typing import Union
-from .DiT import DiTBlock, TimestepEmbedder, GaussianFourierEmbedding, PatchEmbed, LabelEmbedder, get_2d_sincos_pos_embed
+
+from attr import dataclass
+from .DiT import DiTBlock, TimestepEmbedder, GaussianFourierEmbedding, PatchEmbed, LabelEmbedder, get_2d_sincos_pos_embed, modulate, Mlp
 import torch.nn as nn
 import torch
 from transformers import VitDetModel
@@ -83,7 +85,7 @@ class VitDetAttention(nn.Module):
 
     def __init__(self,
         hidden_size: int,
-        num_attention_heads: int,
+        num_heads: int,
         input_size: int,
         qkv_bias: bool = False,
         use_relative_position_embeddings: bool = False,
@@ -98,8 +100,6 @@ class VitDetAttention(nn.Module):
         super().__init__()
 
         dim = hidden_size
-        num_heads = num_attention_heads
-
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
@@ -144,10 +144,143 @@ class VitDetAttention(nn.Module):
             outputs = (hidden_state,)
 
         return outputs
+def window_partition(hidden_state, window_size):
+    """
+    Partition into non-overlapping windows with padding if needed.
 
+    Args:
+        hidden_state (`torch.Tensor`):
+            Input tokens with [batch_size, height, width, num_channels].
+        window_size (`int`):
+            Window size.
+
+    Returns:
+        `tuple(torch.FloatTensor)` comprising various elements:
+        - windows: windows after partition with [batch_size * num_windows, window_size, window_size, num_channels].
+        - (padded_height, padded_width): padded height and width before partition
+    """
+    batch_size, height, width, num_channels = hidden_state.shape
+
+    pad_height = (window_size - height % window_size) % window_size
+    pad_width = (window_size - width % window_size) % window_size
+
+    # Noop in case pad_width == 0 and pad_height == 0.
+    hidden_state = nn.functional.pad(hidden_state, (0, 0, 0, pad_width, 0, pad_height))
+
+    padded_height, padded_width = height + pad_height, width + pad_width
+
+    hidden_state = hidden_state.view(
+        batch_size, padded_height // window_size, window_size, padded_width // window_size, window_size, num_channels
+    )
+    windows = hidden_state.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, num_channels)
+    return windows, (padded_height, padded_width)
+
+
+def window_unpartition(windows, window_size, pad_height_width, height_width):
+    """
+    Window unpartition into original sequences and removing padding.
+
+    Args:
+        windows (`torch.Tensor`):
+            Input tokens with [batch_size * num_windows, window_size, window_size, num_channels].
+        window_size (`int`):
+            Window size.
+        pad_height_width (`Tuple[int]`):
+            Padded height and width (padded_height, padded_width).
+        height_width (`Tuple[int]`):
+            Original height and width before padding.
+
+    Returns:
+        hidden_state: unpartitioned sequences with [batch_size, height, width, num_channels].
+    """
+    padded_height, padded_width = pad_height_width
+    height, width = height_width
+    batch_size = windows.shape[0] // (padded_height * padded_width // window_size // window_size)
+    hidden_state = windows.view(
+        batch_size, padded_height // window_size, padded_width // window_size, window_size, window_size, -1
+    )
+    hidden_state = hidden_state.permute(0, 1, 3, 2, 4, 5).contiguous()
+    hidden_state = hidden_state.view(batch_size, padded_height, padded_width, -1)
+
+    # We always have height <= padded_height and width <= padded_width
+    hidden_state = hidden_state[:, :height, :width, :].contiguous()
+    return hidden_state
+class SingleStage(nn.Module):
+    def __init__(self, x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer):
+        super().__init__()
+        self.x_embedder = x_embedder
+        self.pos_embed = pos_embed
+        self.t_embedder = t_embedder
+        self.y_embedder = y_embedder
+        self.blocks = blocks
+        self.final_layer = final_layer
+        self.components = [x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer]
+    def forward(self, x, t, y):
+        x = self.x_embedder(x) + self.pos_embed
+        t = self.t_embedder(t)
+        y = self.y_embedder(y, self.training)
+        c = t + y
+        for block in self.blocks:
+            x = block(x, c)
+        x = self.final_layer(x)
+        return x
+    def __getitem__(self, idx): # support dataclass-like indexing
+        return self.components[idx]
+class DiTBlockwWindowAttention(nn.Module):
+    """
+    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
+    """
+    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, window_size:int = 16, adaLN: nn.Module=None, **block_kwargs):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.attn = VitDetAttention(hidden_size,
+            num_heads=num_heads, 
+            input_size=(window_size, window_size),
+            qkv_bias=True,
+            **block_kwargs)
+        self.window_size = window_size
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        if adaLN is None:
+            self.adaLN_modulation = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(hidden_size, 6 * hidden_size, bias=True)
+            )
+        else:
+            self.adaLN_modulation = adaLN
+    def do_windowattention(self, x):
+        """
+        x: [N, T, D]
+        first convert to [N, H, W, D], do window partitioning, attention, unpartitioning
+        then convert back to [N, T, D]
+        """
+        h = w = int(x.shape[1] ** 0.5)
+        x = x.reshape(shape=(x.shape[0], h, w, -1))
+        #print('before partition', x.shape, 'window size', self.window_size)
+        xs, pad_hw = window_partition(x, self.window_size)
+        #print('before attn', xs.shape, pad_hw)
+        attn_outputs = self.attn(
+            xs,
+            output_attentions=False
+        )
+        #print('after attn', attn_outputs[0].shape)
+        x = window_unpartition(attn_outputs[0], self.window_size, pad_hw, (h, w))
+        #print('after unpartition', x.shape)
+        # reshape back to [N, T, D]
+        x = x.reshape(shape=(x.shape[0], -1, x.shape[-1]))
+        #print('after reshape', x.shape)
+        return x
+    def forward(self, x, c):
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
+        x = x + gate_msa.unsqueeze(1) * self.do_windowattention(modulate(self.norm1(x), shift_msa, scale_msa))
+        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
+        return x
 class MultiStageDiT(nn.Module):
     def __init__(self,
         input_size :int =32,
+        num_classes: int = 1000,
         class_dropout_prob: float=0.1,
         learn_sigma : bool =True,
         shared_adaln: bool = False,
@@ -158,6 +291,8 @@ class MultiStageDiT(nn.Module):
         widths: Union[list[int], tuple[int]] = (64, 1024, 64),
         num_heads: Union[list[int], tuple[int]] = (4, 16, 4),
         mlp_ratios: Union[list[float], tuple[float]] = (4.0, 4.0, 4.0),
+        window_sizes: Union[list[int], tuple[int]] = (16, 256, 16),
+        **kwargs
     ):
         super().__init__()
         self.input_size = input_size
@@ -171,6 +306,28 @@ class MultiStageDiT(nn.Module):
         self.inflated_size = inflated_size
         self.shared_adaln = shared_adaln
         self.in_channels = in_channels
+        self.window_sizes = window_sizes
+        num_stages = len(patch_sizes)
+        self.stages:nn.ModuleList[SingleStage] = nn.ModuleList()
+        for i in range(num_stages):
+            stage = self.build_single_stage(
+                input_size = input_size,
+                patch_size = patch_sizes[i],
+                input_token_dimension = in_channels,
+                depth = depths[i],
+                width = widths[i],
+                window_size = window_sizes[i],
+                num_heads = num_heads[i],
+                mlp_ratio = mlp_ratios[i],
+                num_classes = num_classes,
+                class_dropout_prob = class_dropout_prob
+            )
+            self.stages.append(stage)
+    def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor):
+        for stage in self.stages:
+            x = stage(x, t, y)
+            x = self.unpatchify(x, stage) # unpatchify to (N, C, H, W)
+        return x
     @staticmethod
     def adaln_zero(hidden_size: int ):
         """
@@ -187,6 +344,7 @@ class MultiStageDiT(nn.Module):
         input_token_dimension: int,
         depth: int,
         width: int,
+        window_size: int,
         num_heads: int,
         mlp_ratio: float,
         num_classes: int,
@@ -203,10 +361,11 @@ class MultiStageDiT(nn.Module):
         y_embedder = LabelEmbedder(num_classes, width, class_dropout_prob)
         adaLN = self.adaln_zero(width) if self.shared_adaln else None
         blocks = nn.ModuleList([
-            DiTBlock(
-                dim = width,
+            DiTBlockwWindowAttention(
+                hidden_size = width,
                 num_heads = num_heads,
                 mlp_ratio = mlp_ratio,
+                window_size = window_size,
                 adaLN = adaLN,
             ) for _ in range(depth)
         ])
@@ -216,15 +375,15 @@ class MultiStageDiT(nn.Module):
             out_features = patch_size * patch_size * input_token_dimension,
             bias = True
         )
-        stage = nn.ModuleList([x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer])
+        stage = SingleStage(x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer)
         self.init_single_stage(stage)
         return stage
-    def unpatchify(self, x: torch.Tensor, stage: nn.ModuleList):
+    def unpatchify(self, x: torch.Tensor, stage: SingleStage):
         """
         Unpatchify a tensor of shape (N, T, D) 
         to (N, in_channels, inflated_size, inflated_size)
         """
-        x_embedder: PatchEmbed = stage[0]
+        x_embedder: PatchEmbed = stage.x_embedder
         p = x_embedder.patch_size[0]
         c = self.in_channels
         h = w = int(x.shape[1] ** 0.5)
@@ -233,7 +392,7 @@ class MultiStageDiT(nn.Module):
         x = torch.einsum('nhwpqc->nchpwq', x)
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
-    def init_single_stage(self, stage: nn.ModuleList):
+    def init_single_stage(self, stage: SingleStage):
         x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer = stage
         def _basic_init(module):
             if isinstance(module, nn.Linear):
@@ -272,17 +431,5 @@ class MultiStageDiT(nn.Module):
         # Zero-out output layers:
         nn.init.constant_(final_layer.weight, 0)
         nn.init.constant_(final_layer.bias, 0)
-
-    def single_stage_forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor, stage: nn.ModuleList):
-        x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer = stage
-        x = x_embedder(x) + pos_embed
-        t = t_embedder(t)
-        y = y_embedder(y)
-        c = t + y 
-        for block in blocks:
-            x = block(x, c)
-        x = final_layer(x)
-        return x
-
     
         

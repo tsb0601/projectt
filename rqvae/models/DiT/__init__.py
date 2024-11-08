@@ -7,7 +7,7 @@ from typing import List, Optional
 import torch_xla.core.xla_model as xm
 from .blocks import ConvEncoder, ConvDecoder, ConvDecoder_wSkipConnection
 from rqvae.models.utils import get_obj_from_str
-
+from .models.pixelDiT import MultiStageDiT
 class DiT_Stage2(Stage2Model):
     def __init__(
         self,
@@ -179,6 +179,189 @@ class DiT_Stage2(Stage2Model):
 
     def get_last_layer(self):
         return self.model.final_layer.linear.weight
+
+    def requires_grad_(self, requires_grad: bool = True):
+        super().requires_grad_(requires_grad)
+        # self.model.pos_embed.requires_grad_(False) # always freeze positional embeddings
+        
+
+
+class MultiStageDiT_Stage2(Stage2Model):
+    def __init__(
+        self,
+        input_size :int =32,
+        num_classes: int = 1000,
+        class_dropout_prob: float=0.1,
+        learn_sigma : bool =True,
+        shared_adaln: bool = False,
+        in_channels: int = 3, # number of input channels
+        inflated_size: int = 256, # size of the inflated latent/image
+        patch_sizes : Union[list[float], tuple[float]] = (2, 16, 2), 
+        depths: Union[list[int], tuple[int]] = (2, 2, 2),
+        widths: Union[list[int], tuple[int]] = (64, 1024, 64),
+        num_heads: Union[list[int], tuple[int]] = (4, 16, 4),
+        mlp_ratios: Union[list[float], tuple[float]] = (4.0, 4.0, 4.0),
+        window_sizes: Union[list[int], tuple[int]] = (16, 256, 16),
+        timestep_respacing: str = "",
+        noise_schedule: str = "linear",
+        cfg: float = 0.0,
+        inference_step: int = 250,
+        n_samples: int = 125,
+        do_beta_rescaling: bool = False,
+        use_simple_diffusion: bool = False,
+        use_loss_weighting: bool = False,
+        class_cls_str: str = "rqvae.models.DiT.models.pixelDiT.MultiStageDiT",
+        **kwargs,
+    ):
+        super().__init__()
+        self.timestep_respacing = str(timestep_respacing)
+        self.cfg = cfg
+        # learn_sigma = kwargs.pop("learn_sigma", True) # learn sigma is True by default and is a required argument in DiT
+        # noise_schedule = kwargs.pop("noise_schedule", "linear")
+        if do_beta_rescaling:
+            base_dim = 128 * 128 * 3  # 3 following https://arxiv.org/pdf/2301.11093
+            input_dim = input_size * input_size * in_channels  # input channels
+            input_base_dimension_ratio = math.sqrt(base_dim / input_dim) # do rescaling
+        else:
+            input_base_dimension_ratio = 1.0 # do not do rescaling
+        DiT_model_cls : MultiStageDiT = get_obj_from_str(class_cls_str)
+        # assert this class inherits from DiT
+        assert issubclass(DiT_model_cls, MultiStageDiT), f"[!]DiT_Stage2: class_cls_str: {class_cls_str} must inherit from DiT"
+        self.model = DiT_model_cls(
+            input_size=input_size,
+            num_classes=num_classes,
+            class_dropout_prob=class_dropout_prob,
+            learn_sigma=learn_sigma,
+            shared_adaln=shared_adaln,
+            in_channels=in_channels,
+            inflated_size=inflated_size,
+            patch_sizes=patch_sizes,
+            depths=depths,
+            widths=widths,
+            num_heads=num_heads,
+            mlp_ratios=mlp_ratios,
+            window_sizes=window_sizes,
+            **kwargs,
+        )
+        self.model.requires_grad_(True)
+        self.inference_step = inference_step
+        # like DiT we only support square images
+        self.diffusion = create_diffusion(
+            timestep_respacing=self.timestep_respacing,
+            learn_sigma=learn_sigma,
+            noise_schedule=noise_schedule,
+            input_base_dimension_ratio=input_base_dimension_ratio,
+            use_simple_diffusion=use_simple_diffusion,
+            use_loss_weighting=use_loss_weighting,
+            #predict_xstart= True
+        )  # like DiT we set default 1000 timesteps
+        self.infer_diffusion = create_diffusion(
+            timestep_respacing=str(self.inference_step),
+            learn_sigma=learn_sigma,
+            noise_schedule=noise_schedule,
+            input_base_dimension_ratio=input_base_dimension_ratio,
+            use_simple_diffusion=use_simple_diffusion,
+            use_loss_weighting=use_loss_weighting,
+            #predict_xstart= True
+        )
+        self.use_simple_diffusion = use_simple_diffusion
+        self.input_size = input_size
+        self.num_classes = num_classes
+        self.use_cfg = self.cfg >= 1.0
+        self.n_samples = n_samples
+        print(
+            f"[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}", f"noise_schedule: {noise_schedule}", f"dim_ratio: {input_base_dimension_ratio}"
+        )
+
+    def forward(
+        self, stage1_encodings: Stage1Encodings, inputs: LabeledImageData
+    ) -> Stage2ModelOutput:
+        zs = stage1_encodings.zs
+        return Stage2ModelOutput(
+            zs_pred=zs, zs_degraded=zs, additional_attr={}  # no degradation this time
+        )
+
+    def compute_loss(
+        self,
+        stage1_encodings: Stage1Encodings,
+        stage2_output: Stage2ModelOutput,
+        inputs: LabeledImageData,
+        valid: bool = False,
+        **kwargs,
+    ) -> dict:
+        zs = stage1_encodings.zs
+        labels = inputs.condition
+        if labels is None:
+            # we set null labels to num_classes
+            labels = torch.tensor(
+                [self.num_classes] * zs.shape[0], device=zs.device
+            ).long()
+        t = torch.randint(
+            0, self.diffusion.num_timesteps, (zs.shape[0],), device=zs.device
+        ) if not self.use_simple_diffusion else torch.rand(zs.shape[0], device=zs.device) 
+        model_kwargs = dict(y=labels)
+        terms = self.diffusion.training_losses(self.model, zs, t, model_kwargs)
+        loss = terms["loss"].mean()
+        return {
+            "loss_total": loss,
+            "t": t,
+        }
+
+    def get_recon_imgs(self, xs_real, xs, **kwargs):
+        return xs_real.clamp(0, 1), xs.clamp(0, 1)
+
+    @torch.no_grad()
+    def infer(self, inputs: LabeledImageData) -> Stage2ModelOutput:
+        device = xm.xla_device()  # default to TPU
+        labels = inputs.condition
+        if isinstance(labels, torch.Tensor):
+            device = labels.device  # sp hack
+        if isinstance(inputs.img, torch.Tensor):
+            device = inputs.img.device  # sp hack
+        n = self.n_samples
+        cfg = self.cfg
+        if labels is None:
+            labels = torch.randint(
+                0, self.num_classes, (self.n_samples,), device=device
+            )
+        else:
+            n = labels.shape[0]
+            # labels = torch.randint(0, self.num_classes, (n,), device=device) # we still do random label sampling
+        y = labels
+        z = torch.randn(
+            n, self.model.in_channels, self.input_size, self.input_size, device=device
+        )
+        if self.use_cfg:  # this means we use cfg
+            z = torch.cat([z, z], 0)
+            y_null = torch.tensor([self.num_classes] * labels.shape[0], device=device)
+            y = torch.cat([y, y_null], 0)
+            model_kwargs = dict(y=y, cfg_scale=cfg)
+            sample_fn = self.model.forward_with_cfg
+        else:
+            model_kwargs = dict(y=y)  # do conditional sampling
+            sample_fn = self.model.forward
+        # Sample images:
+        samples = self.infer_diffusion.p_sample_loop(
+            sample_fn,
+            z.shape,
+            z,
+            clip_denoised=False,
+            model_kwargs=model_kwargs,
+            progress=False,
+            device=device,
+        )
+        if self.use_cfg:
+            samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+        return Stage2ModelOutput(
+            zs_pred=samples,
+            zs_degraded=None,
+            additional_attr={
+                "labels": labels,
+            },
+        )
+
+    def get_last_layer(self):
+        return self.model.stages[-1].final_layer.weight
 
     def requires_grad_(self, requires_grad: bool = True):
         super().requires_grad_(requires_grad)
