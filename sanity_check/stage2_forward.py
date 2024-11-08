@@ -28,6 +28,7 @@ with torch.no_grad():
     print('stage2_model_wrapper:', stage2_model_wrapper.parameters())
     param, trainable_param = count_params(stage2_model_wrapper)
     print(f"Total params: {param/1e6:.2f}M, Trainable params: {trainable_param/1e6:.2f}M")
+    
 def test_all(stage2_model_wrapper:Stage2ModelWrapper, im_size:tuple):
     stage1_model = stage2_model_wrapper.stage_1_model
     connector = stage2_model_wrapper.connector
@@ -48,26 +49,26 @@ def test_all(stage2_model_wrapper:Stage2ModelWrapper, im_size:tuple):
     print(last_layer.shape, last_layer.dtype)
     print("=" * 10, 'testing encoding', "=" * 10)
     latent_output = stage1_model.encode(data)
-    print('encoded zs:', latent_output.zs.shape, latent_output.zs.mean(), latent_output.zs.norm())
+    print('encoded zs:', latent_output.zs.shape, latent_output.zs.mean(), latent_output.zs.std())
     print("=" * 10, 'testing connector', "=" * 10)
     connected_latent_output = connector.forward(latent_output)
-    print('connected zs:', connected_latent_output.zs.shape, connected_latent_output.zs.mean(), connected_latent_output.zs.norm())
+    print('connected zs:', connected_latent_output.zs.shape, connected_latent_output.zs.mean(), connected_latent_output.zs.std())
     if connector.bn is not None:
         # we need to normalize the latent space
         print("=" * 10, 'testing connector normalization', "=" * 10)
         normalized_output = connector.normalize(connected_latent_output)
-        print('normalized zs:', normalized_output.zs.shape, normalized_output.zs.mean(), normalized_output.zs.norm())
+        print('normalized zs:', normalized_output.zs.shape, normalized_output.zs.mean(), normalized_output.zs.std())
         print("=" * 10, 'testing connector unnormalization', "=" * 10)
         unnormalized_output = connector.unnormalize(normalized_output)
-        print('unnormalized zs:', unnormalized_output.zs.shape, unnormalized_output.zs.mean(), unnormalized_output.zs.norm())
+        print('unnormalized zs:', unnormalized_output.zs.shape, unnormalized_output.zs.mean(), unnormalized_output.zs.std())
     else:
         print("=" * 10, 'connector has no batchnorm, skipping normalization', "=" * 10)
     print("=" * 10, 'testing forward', "=" * 10)
     forward_output = stage2_model.forward(connected_latent_output, data)
-    print('forward zs_pred:', forward_output.zs_pred.shape, forward_output.zs_pred.mean(), forward_output.zs_pred.norm())
+    print('forward zs_pred:', forward_output.zs_pred.shape, forward_output.zs_pred.mean(), forward_output.zs_pred.std())
     print("=" * 10, 'testing reverse', "=" * 10)
     reverse_output = connector.reverse(forward_output)
-    print('reverse zs:', reverse_output.zs.shape, reverse_output.zs.mean(), reverse_output.zs.norm())
+    print('reverse zs:', reverse_output.zs.shape, reverse_output.zs.mean(), reverse_output.zs.std())
     print("|reverse zs - latent zs|:", torch.abs(reverse_output.zs - latent_output.zs).mean())
     print("=" * 10, 'testing decoding (on stage2 output)', "=" * 10)
     recon_output = stage1_model.decode(reverse_output)

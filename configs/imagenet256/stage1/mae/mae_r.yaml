@@ -16,6 +16,7 @@ arch:
     params:
       split: 1
       remove_cls: true
+    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector_512.pt'
   checkpointing: false
   ema: 0.114514
 optimizer:
