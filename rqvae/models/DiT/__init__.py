@@ -29,6 +29,7 @@ class DiT_Stage2(Stage2Model):
         do_beta_rescaling: bool = False,
         use_simple_diffusion: bool = False,
         use_loss_weighting: bool = False,
+        use_schedule_shift: bool = False,
         class_cls_str: str = "rqvae.models.DiT.models.DiT.DiT",
         **kwargs,
     ):
@@ -70,6 +71,7 @@ class DiT_Stage2(Stage2Model):
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
             use_loss_weighting=use_loss_weighting,
+            use_schedule_shift=use_schedule_shift,
             #predict_xstart= True
         )  # like DiT we set default 1000 timesteps
         self.infer_diffusion = create_diffusion(
@@ -79,6 +81,7 @@ class DiT_Stage2(Stage2Model):
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
             use_loss_weighting=use_loss_weighting,
+            use_schedule_shift=use_schedule_shift,
             #predict_xstart= True
         )
         self.use_simple_diffusion = use_simple_diffusion
@@ -210,6 +213,7 @@ class MultiStageDiT_Stage2(Stage2Model):
         do_beta_rescaling: bool = False,
         use_simple_diffusion: bool = False,
         use_loss_weighting: bool = False,
+        use_schedule_shift: bool = False,
         class_cls_str: str = "rqvae.models.DiT.models.pixelDiT.MultiStageDiT",
         **kwargs,
     ):
@@ -253,6 +257,7 @@ class MultiStageDiT_Stage2(Stage2Model):
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
             use_loss_weighting=use_loss_weighting,
+            use_schedule_shift=use_schedule_shift,
             #predict_xstart= True
         )  # like DiT we set default 1000 timesteps
         self.infer_diffusion = create_diffusion(
@@ -262,6 +267,7 @@ class MultiStageDiT_Stage2(Stage2Model):
             input_base_dimension_ratio=input_base_dimension_ratio,
             use_simple_diffusion=use_simple_diffusion,
             use_loss_weighting=use_loss_weighting,
+            use_schedule_shift=use_schedule_shift,
             #predict_xstart= True
         )
         self.use_simple_diffusion = use_simple_diffusion

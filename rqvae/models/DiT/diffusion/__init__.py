@@ -19,13 +19,14 @@ def create_diffusion(
     input_base_dimension_ratio: float = 1.0,
     use_simple_diffusion: bool = False,
     use_loss_weighting: bool = False,
+    use_schedule_shift: bool = False,
 ) -> gd.GaussianDiffusion:
     if timestep_respacing is None or timestep_respacing == "":
         timestep_respacing = [diffusion_steps]
     if use_simple_diffusion:
         diffusion = SimpleDiffusion(
             size_ratio=input_base_dimension_ratio,
-            schedule=gd.ScheduleType.COSINE,
+            schedule=gd.ScheduleType.SHIFTED_CONSINE if use_schedule_shift else gd.ScheduleType.COSINE,
             pred_term=gd.ModelMeanType.VELOCITY,
             loss_type=gd.LossType.WEIGHTED_MSE if use_loss_weighting else gd.LossType.MSE,
             diffusion_steps=diffusion_steps,

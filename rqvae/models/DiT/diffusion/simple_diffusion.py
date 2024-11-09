@@ -39,8 +39,8 @@ class SimpleDiffusion(GaussianDiffusion):
             logSNR_t = - 2 log (tan(pi * t / 2)) # use consine schedule
             if shifted cosine, logSNR_t_shifted = logSNR_t + 2 self.log_ratio
         """
-        logsnr_max = log_max
-        logsnr_min = log_min
+        logsnr_max = log_max + self.log_ratio
+        logsnr_min = log_min - self.log_ratio
         t_min = math.atan(math.exp(logsnr_min / 2)) 
         t_max = math.atan(math.exp(logsnr_max / 2))
         t = t if isinstance(t, torch.Tensor) else torch.tensor(t) # avoid copy construct
