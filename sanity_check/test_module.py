@@ -1,3 +1,4 @@
+from operator import inv
 import torch
 import math
 import torch.nn as nn
@@ -65,6 +66,31 @@ class TimestepEmbedder(nn.Module):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         t_emb = self.mlp(t_freq)
         return t_emb
+class Inv():
+    def __init__(self):
+        self.in_channels = 2
+    def forward(self, x: torch.Tensor):
+        if x.shape[-1] != self.in_channels:
+            # do a unpatchify to get the image
+            print('stage0 trying to patchify:', x.shape)
+            need_patchify = True
+            x = x.permute(0, 2, 3, 1) # to (N, H, W, C)
+            out_channel = x.shape[-1]
+            p = int((x.shape[-1] // self.in_channels) ** 0.5)
+            assert (p**2) * self.in_channels == x.shape[-1], f'stage0 trying to patchify: p={p}, x.shape={x.shape}'
+            assert len(x.shape) == 4, f'stage0 trying to patchify a 3D tensor: x.shape={x.shape}'
+            h, w = x.shape[1], x.shape[2]
+            x = x.reshape(shape=(x.shape[0], h, w, p, p, self.in_channels))
+            x = torch.einsum('nhwpqc->nchpwq', x)
+            x = x.reshape(shape=(x.shape[0], self.in_channels, h * p, w * p))
+            print('stage0 unpatchified:', x.shape)
+        if need_patchify:
+            # patchify image from (N, self.in_channels, H, W) to (N, out_channel, h', w')
+            x = x.reshape(shape=(x.shape[0], self.in_channels, h, p, w, p))
+            x = torch.einsum('nchpwq->nhwpqc', x)
+            x = x.reshape(shape=(x.shape[0], h, w, out_channel))
+            x = x.permute(0, 3, 1, 2) # to (N, C, H, W)
+        return x
 def main():
     embedding = GaussianFourierEmbedding(768)
     #embedding = TimestepEmbedder(768)
@@ -72,6 +98,12 @@ def main():
     t_embed = embedding(t)
     print(t_embed.shape)
     print(t_embed)
-    
+def inv_main():
+    inv = Inv()
+    x = torch.randn(2, 512, 16 , 16) # (N, H, W, C)
+    y = inv.forward(x)
+    print(y.shape)
+    assert torch.allclose(x, y), f'|x - y|={torch.abs(x - y).mean()}'
 if __name__ == "__main__":
-    main()
+    #main()
+    inv_main()

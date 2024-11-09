@@ -21,7 +21,7 @@ arch:
       in_channels: 3
       inflated_size: 256
       patch_sizes: [4, 16, 4]
-      depths: [4, 20, 4]
+      depths: [4, 4, 4]
       widths: [256, 1152, 256]
       num_heads: [16, 16, 16]
       mlp_ratios: [4, 4, 4]

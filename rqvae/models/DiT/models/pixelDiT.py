@@ -2,6 +2,7 @@ from sqlite3 import Time
 from typing import Union
 
 from attr import dataclass
+from regex import W
 from .DiT import DiTBlock, TimestepEmbedder, GaussianFourierEmbedding, PatchEmbed, LabelEmbedder, get_2d_sincos_pos_embed, modulate, Mlp
 import torch.nn as nn
 import torch
@@ -336,11 +337,32 @@ class MultiStageDiT(nn.Module):
         nn.init.constant_(self.final_layer.weight, 0)
         nn.init.constant_(self.final_layer.bias, 0)
     def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor):
+        if x.shape[-1] != self.in_channels:
+            # do a unpatchify to get the image
+            #print('stage0 trying to patchify:', x.shape)
+            need_patchify = True
+            x = x.permute(0, 2, 3, 1) # to (N, H, W, C)
+            out_channel = x.shape[-1]
+            p = int((x.shape[-1] // self.in_channels) ** 0.5)
+            assert (p**2) * self.in_channels == x.shape[-1], f'stage0 trying to patchify: p={p}, x.shape={x.shape}'
+            assert len(x.shape) == 4, f'stage0 trying to patchify a 3D tensor: x.shape={x.shape}'
+            h, w = x.shape[1], x.shape[2]
+            x = x.reshape(shape=(x.shape[0], h, w, p, p, self.in_channels))
+            x = torch.einsum('nhwpqc->nchpwq', x)
+            x = x.reshape(shape=(x.shape[0], self.in_channels, h * p, w * p))
+            #print('stage0 unpatchified:', x.shape)
         for i, stage in enumerate(self.stages):
+            stage: SingleStage
             x = stage(x, t, y)
             if i == len(self.stages) - 1:
                 x = self.final_layer(x)
-            x = self.unpatchify(x, stage) # unpatchify to (N, C, H, W)
+            x = self.unpatchify(x, stage.x_embedder.patch_size[0]) # unpatchify to (N, C, H, W)
+        if need_patchify:
+            # patchify image from (N, self.in_channels, H, W) to (N, out_channel, h', w')
+            x = x.reshape(shape=(x.shape[0], self.in_channels, h, p, w, p))
+            x = torch.einsum('nchpwq->nhwpqc', x)
+            x = x.reshape(shape=(x.shape[0], h, w, out_channel))
+            x = x.permute(0, 3, 1, 2) # to (N, C, H, W)
         return x
     @staticmethod
     def adaln_zero(hidden_size: int ):
@@ -389,13 +411,11 @@ class MultiStageDiT(nn.Module):
         stage = SingleStage(x_embedder, pos_embed, t_embedder, y_embedder, blocks, final_layer)
         self.init_single_stage(stage)
         return stage
-    def unpatchify(self, x: torch.Tensor, stage: SingleStage):
+    def unpatchify(self, x: torch.Tensor, p: int):
         """
         Unpatchify a tensor of shape (N, T, D) 
         to (N, in_channels, inflated_size, inflated_size)
         """
-        x_embedder: PatchEmbed = stage.x_embedder
-        p = x_embedder.patch_size[0]
         c = x.shape[-1] // (p * p)
         assert c * p * p == x.shape[-1], f'c={c}, p={p}, x.shape={x.shape}'
         h = w = int(x.shape[1] ** 0.5)
