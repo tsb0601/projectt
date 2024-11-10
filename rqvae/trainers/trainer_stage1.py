@@ -410,7 +410,8 @@ class Trainer(TrainerTemplate):
                 p_weight = self.perceptual_weight
             if use_discriminator:
                 discriminator.eval()
-                discriminator.requires_grad_(False)
+                for p in discriminator.parameters(): # freeze discriminator
+                    p.requires_grad = False
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     loss_gen, _, _ = self.gan_loss(normed_xs, normed_xs_recon, mode="gen")
                 nll_loss = loss_recon + p_weight * loss_pcpt
@@ -455,12 +456,13 @@ class Trainer(TrainerTemplate):
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     self.model.eval()
                     discriminator.train()
-                    discriminator.requires_grad_(True)
+                    for p in discriminator.parameters():
+                        p.requires_grad = True
                     with torch.no_grad():
                         disc_stage1_output: Stage1ModelOutput = self.model(inputs) # call a new forward pass
                         disc_xs_recon = disc_stage1_output.xs_recon  
                         normed_disc_xs_recon = disc_xs_recon * 2 - 1
-                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_disc_xs_recon, mode="disc")
+                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_xs_recon, mode="disc")
                     self.model.train()
                     self.discriminator.eval()
                     dict_loss = loss_disc * self.disc_weight
