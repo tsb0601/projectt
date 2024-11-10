@@ -462,7 +462,7 @@ class Trainer(TrainerTemplate):
                         disc_stage1_output: Stage1ModelOutput = self.model(inputs) # call a new forward pass
                         disc_xs_recon = disc_stage1_output.xs_recon  
                         normed_disc_xs_recon = disc_xs_recon * 2 - 1
-                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_xs_recon, mode="disc")
+                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_xs_recon.detach(), mode="disc")
                     self.model.train()
                     self.discriminator.eval()
                     dict_loss = loss_disc * self.disc_weight
