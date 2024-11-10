@@ -25,7 +25,7 @@ with torch.no_grad():
     config = OmegaConf.load(config_path).arch
     stage2_model_wrapper, _  = create_model(config, is_master=True) # load the model on the master
     stage2_model_wrapper:Stage2ModelWrapper
-    print('stage2_model_wrapper:', stage2_model_wrapper.parameters())
+    print('stage2_model_wrapper:', stage2_model_wrapper)
     param, trainable_param = count_params(stage2_model_wrapper)
     print(f"Total params: {param/1e6:.2f}M, Trainable params: {trainable_param/1e6:.2f}M")
     
