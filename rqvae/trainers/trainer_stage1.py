@@ -410,9 +410,9 @@ class Trainer(TrainerTemplate):
                 p_weight = self.perceptual_weight
             if use_discriminator:
                 discriminator.eval()
+                discriminator.requires_grad_(False)
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     loss_gen, _, _ = self.gan_loss(normed_xs, normed_xs_recon, mode="gen")
-                discriminator.train()
                 nll_loss = loss_recon + p_weight * loss_pcpt
                 g_weight = calculate_adaptive_weight(  # calculate adaptive weight involves backward so it should be excluded from autocast
                     nll_loss,
@@ -454,7 +454,8 @@ class Trainer(TrainerTemplate):
             if train_disc:
                 with autocast(self.device) if self.use_autocast else nullcontext():
                     self.model.eval()
-                    self.discriminator.train()
+                    discriminator.train()
+                    discriminator.requires_grad_(True)
                     with torch.no_grad():
                         disc_stage1_output: Stage1ModelOutput = self.model(inputs) # call a new forward pass
                         disc_xs_recon = disc_stage1_output.xs_recon  
@@ -471,7 +472,7 @@ class Trainer(TrainerTemplate):
                     else:
                         xm.optimizer_step(self.disc_optimizer)
                     self.disc_scheduler.step()
-                    self.discriminator.zero_grad(set_to_none=True)
+                    discriminator.zero_grad(set_to_none=True)
                     # discriminator.zero_grad(set_to_none=True)
                     self.model.zero_grad(set_to_none=True)
                     # if self.model_ema_woddp is not None:
