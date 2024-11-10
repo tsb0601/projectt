@@ -48,9 +48,9 @@ gan:
   disc:
     arch:
       in_channels: 3
-      num_layers: 6
+      num_layers: 3
       use_actnorm: false
-      ndf: 128
+      ndf: 64
       spectral_norm: false
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
