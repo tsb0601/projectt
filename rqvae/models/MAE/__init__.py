@@ -175,15 +175,22 @@ class Stage1MAE(Stage1Model):
         return encodings
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
-        vit_outputs = outputs.additional_attr['outputs']
-        xs = outputs.additional_attr['xs']
-        ids_restore = vit_outputs.ids_restore
+        if outputs.additional_attr.get('outputs', None) is not None: # passed from encoding
+            vit_outputs = outputs.additional_attr['outputs']
+            xs = outputs.additional_attr['xs']
+            ids_restore = vit_outputs.ids_restore
+        else:
+            ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
+            xs = None
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
         decoder_outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls, do_decoder_embed = not self.do_encoder_embed_in_decode, interpolate_pos_encoding = self.interpolate_pos_embed)
         logits = decoder_outputs.logits
-        h, w = xs.shape[2], xs.shape[3]
-        xs_recon = self.model.unpatchify(logits, (h, w))
+        if xs is not None:
+            h, w = xs.shape[2], xs.shape[3]
+            xs_recon = self.model.unpatchify(logits, (h, w))
+        else:
+            xs_recon = self.model.unpatchify(logits)
         xs_recon = xs_recon * image_std + image_mean
         outputs = Stage1ModelOutput(
             xs_recon = xs_recon,
