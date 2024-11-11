@@ -47,10 +47,10 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 80
+    epoch: 1400
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 1.0e-4
+    min_lr: 8.0e-4
     mode: fix
     start_from_zero: false
 

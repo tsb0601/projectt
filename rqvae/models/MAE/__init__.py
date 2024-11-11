@@ -113,7 +113,7 @@ class Stage1MAE(Stage1Model):
             _, keys = load_model_from_ckpt(self.model, tensor_path, strict = False)
             print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
         self.model.decoder.requires_grad_(True)
-        self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
+        #self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
         patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
         self.patch_size = self.model.config.patch_size
@@ -219,7 +219,9 @@ class Stage1MAE(Stage1Model):
     @torch.no_grad()
     def infer(self, xs):
         return self(xs)
-    
+    def train(self, mode: bool = True):
+        self.model.vit.train(False) # alwasys eval, but for transformer it should be equal to train
+        self.model.decoder.train(mode) 
 class MAEEncoder_ForProbing(nn.Module):
     def __init__(self, ckpt_path:str, global_pool:bool = False):
         super().__init__()

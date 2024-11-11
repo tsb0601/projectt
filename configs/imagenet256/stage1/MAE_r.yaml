@@ -9,6 +9,7 @@ arch:
   params:
     ckpt_path: './ckpt_gcs/model_zoo/mae_d12_r'
     no_cls: true
+    interpolate_pos_embed: true
   checkpointing: false
   ema: 0.114514
 optimizer:

@@ -10,12 +10,14 @@ arch:
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
       no_cls: true
+      interpolate_pos_embed: true
+
       #do_decoder_embed_in_encode: true
-  connector:
-    target: rqvae.models.connectors.ReshapeAndSplit_connector
-    params:
-      split: 1
-      remove_cls: true
+  #connector:
+  #  target: rqvae.models.connectors.ReshapeAndSplit_connector
+  #  params:
+  #    split: 1
+  #    remove_cls: true
     #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   checkpointing: false
   ema: 0.114514
