@@ -21,8 +21,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from transformers import ViTMAEPreTrainedModel
-import timm
 
 from timm.models.layers import trunc_normal_
 
@@ -402,15 +400,15 @@ def main(rank, args):
     #    lr=args.lr,
     #    weight_decay=args.weight_decay,
     #) 
-    #optimizer = LARS(
-    #   model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
-    #)
-    optimizer = optim_class.SGD(
-        model_without_ddp.head.parameters(),
-        lr=args.lr,
-        momentum=0.9,
-        weight_decay=args.weight_decay,
+    optimizer = LARS(
+       model_without_ddp.head.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
+    #optimizer = optim_class.SGD(
+    #    model_without_ddp.head.parameters(),
+    #    lr=args.lr,
+    #    momentum=0.9,
+    #    weight_decay=args.weight_decay,
+    #)
     xm.master_print(optimizer)
     loss_scaler = NativeScaler()
     criterion = torch.nn.CrossEntropyLoss()

@@ -25,7 +25,7 @@ python linear_probe.py \
     --epochs 90 \
     --warmup_epochs 10 \
     --blr .1 \
-    --save_freq 30 \
+    --save_freq 90 \
     --weight_decay 0.0 \
     --cls_token \
     --dtype bfloat16 \

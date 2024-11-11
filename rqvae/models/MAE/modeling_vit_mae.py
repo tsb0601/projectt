@@ -268,18 +268,14 @@ class ViTMAEEmbeddings(nn.Module):
         """
         batch_size, seq_length, dim = sequence.shape
         len_keep = int(seq_length * (1 - self.config.mask_ratio))
-
         if noise is None:
             noise = torch.rand(batch_size, seq_length, device=sequence.device)  # noise in [0, 1]
-
         # sort noise for each sample
         ids_shuffle = torch.argsort(noise, dim=1).to(sequence.device)  # ascend: small is keep, large is remove
         ids_restore = torch.argsort(ids_shuffle, dim=1).to(sequence.device)
-
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep]
         sequence_unmasked = torch.gather(sequence, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, dim))
-
         # generate the binary mask: 0 is keep, 1 is remove
         mask = torch.ones([batch_size, seq_length], device=sequence.device)
         mask[:, :len_keep] = 0
@@ -295,18 +291,15 @@ class ViTMAEEmbeddings(nn.Module):
             position_embeddings = self.interpolate_pos_encoding(embeddings, height, width)
         else:
             position_embeddings = self.position_embeddings
-
         # add position embeddings w/o cls token
         embeddings = embeddings + position_embeddings[:, 1:, :]
 
         # masking: length -> length * config.mask_ratio
         embeddings, mask, ids_restore = self.random_masking(embeddings, noise)
-
         # append cls token
         cls_token = self.cls_token + position_embeddings[:, :1, :]
         cls_tokens = cls_token.expand(embeddings.shape[0], -1, -1)
         embeddings = torch.cat((cls_tokens, embeddings), dim=1)
-
         return embeddings, mask, ids_restore
 
 
@@ -776,11 +769,9 @@ class ViTMAEModel(ViTMAEPreTrainedModel):
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-
         embedding_output, mask, ids_restore = self.embeddings(
             pixel_values, noise=noise, interpolate_pos_encoding=interpolate_pos_encoding
         )
-
         encoder_outputs = self.encoder(
             embedding_output,
             head_mask=head_mask,
@@ -846,7 +837,6 @@ class ViTMAEDecoder(nn.Module):
         # -1 removes the class dimension since we later append it without interpolation
         embeddings_positions = embeddings.shape[1] - 1
         num_positions = self.decoder_pos_embed.shape[1] - 1
-
         # Separation of class token and patch tokens
         class_pos_embed = self.decoder_pos_embed[:, 0, :]
         patch_pos_embed = self.decoder_pos_embed[:, 1:, :]
@@ -859,16 +849,15 @@ class ViTMAEDecoder(nn.Module):
 
         # permute to bring the dimension to be interpolated, to the last
         patch_pos_embed = patch_pos_embed.permute(0, 3, 1, 2)
-
         # Interpolating the decoder position embeddings shape wrt embeddings shape i.e (x).
         # 1 keeps the other dimension constant
         patch_pos_embed = nn.functional.interpolate(
             patch_pos_embed,
-            scale_factor=(1, embeddings_positions / num_positions),
+            size = (1, embeddings_positions),
+            #scale_factor=(1, embeddings_positions * 1. / num_positions),
             mode="bicubic",
             align_corners=False,
         )
-
         # Converting back to the original shape
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
         # Adding the class token back

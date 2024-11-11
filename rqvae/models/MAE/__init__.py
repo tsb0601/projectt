@@ -83,7 +83,14 @@ def custom_forward(
         attentions=all_self_attentions,
     )
 class Stage1MAE(Stage1Model):
-    def __init__(self, ckpt_path:str, mask_ratio: float = 0., train_encoder:bool = False, no_cls:bool = False, loss_type: str = 'l1', do_decoder_embed_in_encode: bool = False)->None:
+    def __init__(self, ckpt_path:str,
+                 mask_ratio: float = 0., 
+                 train_encoder:bool = False, 
+                 no_cls:bool = False, 
+                 loss_type: str = 'l1', 
+                 do_decoder_embed_in_encode: bool = False, 
+                 interpolate_pos_embed: bool = False
+        )->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
         config_path = os.path.join(ckpt_path, 'config.json')
@@ -109,6 +116,7 @@ class Stage1MAE(Stage1Model):
         self.model.decoder.decoder_pos_embed.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
         processor = ViTImageProcessor.from_pretrained(ckpt_path)
         patch_num = (self.model.config.image_size // self.model.config.patch_size) ** 2
+        self.patch_size = self.model.config.patch_size
         noise = torch.arange(patch_num)
         default_id_restore = torch.arange(patch_num)
         image_mean, image_std = processor.image_mean, processor.image_std
@@ -120,6 +128,7 @@ class Stage1MAE(Stage1Model):
         self.no_cls = no_cls
         self.do_encoder_embed_in_decode = do_decoder_embed_in_encode
         self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
+        self.interpolate_pos_embed = interpolate_pos_embed
         assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
@@ -129,10 +138,14 @@ class Stage1MAE(Stage1Model):
         image_mean = self.image_mean
         image_std = self.image_std
         xs = (xs - image_mean) / image_std
-        noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
-        outputs = self.model(xs, noise, drop_cls_token = self.no_cls) if self.model.config.mask_ratio == 0. else self.model(xs)
+        # x: [B, 3, H, W]
+        h,w = xs.shape[2], xs.shape[3]
+        patch_num = int(h * w  // self.patch_size ** 2)
+        assert patch_num * self.patch_size ** 2 == h * w, 'image size should be divisible by patch size'
+        noise = torch.arange(patch_num).unsqueeze(0).expand(xs.shape[0],-1).to(xs.device).to(xs.dtype)
+        outputs = self.model(xs, noise, drop_cls_token = self.no_cls, interpolate_pos_encoding = self.interpolate_pos_embed) if self.model.config.mask_ratio == 0. else self.model(xs, interpolate_pos_encoding = self.interpolate_pos_embed)
         logits = outputs.logits  # shape (batch_size, num_patches, patch_size*patch_size*num_channels)
-        xs_recon = self.model.unpatchify(logits)
+        xs_recon = self.model.unpatchify(logits, (h, w))
         xs_recon = xs_recon * image_std + image_mean
         output = Stage1ModelOutput(
             xs_recon = xs_recon,
@@ -147,35 +160,49 @@ class Stage1MAE(Stage1Model):
         image_mean = self.image_mean
         image_std = self.image_std
         xs = (xs - image_mean) / image_std
-        noise = self.noise.unsqueeze(0).expand(xs.shape[0],-1)
-        outputs = self.model.vit(xs, noise=noise)
+        h,w = xs.shape[2], xs.shape[3]
+        patch_num = int(h * w  // self.patch_size ** 2)
+        assert patch_num * self.patch_size ** 2 == h * w, 'image size should be divisible by patch size'
+        noise = torch.arange(patch_num).unsqueeze(0).expand(xs.shape[0],-1).to(xs.device).to(xs.dtype) if self.model.config.mask_ratio == 0. else None
+        outputs = self.model.vit(xs, noise=noise, interpolate_pos_encoding = self.interpolate_pos_embed)
         latent = outputs.last_hidden_state # bsz, num_patches, hidden_size
         latent = self.model.decoder.decoder_embed(latent) if self.do_encoder_embed_in_decode else latent
         encodings = Stage1Encodings(
             zs = latent,
-            additional_attr = {'outputs': outputs,
+            additional_attr = {'outputs': outputs, 'xs': xs
         }
         )
         return encodings
     def decode(self, outputs: Stage1Encodings) -> Stage1ModelOutput:
         zs = outputs.zs if isinstance(outputs, Stage1Encodings) else outputs.zs_pred # still we can pass Stage2ModelOutput
-        ids_restore = self.default_id_restore.unsqueeze(0).expand(zs.shape[0],-1)
+        vit_outputs = outputs.additional_attr['outputs']
+        xs = outputs.additional_attr['xs']
+        ids_restore = vit_outputs.ids_restore
         image_mean = self.image_mean.expand(zs.shape[0], -1, -1, -1)
         image_std = self.image_std.expand(zs.shape[0], -1, -1, -1)
-        outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls, do_decoder_embed = not self.do_encoder_embed_in_decode)
-        logits = outputs.logits
-        xs_recon = self.model.unpatchify(logits)
+        decoder_outputs = self.model.decoder(zs,ids_restore, drop_cls_token=self.no_cls, do_decoder_embed = not self.do_encoder_embed_in_decode, interpolate_pos_encoding = self.interpolate_pos_embed)
+        logits = decoder_outputs.logits
+        h, w = xs.shape[2], xs.shape[3]
+        xs_recon = self.model.unpatchify(logits, (h, w))
         xs_recon = xs_recon * image_std + image_mean
         outputs = Stage1ModelOutput(
             xs_recon = xs_recon,
-            additional_attr = {'outputs': outputs}
+            additional_attr = {'outputs': decoder_outputs,'encoder_outputs': outputs}
         )
         return outputs
     def compute_loss(self, outputs: Stage1ModelOutput, inputs: LabeledImageData , valid:bool = True) -> dict:
         xs = inputs.img
         xs_recon = outputs.xs_recon
-        MAE_outputs = outputs.additional_attr['outputs']
-        loss_recon = self.loss(xs_recon, xs) if self.model.config.mask_ratio == 0. else MAE_outputs.loss
+        decoder_outputs = outputs.additional_attr['outputs']
+        encoder_outputs = outputs.additional_attr['encoder_outputs']
+        if self.model.config.mask_ratio == 0. :
+            loss_recon = self.loss(xs_recon, xs) 
+        else:
+            vit_output = encoder_outputs.additional_attr['outputs']
+            xs = encoder_outputs.additional_attr['xs']
+            mask = vit_output.mask
+            logits = decoder_outputs.logits
+            loss_recon = self.model.forward_loss(xs, logits, mask, interpolate_pos_encoding = self.interpolate_pos_embed)
         #loss_recon = (xs_recon - xs).square().mean() if self.model.config.mask_ratio == 0. else MAE_outputs.loss # L2
         loss_latent = torch.Tensor([0.]).to(xs.device)
         return {
