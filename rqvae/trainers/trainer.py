@@ -238,7 +238,7 @@ class TrainerTemplate:
         for i in range(epoch_st, self.config.experiment.epochs):
             self.sampler_trn.set_epoch(i)
             # next epoch is i+1
-            if (i % self.config.experiment.save_ckpt_freq) == 0 and (i != self.config.experiment.epochs - 1): # save ckpt
+            if (i % self.config.experiment.save_ckpt_freq) == 0 and (i != self.config.experiment.epochs - 1) and (i != epoch_st):
                 self.save_ckpt(optimizer, scheduler, i) 
                 # next epoch is i+1
             if i % self.config.experiment.test_freq == 0 or i == self.config.experiment.epochs - 1: # do validation every test_freq or last epoch
