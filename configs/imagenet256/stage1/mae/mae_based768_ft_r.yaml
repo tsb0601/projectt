@@ -14,7 +14,7 @@ arch:
       #do_decoder_embed_in_encode: true
       interpolate_pos_embed: false
   checkpointing: false
-  ema: 0.99
+  ema: 0.9
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
@@ -72,5 +72,5 @@ gan:
     disc_weight: .0
     perceptual_weight: 1.
     disc_start: 100000
-    lpips_start: 0
+    lpips_start: 10
     disc_upd_start: 100000

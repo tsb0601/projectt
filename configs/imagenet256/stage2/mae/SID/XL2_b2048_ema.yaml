@@ -26,7 +26,7 @@ arch:
       depth: 28
       num_heads: 16
       num_classes: 1000
-      cfg: 0.0
+      cfg: 1.5
       in_channels: 768
       learn_sigma: false
       noise_schedule: 'linear'
@@ -35,6 +35,7 @@ arch:
       do_beta_rescaling: true
       use_simple_diffusion: true
       use_loss_weighting: true
+      use_schedule_shift: true
   checkpointing: false
   ema: 0.99
 optimizer:
