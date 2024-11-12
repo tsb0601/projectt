@@ -403,7 +403,7 @@ class Trainer(TrainerTemplate):
                 normed_xs_recon = xs_recon * 2 - 1
                 # generator loss
                 loss_pcpt = (
-                    self.perceptual_loss(normed_xs, normed_xs_recon) # LPIPS loss
+                    self.perceptual_loss(xs, xs_recon) # LPIPS loss
                     if use_lpips
                     else torch.zeros((), device=self.device, dtype=self.dtype)
                 )
