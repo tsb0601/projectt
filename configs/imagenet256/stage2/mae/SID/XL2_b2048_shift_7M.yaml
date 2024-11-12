@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet
+  type: imagenet_overfit
   transforms:
     type: imagenetDiT256x256
 
@@ -61,4 +61,4 @@ experiment:
   save_ckpt_freq: 1
   test_freq: 10
   amp: false
-  actual_batch_size: 2048
+  actual_batch_size: 2
