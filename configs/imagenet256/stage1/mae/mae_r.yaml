@@ -10,7 +10,8 @@ arch:
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft'
       no_cls: true
-      interpolate_pos_embed: true
+      interpolate_pos_embed: false
+      loss_type: 'l2'
 
       #do_decoder_embed_in_encode: true
   #connector:
@@ -75,8 +76,8 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: .75
-    perceptual_weight: .75
+    disc_weight: .0
+    perceptual_weight: .1
     disc_start: 100000
     lpips_start: 0
     disc_upd_start: 100000
