@@ -20,7 +20,7 @@ arch:
   #    remove_cls: true
     #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   checkpointing: false
-  ema: 0.114514
+  ema: 0.99
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
