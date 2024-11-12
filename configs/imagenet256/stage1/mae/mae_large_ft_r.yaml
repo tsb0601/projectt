@@ -9,10 +9,11 @@ arch:
     target: rqvae.models.MAE.Stage1MAE
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_large_256_ft'
-      mask_ratio: .0
+      mask_ratio: .75
       no_cls: false
       #do_decoder_embed_in_encode: true
       interpolate_pos_embed: false
+  #ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/mae_large_ft/mae_large_ft/ep100_lr16e-4_maskft_trainenc_12112024_051249/ep_last-checkpoint/0-model.pt'
   checkpointing: false
   ema: 0.114514
 optimizer:

@@ -14,7 +14,6 @@
 
 from .ema import ExponentialMovingAverage
 import torch.nn as nn
-import torch_xla.core.xla_model as xm
 import os
 import torch.distributed as dist
 from rqvae.models.interfaces import *
@@ -24,13 +23,6 @@ from typing import Optional, Tuple
 import torch
 DEBUGING = os.environ.get('DEBUG', False)
 from .utils import *
-def xm_step_every_layer(model:nn.Module):
-    for m in model.modules():
-        if isinstance(m, nn.Sequential):
-            for mm in m:
-                mm.register_forward_hook(lambda m, i, o: xm.mark_step())
-        else:
-            m.register_forward_hook(lambda m, i, o: xm.mark_step())
 def assert_all_close(model_1, model_2)-> bool:
     model_1_dict = model_1.state_dict()
     model_2_dict = model_2.state_dict()
@@ -46,7 +38,7 @@ def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tup
     if config.get('ckpt_path', False):
         ckpt_path = config.ckpt_path
         model, keys = load_model_from_ckpt(model, ckpt_path, strict = False) # load the model (will re-define the model if the ckpt is a nn.Module)
-        xm.master_print(f'[!]INFO: Loaded Stage{stage} model from {ckpt_path} with keys: {keys}')
+        print(f'[!]INFO: Loaded Stage{stage} model from {ckpt_path} with keys: {keys}')
     #if use_ema:
     #    model_ema = ExponentialMovingAverage(model_ema, config.ema)
     #    model_ema.eval()
