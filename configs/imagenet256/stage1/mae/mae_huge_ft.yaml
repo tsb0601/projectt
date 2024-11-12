@@ -13,7 +13,6 @@ arch:
       no_cls: false
       #do_decoder_embed_in_encode: true
       interpolate_pos_embed: false
-      train_encoder: true
   checkpointing: false
   ema: 0.114514
 optimizer:
