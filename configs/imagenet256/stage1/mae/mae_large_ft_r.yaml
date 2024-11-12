@@ -9,7 +9,7 @@ arch:
     target: rqvae.models.MAE.Stage1MAE
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_large_256_ft'
-      mask_ratio: .75
+      mask_ratio: .0
       no_cls: true
       #do_decoder_embed_in_encode: true
       interpolate_pos_embed: false

@@ -10,7 +10,7 @@ arch:
     params:
       ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r_d768'
       mask_ratio: .0
-      no_cls: false
+      no_cls: true
       #do_decoder_embed_in_encode: true
       interpolate_pos_embed: false
   checkpointing: false
