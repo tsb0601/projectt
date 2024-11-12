@@ -55,7 +55,7 @@ experiment:
   batch_size: 1
   accu_step: 1
   epochs: 3
-  save_ckpt_freq: 1000
+  save_ckpt_freq: 1
   test_freq: 1
   amp: false
 
