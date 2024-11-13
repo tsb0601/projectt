@@ -15,7 +15,7 @@ arch:
       interpolate_pos_embed: false
   #ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/mae_large_ft/mae_large_ft/ep100_lr16e-4_maskft_trainenc_12112024_051249/ep_last-checkpoint/0-model.pt'
   checkpointing: false
-  ema: 0.114514
+  ema: 0.9
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw

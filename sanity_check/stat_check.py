@@ -28,7 +28,7 @@ with torch.no_grad():
     print('stage1 model:',stage1_model_wrapper)
     stage1_model = stage1_model_wrapper.stage_1_model
     connector = stage1_model_wrapper.connector
-    image = get_default_image(im_size)
+    image = get_default_image(im_size, single_image=True)
     print(image.shape, image.min(), image.max())
     #image = (image * 2) - 1.
     #noise = torch.arange(patch_num).unsqueeze(0).expand(image.shape[0], -1)
@@ -49,7 +49,10 @@ with torch.no_grad():
     recon_output = stage1_model.decode(reverse_output)
     stat(stage1_model, reverse_output, model_fn='decode', simple=True)
     print("=" * 10, 'testing stage1 loss', "=" * 10)
-    stage1_model.compute_loss_fn = lambda inputs: stage1_model.compute_loss(inputs[0], inputs[1])['loss_total']
-    loss = stage1_model.compute_loss(recon_output, data)['loss_total']
-    stat(stage1_model, [recon_output, data], model_fn='compute_loss_fn', simple=True)
+    try:
+        stage1_model.compute_loss_fn = lambda inputs: stage1_model.compute_loss(inputs[0], inputs[1])['loss_total']
+        loss = stage1_model.compute_loss(recon_output, data)['loss_total']
+        stat(stage1_model, [recon_output, data], model_fn='compute_loss_fn', simple=True)
+    except NotImplementedError as e:
+        print(f"compute_loss not implemented: {e}")
     print("=" * 10, 'all set!', "=" * 10)
