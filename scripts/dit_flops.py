@@ -128,7 +128,7 @@ if __name__ == "__main__":
     }
     use_gembs = [False, True]
     patch_sizes = [1, 2, 4]
-    universal_kwargs = dict(H=16, W=16, C=768)
+    universal_kwargs = dict(H=256, W=256, C=4)
     for name, config in configs.items():
         print(f"================================")
         for cond_name, cond_config in conditioning.items():

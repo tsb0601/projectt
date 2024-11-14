@@ -140,7 +140,7 @@ class SimpleDiffusion(GaussianDiffusion):
         logvar = gamma * max_var_log + (1 - gamma) * min_var_log
         variance = torch.exp(logvar)
         return mu, variance
-    def ddpm_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
+    def ddpm_sample(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0, gamma: float = .3):
         logsnr_t = self.logsnr_t(t, self.schedule).to(x_t.device)
         logsnr_s = self.logsnr_t(s, self.schedule).to(x_t.device)
         #print(f'logsnr_t: {logsnr_t}, logsnr_s: {logsnr_s}')
@@ -148,7 +148,7 @@ class SimpleDiffusion(GaussianDiffusion):
         x_pred = self.x0_from_pred(x_t, t, model_pred)
         if clip_denoised:
             x_pred = x_pred.clamp(-1, 1)        
-        mu, variance = self.q_mean_variance(x_pred, x_t, t, s)
+        mu, variance = self.q_mean_variance(x_pred, x_t, t, s, gamma)
         return mu, variance
 
     def ddim_sample_r(self, model, x_t, t: float, s:float, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, eta=0):
@@ -170,10 +170,11 @@ class SimpleDiffusion(GaussianDiffusion):
         #print(f'c: {c.shape}, alpha_t: {alpha_t.shape}, sigma_t: {sigma_t.shape}, model_pred: {model_pred.shape}')
         xt_ = alpha_s * x_pred + sigma_s * model_pred
         return xt_, torch.zeros_like(xt_)
-    def p_sample_loop(self, model, shape, noise=None, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, device=None, progress=False, eta=0):
+    def p_sample_loop(self, model, shape, noise=None, clip_denoised=True, denoised_fn=None, cond_fn=None, model_kwargs=None, device=None, progress=False, eta=0, gamma: float = .3):
         if noise is None:
             noise = torch.randn(shape, device=device)
         x = noise.to(device)
+        assert gamma is not .3, f'Invalid gamma {gamma}'
         progess_bar = tqdm(reversed(range(1, len(self.used_timesteps)))) if progress else reversed(range(1, len(self.used_timesteps)))
         for i in progess_bar:
             #print(f'Processing timestep {i}:{self.used_timesteps[i]} to timestep {i - 1}:{self.used_timesteps[i - 1]}')
@@ -181,7 +182,7 @@ class SimpleDiffusion(GaussianDiffusion):
             u_s = self.used_timesteps[i - 1] / self.diffusion_steps # next t
             u_t = torch.tensor(u_t).to(device).repeat(x.size(0)) # repeat for batch size
             u_s = torch.tensor(u_s).to(device).repeat(x.size(0))
-            z_mu, z_var = self.ddpm_sample(model, x, u_t, u_s, clip_denoised, denoised_fn, cond_fn, model_kwargs, eta)
+            z_mu, z_var = self.ddpm_sample(model, x, u_t, u_s, clip_denoised, denoised_fn, cond_fn, model_kwargs, eta, gamma)
             x = z_mu + torch.randn_like(z_mu) * torch.sqrt(z_var)
             xm.mark_step()
         t_lowest = self.used_timesteps[0] / self.diffusion_steps

@@ -30,6 +30,7 @@ class DiT_Stage2(Stage2Model):
         use_simple_diffusion: bool = False,
         use_loss_weighting: bool = False,
         use_schedule_shift: bool = False,
+        gamma: float = 0.3,
         class_cls_str: str = "rqvae.models.DiT.models.DiT.DiT",
         **kwargs,
     ):
@@ -88,6 +89,7 @@ class DiT_Stage2(Stage2Model):
         self.input_size = input_size
         self.num_classes = num_classes
         self.use_cfg = self.cfg >= 1.0
+        self.gamma = gamma # only used in simple diffusion
         self.n_samples = n_samples
         print(
             f"[!]DiT_Stage2: Using cfg: {self.use_cfg}, n_samples: {self.n_samples}, cfg: {self.cfg}, timestep_respacing: {self.timestep_respacing}, learn_sigma: {learn_sigma}", f"noise_schedule: {noise_schedule}", f"dim_ratio: {input_base_dimension_ratio}"
@@ -160,6 +162,7 @@ class DiT_Stage2(Stage2Model):
         else:
             model_kwargs = dict(y=y)  # do conditional sampling
             sample_fn = self.model.forward
+        simple_diffusion_kwargs = dict(gamma=self.gamma) if self.use_simple_diffusion else {}
         # Sample images:
         samples = self.infer_diffusion.p_sample_loop(
             sample_fn,
@@ -169,6 +172,7 @@ class DiT_Stage2(Stage2Model):
             model_kwargs=model_kwargs,
             progress=False,
             device=device,
+            **simple_diffusion_kwargs
         )
         if self.use_cfg:
             samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
