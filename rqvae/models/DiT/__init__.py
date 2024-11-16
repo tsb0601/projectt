@@ -136,10 +136,12 @@ class DiT_Stage2(Stage2Model):
     def infer(self, inputs: LabeledImageData) -> Stage2ModelOutput:
         device = xm.xla_device()  # default to TPU
         labels = inputs.condition
+        noise = None
         if isinstance(labels, torch.Tensor):
             device = labels.device  # sp hack
         if isinstance(inputs.img, torch.Tensor):
             device = inputs.img.device  # sp hack
+            noise = inputs.img
         n = self.n_samples
         cfg = self.cfg
         if labels is None:
@@ -152,7 +154,7 @@ class DiT_Stage2(Stage2Model):
         y = labels
         z = torch.randn(
             n, self.model.in_channels, self.input_size, self.input_size, device=device
-        )
+        ) if noise is None else noise
         if self.use_cfg:  # this means we use cfg
             z = torch.cat([z, z], 0)
             y_null = torch.tensor([self.num_classes] * labels.shape[0], device=device)

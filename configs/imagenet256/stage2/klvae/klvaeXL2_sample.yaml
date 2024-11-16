@@ -1,0 +1,31 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenetDiT256x256
+
+arch:
+  stage: 2
+  stage_1:
+    target: rqvae.models.klvae.Stage1_KLVAE_OnlyDecoder
+    params:
+      ckpt_path: ./ckpt_gcs/model_zoo/klvae/mse
+  stage_2:
+    target: rqvae.models.DiT.DiT_Stage2
+    params:
+      # DiT B/1 Recipe
+      hidden_size: 1152
+      input_size: 32
+      patch_size: 2
+      depth: 28
+      num_heads: 16
+      num_classes: 1000
+      cfg: 0.0
+      in_channels: 4
+      learn_sigma: true
+      noise_schedule: 'linear'
+      inference_step: 2
+      use_gembed: false
+  checkpointing: false
+  ema: 0.9999
+  #model_ckpt_path: 'ckpt_gcs/DiT_XL_2_klvae/klvaeXL2_b256_ema/rep_b256_ep80_lr1e-4_ema9999_latent_18102024_072658/ep_last-checkpoint/0-model.pt'
+  EMA_PATH: 'ckpt_gcs/DiT_XL_2_klvae/klvaeXL2_b256_ema/rep_b256_ep80_lr1e-4_ema9999_latent_18102024_072658/ep_80-checkpoint/0-ema-model.pt'

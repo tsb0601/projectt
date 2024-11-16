@@ -61,6 +61,9 @@ def test_all(stage2_model_wrapper:Stage2ModelWrapper, im_size:tuple):
         print("=" * 10, 'testing connector unnormalization', "=" * 10)
         unnormalized_output = connector.unnormalize(normalized_output)
         print('unnormalized zs:', unnormalized_output.zs.shape, unnormalized_output.zs.mean(), unnormalized_output.zs.std())
+        if stage2_model_wrapper.do_normalize is False:
+            # send a warning
+            print("=" * 10, 'WARNING: connector has normalization but stage2 model has do_normalize=False', "=" * 10)
     else:
         print("=" * 10, 'connector has no batchnorm, skipping normalization', "=" * 10)
     print("=" * 10, 'testing forward', "=" * 10)

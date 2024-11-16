@@ -4,7 +4,7 @@ from torchvision.transforms import ToTensor
 def get_default_image(im_size:tuple, single_image: bool = False) -> Image.Image:
     #image_path = '/home/bytetriper/VAE-enhanced/test.png'
     image_path = '/home/bytetriper/VAE-enhanced/visuals/test_imagenet_orig.png'
-    image_path = '/home/bytetriper/VAE-enhanced/visuals/crowd.png'
+    image_path = '/home/bytetriper/VAE-enhanced/visuals/crowd2.png'
     bsz = 1 if single_image else 2
     if len(im_size) >= 3:
         image = torch.randn(bsz, *im_size) # B, C, H, W

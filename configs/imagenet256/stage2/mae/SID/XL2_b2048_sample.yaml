@@ -26,7 +26,7 @@ arch:
       depth: 28
       num_heads: 16
       num_classes: 1000
-      cfg: 0.0
+      cfg: 4.0
       in_channels: 768
       learn_sigma: false
       noise_schedule: 'linear'
@@ -37,6 +37,7 @@ arch:
       use_loss_weighting: true
       use_schedule_shift: true
       gamma: 0.
+  EMA_PATH: '/home/bytetriper/VAE-enhanced/ckpt_gcs/DiT_B_1_mae/XL2_b2048_shift_7M/SIDXL_ep1400_lr8e-4_b2048_ema99_st_12112024_055511/ep_360-checkpoint/0-ema-model.pt'
   checkpointing: false
   ema: 0.99
 optimizer:

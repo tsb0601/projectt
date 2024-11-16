@@ -79,7 +79,12 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
         if use_ema:
             stage2model_ema = ExponentialMovingAverage(stage2model_ema, ema)
             stage2model_ema.eval()
-            stage2model_ema.update(stage2model, step=-1)
+            if config.get('ema_ckpt_path', False):
+                ema_ckpt_path = config.ema_ckpt_path
+                _, keys = load_model_from_ckpt(stage2model_ema, ema_ckpt_path, strict = False)
+                print(f'[!]INFO: Loaded Stage2Wrapper EMA from {ema_ckpt_path} with keys: {keys}')
+            else:
+                stage2model_ema.update(stage2model, step=-1)
             #assert assert_all_close(stage2model, stage2model_ema.module), f'[!]ERROR: Model and EMA are not the same'
         return stage2model, stage2model_ema
     else:
@@ -94,6 +99,10 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
         if use_ema:
             stage1model_ema = ExponentialMovingAverage(stage1model_ema, ema)
             stage1model_ema.eval()
-            stage1model_ema.update(stage1model, step=-1)
+            if config.get('ema_ckpt_path', False):
+                ema_ckpt_path = config.ema_ckpt_path
+                _, keys = load_model_from_ckpt(stage1model_ema, ema_ckpt_path, strict = False)
+            else:
+                stage1model_ema.update(stage1model, step=-1)
             #assert assert_all_close(stage1model, stage1model_ema), f'[!]ERROR: Model and EMA are not the same'
         return stage1model, stage1model_ema
