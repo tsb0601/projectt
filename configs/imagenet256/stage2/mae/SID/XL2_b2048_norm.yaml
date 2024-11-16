@@ -31,7 +31,7 @@ arch:
       learn_sigma: false
       noise_schedule: 'linear'
       inference_step: 250
-      n_samples: 2
+      n_samples: 1
       do_beta_rescaling: true
       use_simple_diffusion: true
       use_loss_weighting: true

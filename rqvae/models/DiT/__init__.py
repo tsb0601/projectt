@@ -1,3 +1,4 @@
+from pyexpat import model
 from rqvae.models.basicblocks.utils import zero_module
 from .models.DiT import *
 import torch
@@ -141,7 +142,8 @@ class DiT_Stage2(Stage2Model):
             device = labels.device  # sp hack
         if isinstance(inputs.img, torch.Tensor):
             device = inputs.img.device  # sp hack
-            noise = inputs.img
+            if inputs.img.shape[1:] == (self.model.in_channels, self.input_size, self.input_size):
+                noise = inputs.img
         n = self.n_samples
         cfg = self.cfg
         if labels is None:
