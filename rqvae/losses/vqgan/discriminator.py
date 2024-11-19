@@ -338,6 +338,7 @@ class ViTDiscriminator(nn.Module):
         num_heads = 6,
         image_size = 256,
         dim_head = None,
+        use_cls: bool = False,
         dropout = 0
     ):
         super(ViTDiscriminator, self).__init__()
@@ -355,7 +356,7 @@ class ViTDiscriminator(nn.Module):
         )
         token_num = (image_size // patch_size) ** 2
         self.emb_dropout = nn.Dropout(dropout)
-
+        self.use_cls = use_cls
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.pos_emb1D = nn.Parameter(torch.randn(token_num + 1, dim))
         self.mlp_head = nn.Sequential(
@@ -381,7 +382,7 @@ class ViTDiscriminator(nn.Module):
         image_patches = self.emb_dropout(image_patches)
 
         result = self.Transformer_Encoder(image_patches)
-        logits = self.mlp_head(result[:, 0, :])
+        logits = self.mlp_head(result[:, 0, :]) if self.use_cls else self.mlp_head(result[:, 1:, :])
         #logits = self.final_sigmoid(logits)
         return logits
     def forward(self, x, y = None):

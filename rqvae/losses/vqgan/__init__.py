@@ -52,6 +52,7 @@ def create_discriminator_with_optimizer_scheduler(
             dim = disc_config.arch.dim,
             num_heads = disc_config.arch.num_heads,
             blocks=disc_config.arch.blocks,
+            use_cls=disc_config.arch.use_cls,
         ).to(device).to(dtype)
     else:
         model = NLayerDiscriminator(

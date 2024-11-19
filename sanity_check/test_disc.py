@@ -181,7 +181,7 @@ class ViTDiscriminator(nn.Module):
         image_patches = self.emb_dropout(image_patches)
 
         result = self.Transformer_Encoder(image_patches)
-        logits = self.mlp_head(result[:, 0, :])
+        logits = self.mlp_head(result[:, 1:, :])
         #logits = nn.Sigmoid()(logits)
         return logits
     def forward(self, x, y = None):
@@ -191,7 +191,7 @@ def main():
     x = torch.randn(2, 3, 256, 256)
     y = torch.randn(2, 3, 256, 256)
     out = discriminator(x, y)
-    print(out)
+    print(out[0].shape, out[1].shape if out[1] is not None else None)
 
 if __name__ == '__main__':
     main()

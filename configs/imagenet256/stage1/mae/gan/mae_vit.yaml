@@ -53,6 +53,7 @@ gan:
       dim: 768
       blocks: 6
       num_heads: 12
+      use_cls: false
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adamw
