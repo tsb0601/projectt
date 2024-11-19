@@ -34,6 +34,13 @@ class ExponentialMovingAverage(torch.nn.Module):
     def infer(self, *args, **kwargs):
         return self.module.infer(*args, **kwargs)
     @torch.no_grad()
+    def sync_when_init(self, module):
+        keys = module.state_dict().keys()
+        self_keys = self.module.state_dict().keys()
+        for key in keys:
+            if key in self_keys:
+                self.module.state_dict()[key].copy_(module.state_dict()[key])
+    @torch.no_grad()
     def update(self, module, step=None):
         if step is None:
             mu = self.mu

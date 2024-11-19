@@ -21,6 +21,7 @@ from omegaconf import DictConfig
 from rqvae.models.utils import load_model_from_ckpt
 from typing import Optional, Tuple
 import torch
+from copy import deepcopy
 DEBUGING = os.environ.get('DEBUG', False)
 from .utils import *
 def assert_all_close(model_1, model_2)-> bool:
@@ -31,21 +32,25 @@ def assert_all_close(model_1, model_2)-> bool:
             print(f'[!]ERROR: Key {key} is not close')
             return False
     return True
-def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
+def _create_according_to_config(config:DictConfig, use_ema:bool, stage:int)->Tuple[XLA_Model, Optional[XLA_Model]]:
     assert stage in (0, 1, 2), f'[!]ERROR: Stage should be 0, 1 or 2 (0 is the connector), but got {stage}'
     model = instantiate_from_config(config)
-    model_ema = instantiate_from_config(config) if use_ema else None
+    model_ema = None
     if config.get('ckpt_path', False):
         ckpt_path = config.ckpt_path
         model, keys = load_model_from_ckpt(model, ckpt_path, strict = False) # load the model (will re-define the model if the ckpt is a nn.Module)
+        # copy the model to the ema model
         print(f'[!]INFO: Loaded Stage{stage} model from {ckpt_path} with keys: {keys}')
     #if use_ema:
     #    model_ema = ExponentialMovingAverage(model_ema, config.ema)
     #    model_ema.eval()
     #    model_ema.update(model, step=-1)
     #    assert assert_all_close(model, model_ema), f'[!]ERROR: Model and EMA are not the same'
+    if use_ema:
+        # do deepcopy
+        model_ema = deepcopy(model)
     model: XLA_Model
-    model_ema: Optional[ExponentialMovingAverage]
+    model_ema: Optional[XLA_Model]
     return model, model_ema
 def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)->Tuple[XLA_Model, Optional[ExponentialMovingAverage]]:
     """
@@ -84,7 +89,7 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
                 _, keys = load_model_from_ckpt(stage2model_ema, ema_ckpt_path, strict = False)
                 print(f'[!]INFO: Loaded Stage2Wrapper EMA from {ema_ckpt_path} with keys: {keys}')
             else:
-                stage2model_ema.update(stage2model, step=-1)
+                pass # should be equal at the beginning, no need to sync
             #assert assert_all_close(stage2model, stage2model_ema.module), f'[!]ERROR: Model and EMA are not the same'
         return stage2model, stage2model_ema
     else:
@@ -103,6 +108,6 @@ def create_model(config:DictConfig, ema:float=0.114514, is_master:bool = False)-
                 ema_ckpt_path = config.ema_ckpt_path
                 _, keys = load_model_from_ckpt(stage1model_ema, ema_ckpt_path, strict = False)
             else:
-                stage1model_ema.update(stage1model, step=-1)
+                pass # should be equal at the beginning, no need to sync
             #assert assert_all_close(stage1model, stage1model_ema), f'[!]ERROR: Model and EMA are not the same'
         return stage1model, stage1model_ema

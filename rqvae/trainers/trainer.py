@@ -294,7 +294,8 @@ class TrainerTemplate:
             ema_model_path = os.path.join(load_path, EMA_MODEL_NAME.format(rank))
             if os.path.exists(ema_model_path):
                 ema_model_weight = torch.load(ema_model_path)
-                self.model_ema_woddp.load_state_dict(ema_model_weight)
+                keys = self.model_ema_woddp.load_state_dict(ema_model_weight, strict=False)
+                xm.master_print(f"[!] EMA model loaded with keys: {keys}")
             else:
                 xm.master_print(f"[!] EMA model path {ema_model_path} does not exist, skip loading EMA model")
         if len(additional_attr_to_load) == 0:
