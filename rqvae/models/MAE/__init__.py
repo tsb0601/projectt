@@ -133,7 +133,7 @@ class Stage1MAE(Stage1Model):
         elif loss_type == 'l2':
             self.loss = lambda x, y: (x - y).square().mean()
         else:
-            self.loss = lambda x, y: torch.Tensor([0.]).to(x.device) # no loss
+            self.loss = lambda x, y: x.mean() * torch.Tensor([0.]).to(x.device) # zero loss, but preserve the gradient 
         assert loss_type in ['l1', 'l2', 'none'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
