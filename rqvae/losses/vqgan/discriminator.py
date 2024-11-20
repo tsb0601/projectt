@@ -425,6 +425,7 @@ class ViTDiscriminator(nn.Module):
         self.token_num = token_num
         self.Transformer_Encoder = DTransformerEncoder(dim, blocks, num_heads, dim_head, dropout)
         self.final_sigmoid = nn.Sigmoid()
+        self.init_weights()
     def init_weights(self):
         def _basic_init(module):
             if isinstance(module, nn.Linear):
