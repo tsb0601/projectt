@@ -76,7 +76,7 @@ gan:
       test_freq: 1
       amp: false
   loss:
-    disc_loss: hinge
+    disc_loss: vanilla
     gen_loss: vanilla
     disc_weight: 1.
     perceptual_weight: 0.
