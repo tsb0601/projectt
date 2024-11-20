@@ -433,7 +433,8 @@ class ViTDiscriminator(nn.Module):
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
         self.apply(_basic_init)
-        pos_embed = get_2d_sincos_pos_embed(self.dim, self.token_num, cls_token=True, extra_tokens=1)
+        pos_embed = get_2d_sincos_pos_embed(self.dim, int(self.token_num ** .5), cls_token=True, extra_tokens=1)
+        print(pos_embed.shape)
         self.pos_emb1D.data.copy_(torch.from_numpy(pos_embed))
         
         #init the last layer with 0
