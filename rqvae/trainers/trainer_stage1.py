@@ -144,10 +144,10 @@ class Trainer(TrainerTemplate):
 
             loss_gen = self.gen_loss(logits_fake)
             loss_disc = self.disc_loss(logits_real, logits_fake)
-
+            accuracy = (logits_real > logits_fake).float().mean() # accuracy of the discriminator
             logits_avg["logits_real"] = logits_real.detach().mean()
             logits_avg["logits_fake"] = logits_fake.detach().mean()
-
+            logits_avg["disc_acc"] = accuracy
         return loss_gen, loss_disc, logits_avg
 
     @torch.no_grad()
