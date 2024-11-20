@@ -127,9 +127,14 @@ class Stage1MAE(Stage1Model):
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
         self.do_encoder_embed_in_decode = do_decoder_embed_in_encode
-        self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
         self.interpolate_pos_embed = interpolate_pos_embed
-        assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
+        if loss_type == 'l1':
+            self.loss = lambda x, y: (x - y).abs().mean()
+        elif loss_type == 'l2':
+            self.loss = lambda x, y: (x - y).square().mean()
+        else:
+            self.loss = lambda x, y: torch.Tensor([0.]).to(x.device) # no loss
+        assert loss_type in ['l1', 'l2', 'none'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
@@ -408,8 +413,13 @@ class Stage1MAEwEnhancedEncDec(Stage1Model):
         # get the final layernorm's affine parameters
         self.no_cls = no_cls
         self.do_encoder_embed_in_decode = do_decoder_embed_in_encode
-        self.loss = lambda x, y: (x - y).abs().mean() if loss_type == 'l1' else (x - y).square().mean()
-        assert loss_type in ['l1', 'l2'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
+        if loss_type == 'l1':
+            self.loss = lambda x, y: (x - y).abs().mean()
+        elif loss_type == 'l2':
+            self.loss = lambda x, y: (x - y).square().mean()
+        else:
+            self.loss = lambda x, y: torch.Tensor([0.]).to(x.device) # no loss
+        assert loss_type in ['l1', 'l2', 'none'], 'loss type should be either l1 or l2, but got {}'.format(loss_type)
         print(f'Stage1MAE model loaded with mean {processor.image_mean} and std {processor.image_std}, mask ratio {mask_ratio}')
     def forward(self, inputs: LabeledImageData)-> Stage1ModelOutput:
         xs = inputs.img
