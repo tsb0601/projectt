@@ -107,6 +107,7 @@ class Trainer(TrainerTemplate):
             "g_weight",
             "logits_real",
             "logits_fake",
+            "disc_acc",
             "grad_norm",
         ]
         accm = AccmStage1WithGAN(
@@ -132,10 +133,10 @@ class Trainer(TrainerTemplate):
             )
 
             loss_disc = self.disc_loss(logits_real, logits_fake)
-
+            accuracy = (logits_real > logits_fake).float().mean() # accuracy of the discriminator
             logits_avg["logits_real"] = logits_real.detach().mean()
             logits_avg["logits_fake"] = logits_fake.detach().mean()
-
+            logits_avg["disc_acc"] = accuracy
         elif mode == "eval":
             logits_fake, logits_real = self.discriminator(
                 recons.contiguous().detach(), inputs.contiguous().detach()

@@ -332,7 +332,7 @@ class ViTDiscriminator(nn.Module):
     def __init__(self,
         in_channels = 3,
         patch_size = 8,
-        extend_size = 2,
+        extend_size = 0,
         dim = 384,
         blocks = 6,
         num_heads = 6,

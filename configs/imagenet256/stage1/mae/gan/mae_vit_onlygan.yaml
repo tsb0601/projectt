@@ -1,0 +1,84 @@
+dataset:
+  type: imagenet
+  transforms:
+    type: imagenet256x256
+
+arch:
+  stage: 1
+  stage_1:
+    target: rqvae.models.MAE.Stage1MAE
+    params:
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+      no_cls: true
+      #do_decoder_embed_in_encode: true
+  connector:
+    target: rqvae.models.connectors.ReshapeAndSplit_connector
+    params:
+      split: 1
+      remove_cls: true
+    #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
+  checkpointing: false
+  ema: 0.99
+optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+  type: adamw
+  init_lr: 4.0e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.95]
+  max_gn: None
+  amp: true
+  warmup:
+    epoch: 0.5  # 5% of total epochs
+    multiplier: 1
+    buffer_epoch: 0
+    min_lr: 4.0e-4
+    mode: fix
+    start_from_zero: true
+
+experiment:
+  batch_size: 32
+  accu_step: 1
+  epochs: 100
+  save_ckpt_freq: 50
+  test_freq: 1
+  amp: false
+  actual_batch_size: 4096
+
+gan:
+  disc:
+    arch:
+      use_vit: true
+      in_channels: 3
+      patch_size: 16
+      dim: 768
+      blocks: 6
+      num_heads: 12
+      use_cls: false
+    optimizer:
+      # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
+      type: adamw
+      init_lr: 4.0e-4
+      weight_decay: 0.0
+      betas: [0.9, 0.95]
+      max_gn: None
+      amp: true
+      warmup:
+        epoch: 0.5  # 5% of total epochs
+        multiplier: 1
+        buffer_epoch: 0
+        min_lr: 4.0e-4
+        mode: fix
+        #decay_mode: reduce
+        #decay_schel: [624]
+        start_from_zero: true
+    experiment:
+      test_freq: 1
+      amp: false
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+    disc_weight: 1.
+    perceptual_weight: 0.
+    disc_start: 0
+    lpips_start: 0
+    disc_upd_start: 0
