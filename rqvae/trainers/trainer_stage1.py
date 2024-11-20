@@ -422,7 +422,7 @@ class Trainer(TrainerTemplate):
                 #    last_layer=self.get_last_layer(),
                 #    nll_scale=1.0,
                 #)
-                g_weight = 1.0
+                g_weight = torch.tensor(1.0, device=self.device)
             else:
                 loss_gen = torch.zeros((), device=self.device)
                 g_weight = torch.zeros((), device=self.device)
