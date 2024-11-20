@@ -57,7 +57,7 @@ gan:
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adamw
-      init_lr: 4.0e-5
+      init_lr: 4.0e-4
       weight_decay: 0.0
       betas: [0.9, 0.95]
       max_gn: None
@@ -66,7 +66,7 @@ gan:
         epoch: 0.5  # 5% of total epochs
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 4.0e-5
+        min_lr: 4.0e-4
         mode: fix
         #decay_mode: reduce
         #decay_schel: [624]
@@ -78,7 +78,7 @@ gan:
     disc_loss: hinge
     gen_loss: vanilla
     disc_weight: 1.
-    perceptual_weight: 0.
-    disc_start: 0
+    perceptual_weight: 1.
+    disc_start: 1
     lpips_start: 0
     disc_upd_start: 0
