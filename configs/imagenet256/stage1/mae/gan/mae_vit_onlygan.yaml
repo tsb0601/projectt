@@ -49,7 +49,7 @@ gan:
   disc:
     arch:
       use_dino: true
-      dino_ckpt_path: ckpt_gcs/model_zoo/dino_vit_small_patch16_224.pth'
+      dino_ckpt_path: 'ckpt_gcs/model_zoo/dino_vit_small_patch16_224.pth'
       ks: 9
       norm_type: 'bn'
     optimizer:
