@@ -43,7 +43,7 @@ experiment:
   save_ckpt_freq: 50
   test_freq: 1
   amp: false
-  actual_batch_size: 4096
+  actual_batch_size: 4
 
 gan:
   disc:
@@ -77,6 +77,6 @@ gan:
     gen_loss: vanilla
     disc_weight: 1.
     perceptual_weight: 0.
-    disc_start: 1
+    disc_start: 0
     lpips_start: 0
     disc_upd_start: 0

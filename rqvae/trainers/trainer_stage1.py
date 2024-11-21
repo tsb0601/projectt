@@ -125,13 +125,13 @@ class Trainer(TrainerTemplate):
 
         logits_avg = {}
         if mode == "gen":
-            #recons = self.disc_aug.aug(recons)
+            recons = self.disc_aug.aug(recons)
             logits_fake, _ = self.discriminator(recons.contiguous(), None)
             loss_gen = self.gen_loss(logits_fake)
 
         elif mode == "disc":
-            #inputs = self.disc_aug.aug(inputs)
-            #recons = self.disc_aug.aug(recons)
+            inputs = self.disc_aug.aug(inputs)
+            recons = self.disc_aug.aug(recons)
             logits_fake, logits_real = self.discriminator(
                 recons.contiguous().detach(), inputs.contiguous().detach()
             )
