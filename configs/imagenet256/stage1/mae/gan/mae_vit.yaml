@@ -25,7 +25,7 @@ optimizer:
   type: adam
   init_lr: 4.0e-5
   weight_decay: 0.0
-  betas: [0., 0.99]
+  betas: [0.5, 0.9]
   max_gn: None
   amp: true
   warmup:
@@ -57,7 +57,7 @@ gan:
       type: adam
       init_lr: 2.0e-3
       weight_decay: 0.0
-      betas: [0., 0.99]
+      betas: [0.5, 0.9]
       max_gn: None
       amp: true
       warmup:
