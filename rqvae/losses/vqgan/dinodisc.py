@@ -295,7 +295,7 @@ class FrozenDINOSmallNoDrop(nn.Module):
         with nullcontext():
             x = (self.x_scale * x.float()).add_(self.x_shift)
             H, W = x.shape[-2], x.shape[-1]
-            if H > self.img_size and W > self.img_size and random.random() <= 0.5:
+            if H > self.img_size and W > self.img_size and random.random() <= -0.5:
                 x = self.crop(x)
             else:
                 x = F.interpolate(x, size=(self.img_size, self.img_size), mode='area' if H > self.img_size else 'bicubic')
