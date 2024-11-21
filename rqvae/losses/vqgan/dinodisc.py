@@ -174,7 +174,7 @@ class DinoDisc(nn.Module):
         assert len(unexpected) == 0, f'unexpected keys: {unexpected}'
         
         # todo: don't compile! reduce-overhead would raise CudaERR
-        self.dino_proxy: Tuple[FrozenDINOSmallNoDrop] = nn.ModuleList(d,)
+        self.dino_proxy:nn.ModuleList = nn.ModuleList((d,))
         self.dino_proxy.requires_grad_(False)
         dino_C = self.dino_proxy[0].embed_dim
         # if 'KEVIN_LOCAL' in os.environ:
