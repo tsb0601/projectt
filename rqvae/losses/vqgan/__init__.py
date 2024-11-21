@@ -56,6 +56,7 @@ def create_discriminator_with_optimizer_scheduler(
             using_spec_norm = True,
             key_depths = (2, 5, 8, 11) # fixed 
         ).to(device).to(dtype)
+        model.dino_proxy[0].to(device).to(dtype) # move the dino to the device, need this because dinos are not part of the model parameters
     else:
         model = NLayerDiscriminator(
             input_nc=disc_config.arch.in_channels,

@@ -135,7 +135,6 @@ class Trainer(TrainerTemplate):
             logits_fake, logits_real = self.discriminator(
                 recons.contiguous().detach(), inputs.contiguous().detach()
             )
-
             loss_disc = self.disc_loss(logits_real, logits_fake)
             accuracy = (logits_real > logits_fake).float().mean() # accuracy of the discriminator
             logits_avg["logits_real"] = logits_real.detach().mean()
@@ -467,8 +466,8 @@ class Trainer(TrainerTemplate):
                     with torch.no_grad():
                         disc_stage1_output: Stage1ModelOutput = self.model(inputs) # call a new forward pass
                         disc_xs_recon = disc_stage1_output.xs_recon  
-                        normed_disc_xs_recon = disc_xs_recon * 2 - 1
-                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_xs_recon.detach(), mode="disc")
+                        normed_disc_xs_recon = (disc_xs_recon * 2 - 1)
+                    _, loss_disc, logits = self.gan_loss(normed_xs, normed_disc_xs_recon, mode="disc")
                     self.model.train()
                     self.discriminator.eval()
                     dict_loss = loss_disc * self.disc_weight
