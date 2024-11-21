@@ -19,13 +19,13 @@ arch:
       remove_cls: true
     #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   checkpointing: false
-  ema: 0.99
+  ema: 0.9978
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adam
   init_lr: 4.0e-5
   weight_decay: 0.0
-  betas: [0.5, 0.9]
+  betas: [0., 0.99]
   max_gn: None
   amp: true
   warmup:
@@ -43,7 +43,7 @@ experiment:
   save_ckpt_freq: 50
   test_freq: 1
   amp: false
-  actual_batch_size: 1024
+  actual_batch_size: 2048
 
 gan:
   disc:
@@ -55,16 +55,16 @@ gan:
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adam
-      init_lr: 4.0e-5
+      init_lr: 2.0e-3
       weight_decay: 0.0
-      betas: [0.5, 0.9]
+      betas: [0., 0.99]
       max_gn: None
       amp: true
       warmup:
         epoch: 0.5  # 5% of total epochs
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 4.0e-5
+        min_lr: 2.0e-3
         mode: fix
         #decay_mode: reduce
         #decay_schel: [624]
@@ -75,8 +75,8 @@ gan:
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: .1
+    disc_weight: .75
     perceptual_weight: 1.
-    disc_start: 5
+    disc_start: 2
     lpips_start: 0
     disc_upd_start: 0
