@@ -126,7 +126,11 @@ if __name__ == '__main__':
     img = img.unsqueeze(0).repeat(2,1,1,1) # to [-1, 1]
     print(img.shape, img.min(), img.max())
     aug = DiffAug(prob=1., cutout=0.2)
-    img_augs = [aug.aug(img, 1.) for _ in range(5)]
+    img_augs = []
+    for i in range(5):
+        aug_img = aug.aug(img)
+        print(aug_img.shape, aug_img.min(), aug_img.max())
+        img_augs.append(aug_img)
     all_img = torch.cat(img_augs, dim=0)
     print(all_img.shape, all_img.min(), all_img.max())
     all_img = all_img.add(1).div_(2)
