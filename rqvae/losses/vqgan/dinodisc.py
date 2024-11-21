@@ -16,12 +16,18 @@ dropout_add_layer_norm = fused_mlp_func = None # no flash attn for TPU
 flash_attn_qkvpacked_func = None
 
 try:
-    from torch.nn.functional import scaled_dot_product_attention as slow_attn    # q, k, v: BHLc
+    
+    pass
+    #from torch.nn.functional import scaled_dot_product_attention as slow_attn    # q, k, v: BHLc
 except:
-    def slow_attn(query, key, value, scale: float, attn_mask=None, dropout_p=0.0):
-        attn = query.mul(scale) @ key.transpose(-2, -1) # BHLc @ BHcL => BHLL
-        if attn_mask is not None: attn.add_(attn_mask)
-        return (F.dropout(attn.softmax(dim=-1), p=dropout_p, inplace=True) if dropout_p > 0 else attn.softmax(dim=-1)) @ value
+    pass
+def slow_attn(query, key, value, scale: float, attn_mask=None, dropout_p=0.0):
+
+    attn = query.mul(scale) @ key.transpose(-2, -1) # BHLc @ BHcL => BHLL
+
+    if attn_mask is not None: attn.add_(attn_mask)
+
+    return (F.dropout(attn.softmax(dim=-1), p=dropout_p, inplace=True) if dropout_p > 0 else attn.softmax(dim=-1)) @ value
 
 
 class MLPNoDrop(nn.Module):
