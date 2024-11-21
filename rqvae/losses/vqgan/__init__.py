@@ -48,7 +48,7 @@ def create_discriminator_with_optimizer_scheduler(
     use_vit = disc_config.arch.get("use_dino", False)
     if use_vit:
         model = DinoDiscriminator(
-            'cpu',
+            device = 'cpu',
             dino_ckpt_path=disc_config.arch.dino_ckpt_path,
             ks = disc_config.arch.ks, # kernel size
             norm_type = disc_config.arch.norm_type, # normalization type
