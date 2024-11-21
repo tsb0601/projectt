@@ -174,7 +174,8 @@ class DinoDisc(nn.Module):
         assert len(unexpected) == 0, f'unexpected keys: {unexpected}'
         
         # todo: don't compile! reduce-overhead would raise CudaERR
-        self.dino_proxy: Tuple[FrozenDINOSmallNoDrop] = (d.to(device=device),)
+        self.dino_proxy: Tuple[FrozenDINOSmallNoDrop] = nn.ModuleList(d,)
+        self.dino_proxy.requires_grad_(False)
         dino_C = self.dino_proxy[0].embed_dim
         # if 'KEVIN_LOCAL' in os.environ:
         #     torch.manual_seed(0)
@@ -202,7 +203,10 @@ class DinoDisc(nn.Module):
             ).view(B, -1)
             for h, act in zip(self.heads, activations)
         ], dim=1)  # cat 5 BL => B, 5L
-
+    def requires_grad_(self, requires_grad: bool) -> 'DinoDisc':
+        self.heads.requires_grad_(requires_grad) 
+        self.dino_proxy.requires_grad_(False) # always False
+        return self
 
 class PatchEmbed(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, norm_layer=None, flatten=True):
