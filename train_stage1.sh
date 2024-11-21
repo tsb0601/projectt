@@ -10,7 +10,7 @@ fi
 mkdir -p $SAVE_DIR
 echo "Save dir: $SAVE_DIR"
 export PJRT_DEVICE=TPU
-export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_test'
+export XLACACHE_PATH='/home/bytetriper/.cache/xla_compile/MAE_256_ft_test'
 env | grep PJRT
 env | grep DEBUG
 model_config=$3
@@ -34,8 +34,8 @@ else
     echo "wanb_id: $wandb_id"
     export WANDB_ID=$wandb_id
 fi
-#export WANDB_DIR=$SAVE_DIR
-#export WANDB_PROJECT=$EXP_NAME
+export WANDB_DIR=$SAVE_DIR
+export WANDB_PROJECT=$EXP_NAME
 #env | grep WANDB
 export XLA_DISABLE_FUNCTIONALIZATION=1
 python main_stage1.py \
@@ -44,4 +44,4 @@ python main_stage1.py \
     --world_size=$world_size \
     -l=$load_ckpt \
     --exp=$exp \
-    #--do_online_eval
+    --do_online_eval
