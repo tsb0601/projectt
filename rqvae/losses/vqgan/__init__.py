@@ -15,10 +15,11 @@
 from rqvae.optimizer import create_scheduler
 from rqvae.optimizer.optimizer import create_resnet_optimizer
 
-from .discriminator import NLayerDiscriminator, weights_init, ViTDiscriminator
+from .discriminator import NLayerDiscriminator, weights_init, DinoDiscriminator
 from .gan_loss import hinge_d_loss, vanilla_d_loss, vanilla_g_loss
 from .lpips import LPIPS
-
+from .diffaug import DiffAug
+import torch
 def create_vqgan_loss(loss_config):
 
     disc_loss_type = loss_config.disc_loss
@@ -43,16 +44,17 @@ def create_vqgan_loss(loss_config):
 
 def create_discriminator_with_optimizer_scheduler(
     disc_config, steps_per_epoch, max_epoch, device, dtype, distenv=None, is_eval:bool = False
-):
-    use_vit = disc_config.arch.get("use_vit", False)
+) -> tuple[torch.nn.Module, torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR, DiffAug]:
+    use_vit = disc_config.arch.get("use_dino", False)
     if use_vit:
-        model = ViTDiscriminator(
-            in_channels=disc_config.arch.in_channels,
-            patch_size=disc_config.arch.patch_size,
-            dim = disc_config.arch.dim,
-            num_heads = disc_config.arch.num_heads,
-            blocks=disc_config.arch.blocks,
-            use_cls=disc_config.arch.use_cls,
+        model = DinoDiscriminator(
+            'cpu',
+            dino_ckpt_path=disc_config.arch.dino_ckpt_path,
+            ks = disc_config.arch.ks, # kernel size
+            norm_type = disc_config.arch.norm_type, # normalization type
+            norm_eps = 1e-6,
+            using_spec_norm = True,
+            key_depths = (2, 5, 8, 11) # fixed 
         ).to(device).to(dtype)
     else:
         model = NLayerDiscriminator(
@@ -73,5 +75,6 @@ def create_discriminator_with_optimizer_scheduler(
     else:
         optimizer = None
         scheduler = None
-
-    return model, optimizer, scheduler
+    augs = DiffAug()
+    model.eval() # set model to eval mode
+    return model, optimizer, scheduler, augs

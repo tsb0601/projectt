@@ -48,13 +48,10 @@ experiment:
 gan:
   disc:
     arch:
-      use_vit: true
-      in_channels: 3
-      patch_size: 8
-      dim: 384
-      blocks: 3
-      num_heads: 6
-      use_cls: false
+      use_dino: true
+      dino_ckpt_path: '/home/bytetriper//model_zoo/dino_vit_small_patch16_224.pth'
+      ks: 9
+      norm_type: 'bn'
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adamw

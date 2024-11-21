@@ -67,7 +67,7 @@ class Trainer(TrainerTemplate):
         assert self.gan_upd_start_epoch <= self.gan_start_epoch, "discriminator update start should be less than or equal to the start of GAN training"
         num_epochs_for_gan = self.config.experiment.epochs - self.gan_start_epoch
         self.lpips_start_epoch = gan_config.loss.lpips_start
-        disc_model, disc_optim, disc_sched = (
+        disc_model, disc_optim, disc_sched, aug = (
             create_discriminator_with_optimizer_scheduler(
                 disc_config,
                 steps_per_epoch=len(self.loader_trn),
@@ -86,7 +86,8 @@ class Trainer(TrainerTemplate):
         self.discriminator = dist_utils.dataparallel_and_sync(self.distenv, disc_model)
         self.disc_optimizer = disc_optim
         self.disc_scheduler = disc_sched
-
+        self.disc_aug = aug
+        
         d_loss, g_loss, p_loss = create_vqgan_loss(gan_config.loss)
 
         self.disc_loss = d_loss
@@ -124,10 +125,13 @@ class Trainer(TrainerTemplate):
 
         logits_avg = {}
         if mode == "gen":
+            recons = self.disc_aug.aug(recons)
             logits_fake, _ = self.discriminator(recons.contiguous(), None)
             loss_gen = self.gen_loss(logits_fake)
 
         elif mode == "disc":
+            inputs = self.disc_aug.aug(inputs)
+            recons = self.disc_aug.aug(recons)
             logits_fake, logits_real = self.discriminator(
                 recons.contiguous().detach(), inputs.contiguous().detach()
             )
@@ -138,10 +142,10 @@ class Trainer(TrainerTemplate):
             logits_avg["logits_fake"] = logits_fake.detach().mean()
             logits_avg["disc_acc"] = accuracy
         elif mode == "eval":
+            # do not augment for evaluation
             logits_fake, logits_real = self.discriminator(
                 recons.contiguous().detach(), inputs.contiguous().detach()
             )
-
             loss_gen = self.gen_loss(logits_fake)
             loss_disc = self.disc_loss(logits_real, logits_fake)
             accuracy = (logits_real > logits_fake).float().mean() # accuracy of the discriminator

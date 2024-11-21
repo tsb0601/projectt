@@ -5,6 +5,7 @@ import torch.nn as nn
 from einops import rearrange, repeat
 from timm.models.layers import PatchEmbed
 import numpy as np
+from .dinodisc import DinoDisc
 # ActNorm, weights_init, NLayerDiscriminator
 
 
@@ -458,5 +459,14 @@ class ViTDiscriminator(nn.Module):
         logits = self.mlp_head(result[:, 0, :]) if self.use_cls else self.mlp_head(result[:, 1:, :])
         #logits = self.final_sigmoid(logits)
         return logits
+    def forward(self, x, y = None):
+        return self.classify(x), self.classify(y) if y is not None else None
+    
+    
+class DinoDiscriminator(DinoDisc):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    def classify(self, img):
+        return super().forward(img)
     def forward(self, x, y = None):
         return self.classify(x), self.classify(y) if y is not None else None
