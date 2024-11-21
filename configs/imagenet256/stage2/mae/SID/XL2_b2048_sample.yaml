@@ -26,7 +26,7 @@ arch:
       depth: 28
       num_heads: 16
       num_classes: 1000
-      cfg: 1.4
+      cfg: 1.6
       in_channels: 768
       learn_sigma: false
       noise_schedule: 'linear'
