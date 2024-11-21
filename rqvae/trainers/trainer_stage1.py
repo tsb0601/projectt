@@ -131,6 +131,9 @@ class Trainer(TrainerTemplate):
 
         elif mode == "disc":
             inputs = self.disc_aug.aug(inputs)
+            # discretize the recons then augment
+            recons = recons.clamp(-1, 1)
+            recons = torch.round((recons + 1) / 2 * 255) / 255 * 2 - 1
             recons = self.disc_aug.aug(recons)
             logits_fake, logits_real = self.discriminator(
                 recons.contiguous().detach(), inputs.contiguous().detach()
