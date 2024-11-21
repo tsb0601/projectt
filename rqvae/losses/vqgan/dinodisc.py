@@ -191,8 +191,9 @@ class DinoDisc(nn.Module):
     
     def forward(self, x_in_pm1, grad_ckpt=False):   # x_in_pm1: image tensor normalized to [-1, 1]
         dino_grad_ckpt = grad_ckpt and x_in_pm1.requires_grad
+        assert not dino_grad_ckpt, 'DINO disc does not support grad checkpoint'
         FrozenDINOSmallNoDrop.forward
-        activations: List[torch.Tensor] = self.dino_proxy[0](x_in_pm1.float(), grad_ckpt=dino_grad_ckpt) # list[B, 384, 196]
+        activations: List[torch.Tensor] = self.dino_proxy[0](x_in_pm1, grad_ckpt=dino_grad_ckpt) # list[B, 384, 196]
         B = x_in_pm1.shape[0]
         return torch.cat([
             (
