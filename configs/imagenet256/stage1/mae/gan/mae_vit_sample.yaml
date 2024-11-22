@@ -19,7 +19,7 @@ arch:
       remove_cls: true
     #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   checkpointing: false
-  ema: 0.9978
+  ema: 0.114514 # not using EMA
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adam
@@ -66,8 +66,8 @@ gan:
         buffer_epoch: 0
         min_lr: 2.0e-3
         mode: fix
-        decay_mode: reduce
-        decay_schel: [4000]
+        #decay_mode: reduce
+        #decay_schel: [6000]
         start_from_zero: true
     experiment:
       test_freq: 1
