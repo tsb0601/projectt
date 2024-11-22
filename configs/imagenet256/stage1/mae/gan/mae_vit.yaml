@@ -66,8 +66,8 @@ gan:
         buffer_epoch: 0
         min_lr: 2.0e-3
         mode: fix
-        decay_mode: reduce
-        decay_schel: [624]
+        #decay_mode: reduce
+        #decay_schel: [6000]
         start_from_zero: true
     experiment:
       test_freq: 1

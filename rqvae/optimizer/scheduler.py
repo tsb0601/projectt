@@ -62,9 +62,8 @@ def create_scheduler(optimizer, config, steps_per_epoch, max_epoch, distenv=None
             optimizer, T_max = decay_steps, eta_min=min_lr, last_epoch= -1
         )
     elif decay_mode == 'reduce':
-        # reduce per epoch
         # addtionally get a decay schedule
-        decay_schel = config.get("decay_schel", [max_epoch])
+        decay_schel = config.get("decay_schel", [final_steps])
         scheduler = MultiStepLR(optimizer, milestones=decay_schel, gamma=0.1, last_epoch=-1)
     else:
         raise NotImplementedError(f"{decay_mode} is not a valid decay policy")
