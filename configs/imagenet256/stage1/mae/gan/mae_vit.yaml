@@ -34,6 +34,8 @@ optimizer:
     buffer_epoch: 0
     min_lr: 4.0e-5
     mode: fix
+    decay_mode: reduce
+    decay_schel: [2500]
     start_from_zero: true
 
 experiment:
