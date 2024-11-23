@@ -67,7 +67,7 @@ gan:
         min_lr: 2.0e-3
         mode: fix
         decay_mode: reduce
-        decay_schel: [4000]
+        decay_schel: [2500]
         start_from_zero: true
     experiment:
       test_freq: 1
@@ -77,6 +77,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .75
     perceptual_weight: 1.
-    disc_start: 2
+    disc_start: 3
     lpips_start: 0
     disc_upd_start: 0
