@@ -35,7 +35,8 @@ optimizer:
     min_lr: 4.0e-5
     mode: fix
     decay_mode: reduce
-    decay_schel: [1825]
+    decay_schel: [1825, 2450]
+    gamma: .5
     start_from_zero: true
 
 experiment:
@@ -69,7 +70,8 @@ gan:
         min_lr: 2.0e-3
         mode: fix
         decay_mode: reduce
-        decay_schel: [1825]
+        decay_schel: [1825, 2450]
+        gamma: .5
         start_from_zero: true
     experiment:
       test_freq: 1
