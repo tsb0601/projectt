@@ -36,7 +36,7 @@ optimizer:
     mode: fix
     decay_mode: reduce
     decay_schel: [1825, 2450]
-    gamma: .5
+    gamma: .2
     start_from_zero: true
 
 experiment:
