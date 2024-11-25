@@ -462,6 +462,8 @@ class DiTwoAttn(DiT):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         for block in self.blocks:
+            # first delete attn
+            del block.attn
             block.attn = nn.Identity()
 class DiTonlyMlp(DiT):
     """
