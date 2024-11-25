@@ -131,7 +131,7 @@ class DiTBlock(nn.Module):
     def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        no_attn = block_kwargs.get('no_attn', False)
+        no_attn = block_kwargs.pop('no_attn', False)
         self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs) if not no_attn else self.id_xla # no attn
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
