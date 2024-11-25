@@ -13,13 +13,14 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
-from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+from timm.models.vision_transformer import PatchEmbed, Mlp
 from rqvae.models.interfaces import Stage2Model
 from ..diffusion import create_diffusion
 from ..blocks import ConvEncoder, ConvDecoder
 from header import *
 from rqvae.models.basicblocks.basics import ConvMlp
 from transformers import Dinov2Model
+from .attentions import * # Attention and localAttention
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
@@ -123,7 +124,6 @@ class LabelEmbedder(nn.Module):
 #################################################################################
 #                                 Core DiT Model                                #
 #################################################################################
-
 class DiTBlock(nn.Module):
     """
     A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
@@ -132,7 +132,16 @@ class DiTBlock(nn.Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         no_attn = block_kwargs.pop('no_attn', False)
-        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
+        use_local_attn = block_kwargs.pop('use_local_attn', False)
+        if use_local_attn:
+            assert not no_attn, "no_attn and use_local_attn cannot be both True."
+            window_size = int(block_kwargs.pop('window_size', 4)) # default window size to 4
+            input_size = block_kwargs.pop('input_size', None)
+            self.attn = LocalAttention(hidden_size, num_heads, input_size, qkv_bias=True, window_size=window_size, **block_kwargs)
+        elif no_attn:
+            self.attn = nn.Identity()
+        else:
+            self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
         self.no_attn = no_attn
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
@@ -146,12 +155,9 @@ class DiTBlock(nn.Module):
             )
         else:
             self.adaLN_modulation = adaln_block
-    @staticmethod
-    def id_xla(x: torch.Tensor) -> torch.Tensor:
-        return x
     def forward(self, x, c):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
-        attn_func = self.attn if not self.no_attn else self.id_xla
+        attn_func = self.attn 
         x = x + gate_msa.unsqueeze(1) * attn_func(modulate(self.norm1(x), shift_msa, scale_msa))
         x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
         return x
@@ -276,6 +282,8 @@ class DiT(nn.Module):
         learn_sigma=True,
         use_gembed: bool = True,
         no_attn: bool = False,
+        use_local_attn: bool = False,
+        window_size: int = 4
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -297,7 +305,7 @@ class DiT(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
         self.blocks = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio, no_attn = no_attn) for _ in range(depth)
+            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio, no_attn = no_attn, use_local_attn = use_local_attn, window_size = window_size, input_size = input_size) for _ in range(depth)
         ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
