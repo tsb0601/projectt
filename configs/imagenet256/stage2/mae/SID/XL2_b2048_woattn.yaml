@@ -32,11 +32,11 @@ arch:
       noise_schedule: 'linear'
       inference_step: 250
       n_samples: 2
+      no_attn: true
       do_beta_rescaling: true
       use_simple_diffusion: true
       use_loss_weighting: true
       use_schedule_shift: true
-      class_cls_str: 'rqvae.models.DiT.models.DiT.DiTwoAttn'
       gamma: .0
   checkpointing: false
   ema: 0.99
