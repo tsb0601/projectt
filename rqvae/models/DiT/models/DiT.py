@@ -132,7 +132,7 @@ class DiTBlock(nn.Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         no_attn = block_kwargs.get('no_attn', False)
-        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs) if not no_attn else nn.Identity() # no attn
+        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs) if not no_attn else self.id_xla # no attn
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
         approx_gelu = lambda: nn.GELU(approximate="tanh")
@@ -145,7 +145,9 @@ class DiTBlock(nn.Module):
             )
         else:
             self.adaLN_modulation = adaln_block
-
+    @staticmethod
+    def id_xla(x: torch.Tensor) -> torch.Tensor:
+        return x
     def forward(self, x, c):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))

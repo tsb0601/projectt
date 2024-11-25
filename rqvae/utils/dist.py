@@ -89,6 +89,7 @@ def broadcast_master_param(model: torch.nn.Module) -> None:
   parameters_and_buffers = list(
       itertools.chain(model.parameters(), model.buffers()))
   collective_broadcast(parameters_and_buffers, pin_layout=False)
+  xm.mark_step()
 def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     if distenv.use_ddp:
         assert dist.is_initialized(), 'DistributedDataParallel requires torch.distributed to be initialized.'
