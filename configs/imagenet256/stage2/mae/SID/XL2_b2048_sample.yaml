@@ -8,8 +8,9 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r_gan'
       no_cls: true
+      mask_ratio: 0.0
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
     params:
@@ -26,7 +27,7 @@ arch:
       depth: 28
       num_heads: 16
       num_classes: 1000
-      cfg: 1.6
+      cfg: 1.5
       in_channels: 768
       learn_sigma: false
       noise_schedule: 'linear'
