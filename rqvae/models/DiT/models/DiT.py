@@ -133,10 +133,10 @@ class DiTBlock(nn.Module):
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         no_attn = block_kwargs.pop('no_attn', False)
         use_local_attn = block_kwargs.pop('use_local_attn', False)
+        window_size = int(block_kwargs.pop('window_size', 4)) # default window size to 4
+        input_size = block_kwargs.pop('input_size', None)
         if use_local_attn:
             assert not no_attn, "no_attn and use_local_attn cannot be both True."
-            window_size = int(block_kwargs.pop('window_size', 4)) # default window size to 4
-            input_size = block_kwargs.pop('input_size', None)
             self.attn = LocalAttention(hidden_size, num_heads, input_size, qkv_bias=True, window_size=window_size, **block_kwargs)
         elif no_attn:
             self.attn = nn.Identity()

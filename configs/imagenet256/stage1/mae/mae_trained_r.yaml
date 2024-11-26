@@ -15,12 +15,12 @@ arch:
       mask_ratio: 0.0
 
       #do_decoder_embed_in_encode: true
-  #connector:
-  #  target: rqvae.models.connectors.ReshapeAndSplit_connector
-  #  params:
-  #    split: 1
-  #    remove_cls: true
-    #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
+  connector:
+    target: rqvae.models.connectors.ReshapeAndSplit_connector
+    params:
+      split: 1
+      remove_cls: true
+    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/layernorm.pt'
   checkpointing: false
   ema: 0.99
 optimizer:

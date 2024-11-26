@@ -88,8 +88,11 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
             return encodings
         zs = encodings.zs
         # expand to match zs dim: B,C ,L or B,C, H,W
-        running_mean = self.bn.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
-        running_var = self.bn.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        C = zs.size(1)
+        #running_mean = self.bn.running_mean.view(1, C , *(1 for _ in range(zs.dim() - 2)))
+        #running_var = self.bn.running_var.view(1, C, *(1 for _ in range(zs.dim() - 2)))
+        running_mean = self.bn.running_mean.unsqueeze(0)
+        running_var = self.bn.running_var.unsqueeze(0)
         zs = (zs - running_mean) / torch.sqrt(running_var + self.bn.eps)
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     @torch.no_grad()
@@ -98,8 +101,8 @@ class base_connector(nn.Module, metaclass=abc.ABCMeta): # for connecting stage1 
             return encodings
         zs = encodings.zs if isinstance(encodings, Stage1Encodings) else encodings.zs_pred
         # expand to match zs dim: B,C ,L or B,C, H,W
-        running_mean = self.bn.running_mean.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
-        running_var = self.bn.running_var.view(1, -1, *(1 for _ in range(zs.dim() - 2)))
+        running_mean = self.bn.running_mean.unsqueeze(0)
+        running_var = self.bn.running_var.unsqueeze(0)
         zs = zs * torch.sqrt(running_var + self.bn.eps) + running_mean
         return Stage1Encodings(zs=zs, additional_attr=encodings.additional_attr)
     def wrap_call(self, encodings: Stage1Encodings):

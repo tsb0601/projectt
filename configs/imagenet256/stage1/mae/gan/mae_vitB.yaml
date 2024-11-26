@@ -23,7 +23,7 @@ arch:
 optimizer:
   # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adam
-  init_lr: 8.0e-5
+  init_lr: 1.0e-4
   weight_decay: 0.0
   betas: [0.5, 0.9]
   max_gn: None
@@ -35,8 +35,8 @@ optimizer:
     min_lr: 8.0e-5
     mode: fix
     decay_mode: reduce
-    decay_schel: [1825]
-    gamma: .5
+    #decay_schel: [1825]
+    #gamma: .5
     start_from_zero: true
 
 experiment:
