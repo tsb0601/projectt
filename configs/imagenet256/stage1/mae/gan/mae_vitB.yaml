@@ -29,7 +29,7 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 0.5  # 5% of total epochs
+    epoch: 2  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 8.0e-5
