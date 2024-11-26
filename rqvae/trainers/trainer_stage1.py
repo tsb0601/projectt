@@ -52,7 +52,7 @@ def calculate_adaptive_weight(nll_loss, g_loss, last_layer, nll_scale=1.0):
     d_weight = torch.norm(nll_grads) / (torch.norm(g_grads) + 1e-6)
     d_weight = torch.clamp(d_weight, 0.0, 1e4).detach()
     return d_weight
-class LayerNormwStatistics(nn.Module):
+#class LayerNormwStatistics(nn.Module):
 class Trainer(TrainerTemplate):
 
     def __init__(self, *args, **kwargs):
