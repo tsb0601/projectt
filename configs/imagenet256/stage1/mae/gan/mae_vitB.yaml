@@ -32,7 +32,7 @@ optimizer:
     epoch: 0.5  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
-    min_lr: 2.0e-5
+    min_lr: 4.0e-5
     mode: fix
     decay_mode: reduce
     decay_schel: [1825, 2450]
@@ -46,7 +46,7 @@ experiment:
   save_ckpt_freq: 1
   test_freq: 1
   amp: false
-  actual_batch_size: 1024
+  actual_batch_size: 2048
 
 gan:
   disc:
@@ -68,7 +68,7 @@ gan:
         epoch: 0.5  # 5% of total epochs
         multiplier: 1
         buffer_epoch: 0
-        min_lr: 1.0e-3
+        min_lr: 2.0e-3
         mode: fix
         decay_mode: reduce
         decay_schel: [1825, 2450]

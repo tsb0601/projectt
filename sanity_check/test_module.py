@@ -91,6 +91,49 @@ class Inv():
             x = x.reshape(shape=(x.shape[0], h, w, out_channel))
             x = x.permute(0, 3, 1, 2) # to (N, C, H, W)
         return x
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class LayerNorm2d(nn.Module):
+    def __init__(self, num_features, H, W, eps=1e-5, momentum=0.1):
+        super(LayerNorm2d, self).__init__()
+        self.eps = eps
+        self.momentum = momentum
+        self.num_features = num_features
+
+        # Initialize learnable parameters gamma and beta
+        self.gamma = nn.Parameter(torch.ones(1, num_features, H, W))
+        self.beta = nn.Parameter(torch.zeros(1, num_features, H, W))
+
+        # Initialize running mean and variance
+        self.register_buffer('running_mean', torch.zeros(num_features, H, W))
+        self.register_buffer('running_var', torch.ones(num_features, H, W))
+
+    def forward(self, x):
+        B, C, H, W = x.size()
+        assert C == self.num_features, "Input channel dimension must match the number of features"
+
+        if self.training:
+            # Compute mean and variance along (B) dimension, keep (C, H, W) dimensions
+            mean = x.mean(dim=0, keepdim=False)
+            var = x.var(dim=0, keepdim=False, unbiased=False)
+
+            # Update running estimates
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+        else:
+            # Use running mean and variance during evaluation
+            mean = self.running_mean
+            var = self.running_var
+
+        # Normalize the input
+        x_normalized = (x - mean) / torch.sqrt(var + self.eps)
+
+        # Apply learnable parameters gamma and beta
+        out = self.gamma * x_normalized + self.beta
+
+        return out
 def main():
     embedding = GaussianFourierEmbedding(768)
     #embedding = TimestepEmbedder(768)
@@ -104,6 +147,22 @@ def inv_main():
     y = inv.forward(x)
     print(y.shape)
     assert torch.allclose(x, y), f'|x - y|={torch.abs(x - y).mean()}'
+def ln_main():
+    # Example usage
+    x = torch.randn(8, 3, 32, 32)  # (B, C, H, W) input
+    target_layer_norm = LayerNorm2d(num_features=3, H=32, W=32)
+    output = target_layer_norm(x)
+
+    # Show mean and std before and after normalization
+    B, C, H, W = x.size()
+    mean = x.mean(dim=0, keepdim=False)
+    var = x.var(dim=0, keepdim=False, unbiased=False)
+    print(f"Mean before normalization: {mean.mean().item():.4f}, Std before normalization: {torch.sqrt(var).mean().item():.4f}")
+    print(f"Mean after normalization: {output.mean().item():.4f}, Std after normalization: {output.std().item():.4f}")
+    
+    print(output.shape)  # should be (8, 3, 32, 32)
+
 if __name__ == "__main__":
     #main()
-    inv_main()
+    #inv_main()
+    ln_main()

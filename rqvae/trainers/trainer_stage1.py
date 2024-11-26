@@ -52,7 +52,42 @@ def calculate_adaptive_weight(nll_loss, g_loss, last_layer, nll_scale=1.0):
     d_weight = torch.norm(nll_grads) / (torch.norm(g_grads) + 1e-6)
     d_weight = torch.clamp(d_weight, 0.0, 1e4).detach()
     return d_weight
-#class LayerNormwStatistics(nn.Module):
+class LayerNormwStatistics(nn.Module):
+    def __init__(self, input_shape, eps=1e-5, momentum=0.1):
+        super(LayerNormwStatistics, self).__init__()
+        self.eps = eps
+        self.momentum = momentum
+        self.input_shape = input_shape
+
+        # Initialize learnable parameters gamma and beta
+        self.gamma = nn.Parameter(torch.ones((1, *input_shape)))
+        self.beta = nn.Parameter(torch.zeros((1, *input_shape)))
+
+        # Initialize running mean and variance
+        self.register_buffer('running_mean', torch.zeros(*input_shape))
+        self.register_buffer('running_var', torch.ones(*input_shape))
+
+    def forward(self, x):
+        if self.training:
+            # Compute mean and variance along (B) dimension, keep (C, H, W, ...) dimensions
+            mean = x.mean(dim=0, keepdim=False)
+            var = x.var(dim=0, keepdim=False, unbiased=False)
+
+            # Update running estimates
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+        else:
+            # Use running mean and variance during evaluation
+            mean = self.running_mean
+            var = self.running_var
+
+        # Normalize the input
+        x_normalized = (x - mean) / torch.sqrt(var + self.eps)
+
+        # Apply learnable parameters gamma and beta
+        out = self.gamma * x_normalized + self.beta
+
+        return out
 class Trainer(TrainerTemplate):
 
     def __init__(self, *args, **kwargs):
@@ -186,10 +221,14 @@ class Trainer(TrainerTemplate):
         loader = self.wrap_loader("valid" if valid else "train")
 
         def get_batchnorm(latent_size: tuple) -> nn.modules.batchnorm._BatchNorm:
-            bn_list = [nn.BatchNorm1d, nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]
-            return bn_list[len(latent_size) - 2](
-                latent_size[1], affine=False, track_running_stats=True
-            )
+            bn_list = [nn.BatchNorm1d, LayerNormwStatistics, LayerNormwStatistics, nn.BatchNorm3d]
+            bn = bn_list[len(latent_size) - 2]
+            if len(latent_size) == 2 or len(latent_size) == 5:
+                return bn(latent_size[1], affine=False, track_running_stats=True)
+            elif bn == LayerNormwStatistics:
+                return bn(latent_size[1:], eps=1e-5, momentum=0.1)
+            else:
+                raise ValueError(f"Unknown batchnorm type: {bn}")
 
         bn = None
         self.model_woddp: Stage1ModelWrapper
@@ -207,6 +246,7 @@ class Trainer(TrainerTemplate):
         tbar = tqdm(
             enumerate(loader), total=len(loader), disable=not self.distenv.master
         )
+        print("Calculating mean and variance of the latent space, bn type: ", type(bn), bn.running_mean.shape, bn.running_var.shape)
         for it, inputs in tbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)

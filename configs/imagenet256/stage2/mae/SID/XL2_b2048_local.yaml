@@ -33,7 +33,7 @@ arch:
       inference_step: 250
       n_samples: 2
       use_local_attn: true
-      window_size: 4
+      window_size: 8
       do_beta_rescaling: true
       use_simple_diffusion: true
       use_loss_weighting: true
