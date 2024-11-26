@@ -54,7 +54,8 @@ def create_discriminator_with_optimizer_scheduler(
             norm_type = disc_config.arch.norm_type, # normalization type
             norm_eps = 1e-6,
             using_spec_norm = True,
-            key_depths = (2, 5, 8, 11) # fixed 
+            key_depths = (2, 5, 8, 11), # fixed
+            recipe = disc_config.arch.recipe, # S_16, B_16, 
         ).to(device).to(dtype)
         model.dino_proxy[0].to(device).to(dtype) # move the dino to the device, need this because dinos are not part of the model parameters
     else:

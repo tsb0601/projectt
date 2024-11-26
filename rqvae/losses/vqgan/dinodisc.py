@@ -146,7 +146,28 @@ class BatchNormLocal(nn.Module):
         
         return x.view(shape)
 
-
+recipes = {
+    'S_16': {
+        'depth': 12,
+        'key_depths': (2, 5, 8, 11),
+        'norm_eps': 1e-6,
+        'patch_size': 16,
+        'in_chans': 3,
+        'embed_dim': 384,
+        'num_heads': 6,
+        'mlp_ratio': 4.,
+    },
+    'B_16': {
+        'depth': 12,
+        'key_depths': (2, 5, 8, 11),
+        'norm_eps': 1e-6,
+        'patch_size': 16,
+        'in_chans': 3,
+        'embed_dim': 768,
+        'num_heads': 12,
+        'mlp_ratio': 4.,
+    }
+}
 def make_block(channels: int, kernel_size: int, norm_type: str, norm_eps: float, using_spec_norm: bool) -> nn.Module:
     if norm_type == 'bn': norm = BatchNormLocal(channels, eps=norm_eps)
     elif norm_type == 'gn': norm = nn.GroupNorm(num_groups=32, num_channels=channels, eps=norm_eps, affine=True)
@@ -160,7 +181,7 @@ def make_block(channels: int, kernel_size: int, norm_type: str, norm_eps: float,
 
 
 class DinoDisc(nn.Module):
-    def __init__(self, device, dino_ckpt_path, ks, depth=12, key_depths=(2, 5, 8, 11), norm_type='bn', using_spec_norm=True, norm_eps=1e-6):
+    def __init__(self, device, dino_ckpt_path, ks, key_depths=(2, 5, 8, 11), norm_type='bn', using_spec_norm=True, norm_eps=1e-6, recipe:str = 'S_16'):
         super().__init__()
         # load state
         state = torch.load(dino_ckpt_path, 'cpu')
@@ -170,8 +191,10 @@ class DinoDisc(nn.Module):
                 C = bias.numel() // 3
                 bias[C:2*C].zero_()         # zero out k_bias
         # build DINO
-        key_depths = tuple(d for d in key_depths if d < depth)
-        d = FrozenDINOSmallNoDrop(depth=depth, key_depths=key_depths, norm_eps=norm_eps)
+        recipe = recipes[recipe]
+        key_depths = tuple(d for d in key_depths if d < recipe['depth'])
+        recipe.update({'key_depths': key_depths, 'norm_eps': norm_eps}) # update recipe
+        d = FrozenDINONoDrop(**recipe)
         missing, unexpected = d.load_state_dict(state, strict=False)
         missing = [m for m in missing if all(x not in m for x in {
             'x_scale', 'x_shift',
@@ -180,7 +203,7 @@ class DinoDisc(nn.Module):
         assert len(unexpected) == 0, f'unexpected keys: {unexpected}'
         
         # todo: don't compile! reduce-overhead would raise CudaERR
-        self.dino_proxy: Tuple[FrozenDINOSmallNoDrop] = (d.to(device=device),)
+        self.dino_proxy: Tuple[FrozenDINONoDrop] = (d.to(device=device),)
         dino_C = self.dino_proxy[0].embed_dim
         # if 'KEVIN_LOCAL' in os.environ:
         #     torch.manual_seed(0)
@@ -198,7 +221,7 @@ class DinoDisc(nn.Module):
     def forward(self, x_in_pm1, grad_ckpt=False):   # x_in_pm1: image tensor normalized to [-1, 1]
         dino_grad_ckpt = grad_ckpt and x_in_pm1.requires_grad
         assert not dino_grad_ckpt, 'DINO disc does not support grad checkpoint'
-        FrozenDINOSmallNoDrop.forward
+        FrozenDINONoDrop.forward
         activations: List[torch.Tensor] = self.dino_proxy[0](x_in_pm1, grad_ckpt=dino_grad_ckpt) # list[B, 384, 196]
         B = x_in_pm1.shape[0]
         return torch.cat([
@@ -228,8 +251,7 @@ class PatchEmbed(nn.Module):
         x = self.proj(x).flatten(2).transpose(1, 2) # BCHW => BCL => BLC
         return self.norm(x)
 
-
-class FrozenDINOSmallNoDrop(nn.Module):
+class FrozenDINONoDrop(nn.Module):
     """
     Frozen DINO ViT without any dropout or droppath layers (eval node only), based on timm.create_model('vit_small_patch16_224', pretrained=False, num_classes=0)
     
@@ -330,21 +352,21 @@ if __name__ == '__main__':
     key_layers = (2, 5, 8, 11)
     using_spec_norm = True
     
-    heads = nn.ModuleList([
-        nn.Sequential(
-            make_block(dino_C, kernel_size=1, norm_type=norm_type, norm_eps=norm_eps, using_spec_norm=using_spec_norm),
-            ResidualBlock(make_block(dino_C, kernel_size=ks, norm_type=norm_type, norm_eps=norm_eps, using_spec_norm=using_spec_norm)),
-            (SpectralConv1d if using_spec_norm else nn.Conv1d)(dino_C, 1, kernel_size=1, padding=0)
-        )
-        for _ in range(len(key_layers) + 1)
-    ])
+    #heads = nn.ModuleList([
+    #    nn.Sequential(
+    #        make_block(dino_C, kernel_size=1, norm_type=norm_type, norm_eps=norm_eps, using_spec_norm=using_spec_norm),
+    #        ResidualBlock(make_block(dino_C, kernel_size=ks, norm_type=norm_type, norm_eps=norm_eps, using_spec_norm=using_spec_norm)),
+    #        (SpectralConv1d if using_spec_norm else nn.Conv1d)(dino_C, 1, kernel_size=1, padding=0)
+    #    )
+    #    for _ in range(len(key_layers) + 1)
+    #])
     
-    ckpt = os.path.join('/home/bytetriper/model_zoo/dino_vit_small_patch16_224.pth')
+    ckpt = os.path.join('/home/bytetriper/dino_b16.pth')
 
     DinoDisc.forward
-    dd = DinoDisc('cpu', dino_ckpt_path=ckpt, ks=ks, norm_type=norm_type, norm_eps=norm_eps, key_depths=key_layers)
+    dd = DinoDisc('cpu', dino_ckpt_path=ckpt, ks=ks, norm_type=norm_type, norm_eps=norm_eps, key_depths=key_layers, recipe='B_16')
     dd.eval()
-    dd.heads.load_state_dict(heads.state_dict())
+    #dd.heads.load_state_dict(heads.state_dict())
     print(f'{sum(p.numel() for p in dd.parameters() if p.requires_grad)/1e6:.2f}M')
     inp = torch.linspace(-2, 2, 2*3*224*224).reshape(2, 3, 224, 224)
     inp.requires_grad = True
