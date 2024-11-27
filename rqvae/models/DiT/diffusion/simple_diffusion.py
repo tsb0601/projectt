@@ -174,7 +174,7 @@ class SimpleDiffusion(GaussianDiffusion):
         if noise is None:
             noise = torch.randn(shape, device=device)
         x = noise.to(device)
-        assert gamma is not .3, f'Invalid gamma {gamma}'
+        assert gamma != .3, f'Invalid gamma {gamma}'
         progess_bar = tqdm(reversed(range(1, len(self.used_timesteps)))) if progress else reversed(range(1, len(self.used_timesteps)))
         for i in progess_bar:
             #print(f'Processing timestep {i}:{self.used_timesteps[i]} to timestep {i - 1}:{self.used_timesteps[i - 1]}')
