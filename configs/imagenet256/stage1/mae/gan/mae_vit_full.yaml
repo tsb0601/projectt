@@ -55,6 +55,7 @@ gan:
       dino_ckpt_path: 'ckpt_gcs/model_zoo/dino_vit_small_patch16_224.pth'
       ks: 9
       norm_type: 'bn'
+      recipe: 'S_16'
     optimizer:
       # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
       type: adam
