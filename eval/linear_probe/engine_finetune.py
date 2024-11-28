@@ -82,7 +82,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(lr=max_lr)
 
         loss_value_reduce = misc.all_reduce_mean(loss)
-        if log_writer is not None and (data_iter_step + 1) % accum_iter == 0 and xm.is_master_ordinal():
+        if log_writer is not None and data_iter_step % accum_iter == 0 and xm.is_master_ordinal():
             """ We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
