@@ -26,7 +26,7 @@ optimizer:
   max_gn: None
   amp: true
   warmup:
-    epoch: 5  # 5% of total epochs
+    epoch: 20  # 5% of total epochs
     multiplier: 1
     buffer_epoch: 0
     min_lr: 0.
@@ -37,7 +37,7 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 100
+  epochs: 400
   save_ckpt_freq: 50
   test_freq: 10
   amp: false
