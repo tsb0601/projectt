@@ -37,6 +37,7 @@ optimizer:
     decay_mode: cosine
     #decay_schel: [1825, 2450]
     #gamma: .5
+    decay_end_epoch: 20
     start_from_zero: true
 
 experiment:
