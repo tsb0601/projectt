@@ -79,22 +79,20 @@ def create_transforms(config, split='train', is_eval=False):
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ]
-    elif config.transforms.type.startswith('imagenet'):
-        # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
+    elif config.transforms.type.startswith('imagenetMAE'):
         resolution = int(config.transforms.type.split('x')[-1])
         if split == 'train' and not is_eval:
             #weak data augmentation
             transforms_ = [
-                transforms.Resize(resolution),
-                transforms.RandomCrop(resolution),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ToTensor(),
+                transforms.RandomResizedCrop(resolution, scale=(0.2, 1.0), interpolation=3),
+                transforms.RandomHorizontalFlip(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ]
         else:
             transforms_ = [
                 lambda x: center_crop_arr(x, resolution),
                 transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ]
     elif config.transforms.type.startswith('imagenetVAE'):
         # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
@@ -116,6 +114,23 @@ def create_transforms(config, split='train', is_eval=False):
                 #transforms.Resize((resolution, resolution)),
                 transforms.ToTensor(),
                 #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+    elif config.transforms.type.startswith('imagenet'):
+        # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
+        resolution = int(config.transforms.type.split('x')[-1])
+        if split == 'train' and not is_eval:
+            #weak data augmentation
+            transforms_ = [
+                transforms.Resize(resolution),
+                transforms.RandomCrop(resolution),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ToTensor(),
+                #transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ]
+        else:
+            transforms_ = [
+                lambda x: center_crop_arr(x, resolution),
+                transforms.ToTensor(),
             ]
     elif 'ffhq' in config.transforms.type:
         resolution = int(config.transforms.type.split('_')[0].split('x')[-1])

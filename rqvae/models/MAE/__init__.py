@@ -89,7 +89,8 @@ class Stage1MAE(Stage1Model):
                  no_cls:bool = False, 
                  loss_type: str = 'l1', 
                  do_decoder_embed_in_encode: bool = False, 
-                 interpolate_pos_embed: bool = False
+                 interpolate_pos_embed: bool = False,
+                 load_weight: bool = True # load the weight from the checkpoint
         )->None:
         super().__init__()
         tensor_path = os.path.join(ckpt_path, 'model.safetensors')
@@ -109,7 +110,7 @@ class Stage1MAE(Stage1Model):
         assert mask_ratio >= 0. and mask_ratio <= 1., 'mask ratio should be between 0 and 1, but got {}'.format(mask_ratio)
         self.model.vit.requires_grad_(train_encoder) # freeze encoder
         self.model.vit.embeddings.position_embeddings.requires_grad_(False) # this is a hack to make sure that the positional embeddings are not trained
-        if os.path.isfile(tensor_path):
+        if os.path.isfile(tensor_path) and load_weight:
             _, keys = load_model_from_ckpt(self.model, tensor_path, strict = False)
             print(f'missing keys: {keys[0]}, unexpected keys: {keys[1]}')
         self.model.decoder.requires_grad_(True)
