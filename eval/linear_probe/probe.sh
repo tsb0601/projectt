@@ -35,6 +35,7 @@ python linear_probe.py \
     --num_workers 8 \
     --hidden_size $hidden_dim \
     --world_size $world_size \
-    --dist_eval --data_path /home/bytetriper/VAE-enhanced/data/imagenet
+    --dist_eval \
+    --data_path /home/bytetriper/VAE-enhanced/data/imagenet
 
 cp -r ${log_path} ${actual_log_path}
