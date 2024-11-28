@@ -32,7 +32,7 @@ python linear_probe.py \
     --image_size $image_size \
     --output_dir $save_path \
     --log_dir $log_path \
-    --num_workers 8 \
+    --num_workers 4 \
     --hidden_size $hidden_dim \
     --world_size $world_size \
     --dist_eval \

@@ -12,7 +12,7 @@ arch:
       no_cls: false
       interpolate_pos_embed: false
       loss_type: 'none'
-      mask_ratio: 0.75
+      mask_ratio: 0.25
       load_weight: false
       train_encoder: true
   checkpointing: false
@@ -37,7 +37,7 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 400
+  epochs: 100
   save_ckpt_freq: 50
   test_freq: 10
   amp: false
