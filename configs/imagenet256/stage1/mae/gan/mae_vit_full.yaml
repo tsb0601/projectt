@@ -1,5 +1,5 @@
 dataset:
-  type: imagenet_test
+  type: imagenet
   transforms:
     type: imagenetVAE256x256
 
@@ -47,7 +47,7 @@ experiment:
   save_ckpt_freq: 8
   test_freq: 1
   amp: false
-  actual_batch_size: 4
+  actual_batch_size: 2048
 
 gan:
   disc:
@@ -83,6 +83,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .75
     perceptual_weight: 1.
-    disc_start: 0
+    disc_start: 31
     lpips_start: 0
-    disc_upd_start: 0
+    disc_upd_start: 29

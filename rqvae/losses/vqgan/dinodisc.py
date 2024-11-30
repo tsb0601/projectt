@@ -211,14 +211,10 @@ class DinoDisc(nn.Module):
         })]
         assert len(missing) == 0, f'missing keys: {missing}'
         assert len(unexpected) == 0, f'unexpected keys: {unexpected}'
-        
+        d.eval() # always eval
         # todo: don't compile! reduce-overhead would raise CudaERR
         self.dino_proxy: Tuple[FrozenDINONoDrop] = (d.to(device=device),)
         dino_C = self.dino_proxy[0].embed_dim
-        # if 'KEVIN_LOCAL' in os.environ:
-        #     torch.manual_seed(0)
-        #     np.random.seed(0)
-        #     random.seed(0)
         self.heads = nn.ModuleList([
             nn.Sequential(
                 make_block(dino_C, kernel_size=1, norm_type=norm_type, norm_eps=norm_eps, using_spec_norm=using_spec_norm),
