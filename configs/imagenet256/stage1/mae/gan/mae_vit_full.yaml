@@ -83,6 +83,6 @@ gan:
     gen_loss: vanilla
     disc_weight: .75
     perceptual_weight: 1.
-    disc_start: 31
+    disc_start: 2
     lpips_start: 0
-    disc_upd_start: 29
+    disc_upd_start: 1
