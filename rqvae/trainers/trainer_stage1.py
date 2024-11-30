@@ -477,6 +477,7 @@ class Trainer(TrainerTemplate):
                 + p_weight * loss_pcpt
                 + g_weight * self.disc_weight * loss_gen
             )
+            loss_gen_total /= self.accu_step
             loss_gen_total.backward()
             if self.clip_grad_norm > 0:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -511,7 +512,8 @@ class Trainer(TrainerTemplate):
                     _, loss_disc, logits = self.gan_loss(normed_xs, normed_disc_xs_recon, mode="disc")
                     self.model.train()
                     discriminator.eval()
-                    dict_loss = loss_disc * self.disc_weight
+                dict_loss = loss_disc * self.disc_weight
+                dict_loss /= self.accu_step    
                 dict_loss.backward()
                 # torch.autograd.backward(dict_loss, grad_tensors=[xs], retain_graph=False)
                 if (it + 1) % self.accu_step == 0:
