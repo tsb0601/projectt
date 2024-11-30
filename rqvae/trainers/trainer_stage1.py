@@ -477,8 +477,8 @@ class Trainer(TrainerTemplate):
                 + p_weight * loss_pcpt
                 + g_weight * self.disc_weight * loss_gen
             )
-            loss_gen_total /= self.accu_step
-            loss_gen_total.backward()
+            loss_gen_total_acc = loss_gen_total / self.accu_step
+            loss_gen_total_acc.backward()
             if self.clip_grad_norm > 0:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.clip_grad_norm
@@ -532,9 +532,8 @@ class Trainer(TrainerTemplate):
                 logits = {}
             xm.mark_step()
             # logging
-            loss_total = loss_gen_total.detach()
             metrics = {
-                "loss_total": loss_total,
+                "loss_total": loss_gen_total.detach(),
                 "loss_recon": loss_recon.detach(),
                 "loss_latent": loss_latent.detach(),
                 "loss_pcpt": loss_pcpt.detach(),
