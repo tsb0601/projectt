@@ -157,6 +157,16 @@ recipes = {
         'num_heads': 6,
         'mlp_ratio': 4.,
     },
+    'S_8': {
+        'depth': 12,
+        'key_depths': (2, 5, 8, 11),
+        'norm_eps': 1e-6,
+        'patch_size': 8,
+        'in_chans': 3,
+        'embed_dim': 384,
+        'num_heads': 6,
+        'mlp_ratio': 4.,
+    },
     'B_16': {
         'depth': 12,
         'key_depths': (2, 5, 8, 11),
