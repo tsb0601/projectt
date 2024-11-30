@@ -10,12 +10,19 @@ from transformers import ViTMAEForPreTraining, ViTImageProcessor
 import torch
 DEFAULT_PROCESSOR = ViTImageProcessor.from_pretrained('/home/bytetriper/model_zoo/mae_base_256')
 
-
+def ema_to_model(ckpt):
+    keys = list(ckpt.keys())
+    # ema model will have a prefix of 'module.'
+    for k in keys:
+        if k.startswith('module.'):
+            ckpt[k.replace('module.', '', 1)] = ckpt.pop(k)
+    return ckpt
 def convert(ckpt_path:str, load_path:str, save_path:str):
     global DEFAULT_PROCESSOR
     mae = Stage1MAE(ckpt_path=ckpt_path,no_cls=True).cpu()
     mae.model.config.mask_ratio = .75
     load_ckpt = torch.load(load_path, map_location='cpu')
+    load_ckpt = ema_to_model(load_ckpt)
     keys = list(load_ckpt.keys())
     for key in keys:
         if 'stage_1_model.' in key:
