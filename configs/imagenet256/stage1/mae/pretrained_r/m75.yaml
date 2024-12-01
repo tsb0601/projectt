@@ -11,6 +11,8 @@ arch:
       ckpt_path: './ckpt_gcs/model_zoo/maes/mask75_ep400_pix'
       no_cls: true
       loss_type: 'l1'
+      mask_ratio: 0.
+
       #do_decoder_embed_in_encode: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector

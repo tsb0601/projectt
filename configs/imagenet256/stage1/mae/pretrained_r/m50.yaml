@@ -8,9 +8,11 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/maes/mask50_p400_pix'
+      ckpt_path: './ckpt_gcs/model_zoo/maes/mask50_ep400_pix'
       no_cls: true
       loss_type: 'l1'
+      mask_ratio: 0.
+
       #do_decoder_embed_in_encode: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
