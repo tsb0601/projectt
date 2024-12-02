@@ -1,4 +1,4 @@
-from .modeling_vit_mae import ViTMAEForPreTraining, ViTMAEModel, ViTMAEForPreTrainingwBottleNeck
+from .modeling_vit_mae import ViTMAEForPreTraining, ViTMAEModel, ViTMAEForPreTrainingwBottleNeck, ViTMAEConfig
 from transformers import ViTImageProcessor, AutoConfig
 import torch
 from rqvae.models.interfaces import *
@@ -101,7 +101,7 @@ class Stage1MAE(Stage1Model):
             print(f'init from scratch according to {config_path}')
         else:
             print(f'init from {tensor_path} according to {config_path}')
-        config = AutoConfig.from_pretrained(config_path)
+        config = ViTMAEConfig.from_pretrained(config_path)
         model = ViTMAEForPreTraining(config)
         if no_cls:
             model.decoder.set_trainable_cls_token()
