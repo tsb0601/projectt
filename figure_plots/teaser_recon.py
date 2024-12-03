@@ -4,14 +4,14 @@ from PIL import ImageDraw
 from pyparsing import C
 from utils import *
 import torch
-#images = [('./visuals/text.png', './visuals/text_vae.png', './visuals/text_mae.png'),
-#            ('./visuals/crowd.png', './visuals/crowd_vae.png', './visuals/crowd_mae.png')]
-images = [('./visuals/text2.png', './visuals/text2_vae.png', './visuals/text2_mae.png'),
-            ('./visuals/crowd2.png', './visuals/crowd2_vae.png', './visuals/crowd2_mae.png'),
-            ('./visuals/city.png', './visuals/city_vae.png', './visuals/city_mae.png')]
-names = ['text2', 'crowd2', 'city']
+images = [('./visuals/bus/bus.png', './visuals/bus/vae_bus.png', './visuals/bus/mae_bus.png'),
+            ('./visuals/bear/bear.png', './visuals/bear/vae_bear.png', './visuals/bear/mae_bear.png')]
+#images = [('./visuals/text2.png', './visuals/text2_vae.png', './visuals/text2_mae.png'),
+#            ('./visuals/crowd2.png', './visuals/crowd2_vae.png', './visuals/crowd2_mae.png'),
+#            ('./visuals/city.png', './visuals/city_vae.png', './visuals/city_mae.png')]
+names = ['bus', 'bear']
 crops_size = (50,50)
-st = [(107,64),(190,140),(28,50)]
+st = [(35,208),(40,200)]
 reshape_ratio = 2.
 def get_crop(image, st, size):
     return image[st[0]:st[0]+size[0], st[1]:st[1]+size[1]]
@@ -38,9 +38,9 @@ def load_and_return_image_crops():
     image_and_crops = []
     for k, group in enumerate(images):
         gt, vae, mae = group
-        gt = Image.open(gt)
-        vae = Image.open(vae)
-        mae = Image.open(mae)
+        gt = Image.open(gt).resize((256,256), Image.BICUBIC).convert('RGB')
+        vae = Image.open(vae).resize((256,256), Image.BICUBIC).convert('RGB')
+        mae = Image.open(mae).resize((256,256), Image.BICUBIC).convert('RGB')
         if 'fence' in names[k]:
             # flip the image horizontally
             gt = gt.transpose(Image.FLIP_LEFT_RIGHT)
@@ -70,7 +70,7 @@ def load_and_return_image_crops():
         mae = Image.fromarray(mae)
         image_and_crops.append((gt, vae, mae))
     return image_and_crops
-svae_path = './visuals/teaser'
+svae_path = './visuals/slides'
 import os
 os.makedirs(svae_path, exist_ok=True)
 def main():
