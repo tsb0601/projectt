@@ -27,21 +27,20 @@ arch:
   checkpointing: false
   ema: 0.99
 optimizer:
+  # Original VQ-GAN: lr = 4.5e-06 * (batch size) -> 5.4e-5 for batch size 12
   type: adamw
-  init_lr: 1.6e-3
+  init_lr: 8.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.95]
   max_gn: None
   amp: true
   warmup:
-    epoch: 5
+    epoch: 80
     multiplier: 1
     buffer_epoch: 0
     min_lr: 1.0e-4
-    decay_end_epoch: 70
     mode: fix
-    decay_mode: linear
-    start_from_zero: true
+    start_from_zero: false
 
 experiment:
   batch_size: 8
