@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_pixloss'
+      ckpt_path: './ckpt_gcs/model_zoo/mae_base_256'
       no_cls: false
       interpolate_pos_embed: false
       loss_type: 'none'
@@ -37,7 +37,7 @@ optimizer:
 experiment:
   batch_size: 32
   accu_step: 1
-  epochs: 800
+  epochs: 1600
   save_ckpt_freq: 100
   test_freq: 10
   amp: false
