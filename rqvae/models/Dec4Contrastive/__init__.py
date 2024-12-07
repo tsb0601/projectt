@@ -39,12 +39,10 @@ class ContrastiveModelwithDecoder(Stage1Model):
         x = inputs.img
         x = (x - self.image_mean) / self.image_std
         encodings =  Stage1Encodings(self.encoder(x), additional_attr={})
-        print("encodings shape", encodings.zs.shape)
         return encodings
     def decode(self,outputs: Stage1Encodings) -> Stage1ModelOutput:
         decoder_output = self.decoder(outputs.zs)
         logits = decoder_output.logits
-        print("logits shape", logits.shape)
         xs_recon = self.decoder.unpatchify(logits)
         xs_recon = xs_recon * self.image_std + self.image_mean
         return Stage1ModelOutput(xs_recon, additional_attr={})
