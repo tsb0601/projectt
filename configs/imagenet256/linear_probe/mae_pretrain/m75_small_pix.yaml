@@ -1,0 +1,4 @@
+target: rqvae.models.MAE.MAEEncoder_ForProbing
+params:
+  ckpt_path: '/home/bytetriper/VAE-enhanced/ckpt_gcs/model_zoo/maes/mask75_ep400_small_pix'
+

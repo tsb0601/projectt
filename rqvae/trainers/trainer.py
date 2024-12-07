@@ -27,7 +27,7 @@ from PIL import Image
 from zmq import device
 from header import *
 from rqvae.img_datasets.interfaces import LabeledImageData
-from rqvae.models.interfaces import Stage1ModelOutput, Stage2ModelOutput, XLA_Model
+from rqvae.models.interfaces import Stage1Encodings, Stage1ModelOutput, Stage1ModelWrapper, Stage2ModelOutput, Stage2ModelWrapper, XLA_Model
 from torch_xla.amp import autocast
 from contextlib import nullcontext
 from rqvae.metrics.fid import InceptionWrapper, frechet_distance, Inception_Score, InceptionV3
@@ -35,7 +35,63 @@ from rqvae.utils.monitor import norm_tracker
 logger = logging.getLogger(__name__)
 DEBUG = bool(os.environ.get("DEBUG", 0))
 
+class OnlineVarianceTracker:
+    def __init__(self):
+        self.n = 0          # total number of samples seen so far
+        self.mean = None    # running mean (D,)
+        self.M2 = None      # running sum of squared differences (D,)
+    @torch.no_grad()
+    def update(self, X: torch.Tensor) -> None:
+        """
+        Update the running statistics with a mini-batch of data X (N, D).
+        We'll treat the incoming batch as a separate "dataset" and merge it
+        with our running statistics in one step.
+        """
+        N = X.shape[0]
+        if N == 0:
+            return  # No new data in this batch
 
+        # Compute batch mean and M2
+        batch_mean = X.mean(dim=0)
+        # Compute sum of squared deviations from batch mean
+        # (X - batch_mean) is (N, D) -> squared -> sum over N -> (D,)
+        batch_M2 = ((X - batch_mean)**2).sum(dim=0)
+
+        if self.mean is None:
+            # If no previous data, just take batch stats
+            self.mean = batch_mean
+            self.M2 = batch_M2
+            self.n = N
+        else:
+            # Merge with existing stats
+            n_old = self.n
+            n_new = n_old + N
+
+            delta = batch_mean - self.mean
+            # Update mean
+            new_mean = self.mean + delta * (N / n_new)
+
+            # Update M2
+            # M2_new = M2_old + M2_batch + delta^2 * (n_old * N / n_new)
+            M2_new = self.M2 + batch_M2 + (delta**2) * (n_old * N / n_new)
+
+            # Assign updated stats
+            self.mean = new_mean
+            self.M2 = M2_new
+            self.n = n_new
+
+    def trace_sigma(self) -> torch.Tensor:
+        """
+        Compute and return the trace of the covariance matrix.
+
+        Σ = M2 / n, so Tr(Σ) = sum of variances = sum(M2 / n).
+        """
+        if self.n == 0:
+            return torch.tensor(0.0, dtype=torch.float)
+        var = self.M2 / self.n
+        return var
+    def __call__(self, X: torch.Tensor) -> None:
+        self.update(X)
 class TrainerTemplate:
     def __init__(
         self,
@@ -79,7 +135,10 @@ class TrainerTemplate:
         self.dataset_val = dataset_val
         self.do_online_eval = do_online_eval
         self.fid_gt_act_path = fid_gt_act_path
-        self.clip_grad_norm = config.optimizer.get("clip_grad_norm", 0)
+        if config.get("optimizer", None) is not None:
+            self.clip_grad_norm = config.optimizer.get("clip_grad_norm", 0)
+        else:
+            self.clip_grad_norm = 0
         self.norm_tracker = norm_tracker(self.model.parameters(), max_norm=self.clip_grad_norm)
         if do_online_eval:
             assert fid_gt_act_path is not None, "fid_gt_act_path should be provided for do_online_eval"
@@ -158,6 +217,44 @@ class TrainerTemplate:
         if len_shape == 3:
             tensor_im = tensor_im.squeeze(0)
         return tensor_im
+    @torch.no_grad()
+    def calculate_distance(self, ema: bool = False, valid:bool = True):
+        """
+        calculate the generated latent distribution's Wasserstein-2 distance to a Gaussian distribution
+        """
+        self.model.eval()
+        if self.model_ema is not None:
+            self.model_ema.eval()
+        model = self.model_woddp if not ema or self.model_ema is None else self.model_ema_woddp
+        loader = self.wrap_loader('valid' if valid else 'train')
+        pbar = tqdm(enumerate(loader), desc='Calculating distance', disable=not self.distenv.master,total=len(loader))
+        tracker = OnlineVarianceTracker()
+        for it, inputs in pbar:
+            inputs: LabeledImageData
+            inputs._to(self.device)._to(self.dtype)
+            model: Union[Stage1ModelWrapper, Stage2ModelWrapper] = model
+            with autocast(device=self.device) if self.use_autocast else nullcontext():
+                if isinstance(model, Stage1ModelWrapper):
+                    outputs:Stage1Encodings = model.encode(inputs)
+                    zs = outputs.zs
+                else:
+                    outputs:Stage2ModelOutput = model.infer(inputs) # infer the latent distribution
+                    zs = outputs.zs_pred
+            zs = zs.reshape(outputs.zs.shape[0], -1) # (B, D)
+            #print(zs.shape)
+            tracker(zs)
+        sigma = tracker.trace_sigma()
+        # all gather
+        sigma = xm.all_gather(sigma, dim=0, pin_layout=True)
+        sigma = sigma.cpu().numpy()
+        if self.distenv.master:
+            estimated_sigma = np.mean(sigma, axis=0) # (D,)
+            print(f"Estimated sigma: {estimated_sigma.sum()}, sqrt(sigma): {np.sqrt(estimated_sigma).sum()}")
+            # calculate W2 distance to Gaussian: W2 = Tr(Σ) - 2Tr(Σ**0.5) + d
+            d = zs.shape[-1] # dimension
+            W2 = np.sum(estimated_sigma) - 2 * np.sum(np.sqrt(estimated_sigma)) + d
+            return W2
+        return 0.0
     @torch.no_grad()
     def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False, epoch:int = 0):
         #assert os.path.exists(save_root), f"save_root {save_root} does not exist"

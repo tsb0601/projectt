@@ -42,7 +42,7 @@ parser.add_argument('--local_rank', default=-1, type=int, help='local rank for d
 parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
 parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
 parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
-parser.add_argument('--action', choices=['train', 'eval', 'cache_latent', 'gen', 'stat'], default='train')
+parser.add_argument('--action', choices=['train', 'eval', 'cache_latent', 'gen', 'stat', 'dis'], default='train')
 parser.add_argument('--exp', type=str, default=None) # experiment name
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--use_ddp', action='store_true')
@@ -153,6 +153,9 @@ def main(rank, args, extra_args):
             # save the whole bn instead of state_dict
             torch.save(connecter, connector_path)
             xm.master_print(f'[!]connector saved in {connector_path}')
+    elif args.action == 'dis':
+        distance = trainer.calculate_distance(valid = True) # calculate distance for the validation dataset
+        xm.master_print(f'[!]distance: {distance}')
     else:
         trainer.run_epoch(optimizer, scheduler, epoch_st)
     xm.master_print(f'[!]finished in {time.time() - start} seconds')
