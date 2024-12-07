@@ -97,8 +97,8 @@ def create_transforms(config, split='train', is_eval=False):
             ]
     elif config.transforms.type.startswith('imagenetVAE'):
         # parse resolution from 'imagenet{}x{}'.format(resolution, resolution)
-        first_crop_size = 384
         resolution = int(config.transforms.type.split('x')[-1])
+        first_crop_size = 384 if resolution == 256 else int(resolution * 1.5)
         if split == 'train' and not is_eval:
             #first resize to first_crop_sizexfirst_crop_size, then random crop to resolution
             transforms_ = [
