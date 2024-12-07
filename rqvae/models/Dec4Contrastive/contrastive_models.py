@@ -69,7 +69,7 @@ class SiglipWrapper(nn.Module):
         self.empty_cls = torch.zeros(1, 1, self.model.hidden_size) # should be frozen
     def forward(self, x):
         latent = self.model(x)
-        cls = self.empty_cls.expand(latent.size(0), -1, -1)
+        cls = self.empty_cls.expand(latent.size(0), -1, -1).to(latent.device).to(latent.dtype)
         return torch.cat([cls, latent], dim=1)
 MODEL_ARCH = {
     'dinov2': Dinov2Wrapper,
