@@ -92,6 +92,72 @@ class OnlineVarianceTracker:
         return var
     def __call__(self, X: torch.Tensor) -> None:
         self.update(X)
+from scipy.special import gammaln
+class OnlineEnergyDistance:
+    def __init__(self, d, sample_size=2):
+        """
+        Initialize the online tracker for energy distance.
+        
+        Parameters:
+        d : int
+            Dimensionality of the data.
+        sample_size : int
+            Number of random samples used for approximating ||X - X'|| in each mini-batch.
+        """
+        self.n = 0  # Total number of samples processed
+        self.total_pairwise_dist = 0.0  # Sum of pairwise distances ||X - X'||
+        self.total_cross_dist = 0.0  # Sum of cross distances ||X - Y||
+        self.d = d  # Dimensionality of the data
+        self.sample_size = sample_size  # Number of samples for pairwise distance approximation
+
+        # Precompute E[||Y - Y'||] for standard Gaussian
+        #self.constant_dist = 2 * gamma((d + 1) / 2) / gamma(d / 2)
+        gammaln_ = torch.tensor(gammaln((d+1) / 2) - gammaln(d / 2), dtype=torch.float64)
+        self.constant_dist = 2 * torch.exp(gammaln_)
+        print(f"Constant distance: {self.constant_dist}")
+    
+    def update(self, X):
+        """
+        Update the energy distance with a new mini-batch of samples X.
+        
+        Parameters:
+        X : torch.Tensor of shape (N, D)
+            A batch of samples from the distribution P.
+        """
+        N, d = X.shape
+        if d != self.d:
+            raise ValueError("Dimensionality mismatch")
+
+        # Pairwise distances within a sampled subset of the batch
+        rand_index = torch.randperm(N)
+        sample_indices = rand_index[:self.sample_size]
+        second_indices = rand_index[-self.sample_size:]
+        X_sample = X[sample_indices]
+        X_sample_prime = X[second_indices]
+        pairwise_distances = torch.cdist(X_sample, X_sample_prime, p=2)
+        #print(f"Pairwise distances: {pairwise_distances}")
+        self.total_pairwise_dist += pairwise_distances.mean().item()
+
+        # Cross distances between batch and standard Gaussian
+        Y = torch.randn_like(X_sample)  # Samples from N(0, I)
+        cross_distances = torch.cdist(X_sample, Y, p=2)
+        #print(f"Cross distances: {cross_distances}")
+        self.total_cross_dist += cross_distances.mean().item()
+        #print(f"Cross distances: {cross_distances.mean().item()}, Pairwise distances: {pairwise_distances.mean().item()}")
+        # Update total sample count
+        self.n += 1
+
+    def energy_distance(self):
+        """
+        Compute the energy distance to the standard Gaussian.
+        """
+        if self.n == 0:
+            return 0.0
+        # Compute the final energy distance
+        ED = 2 * (self.total_cross_dist / self.n) - (self.total_pairwise_dist / self.n) - self.constant_dist
+        return ED
+    def __call__(self, X):
+        self.update(X)
 class TrainerTemplate:
     def __init__(
         self,
@@ -228,7 +294,7 @@ class TrainerTemplate:
         model = self.model_woddp if not ema or self.model_ema is None else self.model_ema_woddp
         loader = self.wrap_loader('valid' if valid else 'train')
         pbar = tqdm(enumerate(loader), desc='Calculating distance', disable=not self.distenv.master,total=len(loader))
-        tracker = OnlineVarianceTracker()
+        
         for it, inputs in pbar:
             inputs: LabeledImageData
             inputs._to(self.device)._to(self.dtype)
@@ -241,19 +307,24 @@ class TrainerTemplate:
                     outputs:Stage2ModelOutput = model.infer(inputs) # infer the latent distribution
                     zs = outputs.zs_pred
             zs = zs.reshape(outputs.zs.shape[0], -1) # (B, D)
+            if it == 0:
+                tracker = OnlineEnergyDistance(zs.shape[-1], sample_size=int(.3 * zs.shape[0]))
             #print(zs.shape)
             tracker(zs)
-        sigma = tracker.trace_sigma()
+        sigma = tracker.energy_distance()
+        sigma = torch.tensor(sigma, dtype=torch.float64, device=self.device).view(1) # (1,)
         # all gather
         sigma = xm.all_gather(sigma, dim=0, pin_layout=True)
         sigma = sigma.cpu().numpy()
         if self.distenv.master:
-            estimated_sigma = np.mean(sigma, axis=0) # (D,)
-            print(f"Estimated sigma: {estimated_sigma.sum()}, sqrt(sigma): {np.sqrt(estimated_sigma).sum()}")
-            # calculate W2 distance to Gaussian: W2 = Tr(Σ) - 2Tr(Σ**0.5) + d
-            d = zs.shape[-1] # dimension
-            W2 = np.sum(estimated_sigma) - 2 * np.sum(np.sqrt(estimated_sigma)) + d
-            return W2
+            sigma = sigma.mean()
+            return sigma
+            #estimated_sigma = np.mean(sigma, axis=0) # (D,)
+            #print(f"Estimated sigma: {estimated_sigma.sum()}, sqrt(sigma): {np.sqrt(estimated_sigma).sum()}")
+            ## calculate W2 distance to Gaussian: W2 = Tr(Σ) - 2Tr(Σ**0.5) + d
+            #d = zs.shape[-1] # dimension
+            #W2 = np.sum(estimated_sigma) - 2 * np.sum(np.sqrt(estimated_sigma)) + d
+            #return W2
         return 0.0
     @torch.no_grad()
     def batch_infer(self, ema: bool = False, valid:bool = True , save_root:str=None, test_fid:bool = False, epoch:int = 0):

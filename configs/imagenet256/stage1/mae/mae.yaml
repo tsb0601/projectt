@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/maes/mask75_ep100_pix_r'
+      ckpt_path: './ckpt_gcs/model_zoo/maes/mask75_ep400_norm_r'
       no_cls: true
   connector:
     target: rqvae.models.connectors.ReshapeAndSplit_connector
