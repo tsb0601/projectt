@@ -10,7 +10,7 @@ from functools import partial
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from typing import Iterable, Optional, Tuple
-
+import sys
 import numpy as np
 import requests
 import tensorflow.compat.v1 as tf
@@ -40,7 +40,7 @@ def main():
     # This will cause TF to print a bunch of verbose stuff now rather
     # than after the next print(), to help prevent confusion.
     evaluator.warmup()
-    possible_cached_ref_stats = args.ref_batch.replace(".npz", "_stats.npz")
+    possible_cached_ref_stats = args.ref_batch.replace(".npz", "_stats.npz") if not args.ref_batch.endswith("_stats.npz") else args.ref_batch
     if os.path.exists(possible_cached_ref_stats):
         print("loading cached reference batch statistics...")
         stats = np.load(possible_cached_ref_stats, allow_pickle=True)
@@ -55,7 +55,7 @@ def main():
         )
     print("computing/reading reference batch statistics...")
     ref_stats, ref_stats_spatial = evaluator.read_statistics(args.ref_batch, ref_acts)
-    possible_cached_sample_stats = args.sample_batch.replace(".npz", "_stats.npz")
+    possible_cached_sample_stats = args.sample_batch.replace(".npz", "_stats.npz") if not args.sample_batch.endswith("_stats.npz") else args.sample_batch
     if os.path.exists(possible_cached_sample_stats):
         print("loading cached sample batch statistics...")
         stats = np.load(possible_cached_sample_stats, allow_pickle=True)
@@ -168,7 +168,7 @@ class Evaluator:
         """
         preds = []
         spatial_preds = []
-        for batch in tqdm(batches):
+        for batch in tqdm(batches, file=sys.stdout):
             batch = batch.astype(np.float32)
             pred, spatial_pred = self.sess.run(
                 [self.pool_features, self.spatial_features], {self.image_input: batch}
@@ -597,7 +597,7 @@ def _download_inception_model():
         r.raise_for_status()
         tmp_path = INCEPTION_V3_PATH + ".tmp"
         with open(tmp_path, "wb") as f:
-            for chunk in tqdm(r.iter_content(chunk_size=8192)):
+            for chunk in tqdm(r.iter_content(chunk_size=8192), file=sys.stdout):
                 f.write(chunk)
         os.rename(tmp_path, INCEPTION_V3_PATH)
 
