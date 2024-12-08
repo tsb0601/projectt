@@ -8,7 +8,7 @@ arch:
   stage_1:
     target: rqvae.models.MAE.Stage1MAE
     params:
-      ckpt_path: './ckpt_gcs/model_zoo/maes/mask75_ep400_norm_r'
+      ckpt_path: './ckpt_gcs/model_zoo/maes/mask75_ep400_small_pix_r'
       no_cls: true
       interpolate_pos_embed: false
       loss_type: 'l1'
