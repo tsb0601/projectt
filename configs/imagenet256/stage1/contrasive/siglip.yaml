@@ -10,7 +10,7 @@ arch:
     params:
       pretrained_encoder_path: 'ckpt_gcs/model_zoo/siglip'
       general_decoder_config: 'ckpt_gcs/model_zoo/general_decoder_siglip'
-      num_patches: 64
+      num_patches: 256
   checkpointing: false
   ema: 0.9978
 optimizer:
