@@ -1,10 +1,9 @@
-from git import Union
-from matplotlib.font_manager import weight_dict
 from tqdm import tqdm
 from .gaussian_diffusion import *
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Union
 import numpy as np
 
 def logclip(t, eps: float = 1e-20):

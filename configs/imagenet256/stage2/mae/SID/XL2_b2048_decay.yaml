@@ -15,7 +15,7 @@ arch:
     params:
       split: 1
       remove_cls: true
-    ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
+    #ckpt_path: './ckpt_gcs/model_zoo/mae_base_256_ft_r/connector.pt'
   stage_2:
     target: rqvae.models.DiT.DiT_Stage2
     params:
@@ -63,4 +63,4 @@ experiment:
   save_ckpt_freq: 40
   test_freq: 10
   amp: false
-  actual_batch_size: 2048
+  actual_batch_size: 4
