@@ -36,6 +36,7 @@ arch:
       use_simple_diffusion: true
       use_loss_weighting: true
       use_schedule_shift: true
+      gamma: .0
   checkpointing: false
   ema: 0.99
 optimizer:
