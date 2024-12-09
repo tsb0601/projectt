@@ -82,7 +82,7 @@ class SimpleDiffusion(GaussianDiffusion):
         weight = self.get_weight(t)
         loss = mean_flat(weight * mse_target)
         terms = {
-            'mse': loss,
+            'mse': mean_flat(mse_target),
             'loss': loss,
         }
         return terms

@@ -24,6 +24,7 @@ def create_diffusion(
     if timestep_respacing is None or timestep_respacing == "":
         timestep_respacing = [diffusion_steps]
     if use_simple_diffusion:
+        print("SIMPLE DIFFUSION, ratio:", input_base_dimension_ratio)
         diffusion = SimpleDiffusion(
             size_ratio=input_base_dimension_ratio,
             schedule=gd.ScheduleType.SHIFTED_CONSINE if use_schedule_shift else gd.ScheduleType.COSINE,
