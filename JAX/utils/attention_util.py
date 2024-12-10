@@ -136,7 +136,7 @@ class MultiHeadDotProductAttention(Module):
                        use_bias=self.use_bias,
                        dtype=self.dtype,
                        precision=self.precision,
-                       name='out')(x)
+                       name='dense')(x)
     return out
 
   

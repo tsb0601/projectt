@@ -81,7 +81,7 @@ class IdentityLayer(nn.Module):
   def __call__(self, x):
     return x
 
-
+  
 class AddPositionEmbs(nn.Module):
   """Adds (optionally learned) positional embeddings to the inputs.
 
@@ -155,7 +155,8 @@ class MlpBlock(nn.Module):
         features=self.mlp_dim,
         dtype=self.dtype,
         kernel_init=self.kernel_init,
-        bias_init=self.bias_init)(  # pytype: disable=wrong-arg-types
+        bias_init=self.bias_init,
+        name = 'intermediate.dense')(  # pytype: disable=wrong-arg-types
             inputs)
     x = nn.gelu(x)
     x = nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic)
@@ -163,7 +164,8 @@ class MlpBlock(nn.Module):
         features=actual_out_dim,
         dtype=self.dtype,
         kernel_init=self.kernel_init,
-        bias_init=self.bias_init)(  # pytype: disable=wrong-arg-types
+        bias_init=self.bias_init,
+        name = 'output.dense')(  # pytype: disable=wrong-arg-types
             x)
     output = nn.Dropout(
         rate=self.dropout_rate)(
@@ -207,7 +209,7 @@ class Encoder1DBlock(nn.Module):
 
     # Attention block.
     assert inputs.ndim == 3, f'Expected (batch, seq, hidden) got {inputs.shape}'
-    x = nn.LayerNorm(dtype=self.dtype)(inputs)
+    x = nn.LayerNorm(dtype=self.dtype, name = 'layernorm_before')(inputs)
 
     # ----------------------------------------------------
     if self.torch_qkv:
@@ -220,7 +222,8 @@ class Encoder1DBlock(nn.Module):
       MsaBlock = functools.partial(
         attention_util.MultiHeadDotProductAttention,
         qkv_kernel_init=qkv_kernel_init,
-        out_kernel_init=out_kernel_init)
+        out_kernel_init=out_kernel_init,
+        name ='attention.attention')
 
     # original
     # MsaBlock = functools.partial(
@@ -241,11 +244,12 @@ class Encoder1DBlock(nn.Module):
     x = x + inputs
 
     # MLP block.
-    y = nn.LayerNorm(dtype=self.dtype)(x)
+    y = nn.LayerNorm(dtype=self.dtype,name = 'layernorm_after')(x)
     y = MlpBlock(
         mlp_dim=self.mlp_dim, dtype=self.dtype, dropout_rate=self.dropout_rate,
         kernel_init=mlp_kernel_init,
         bias_init=mlp_bias_init,
+        name = 'PL' # Placeholder, need to be replaced
         )(y, deterministic=deterministic)
     # droppath
     y = nn.Dropout(rate=self.droppath_rate, broadcast_dims=(1, 2), name='droppath_mlp')(y, deterministic=deterministic)
@@ -270,7 +274,7 @@ class Encoder(nn.Module):
   dropout_rate: float = 0.1
   attention_dropout_rate: float = 0.1
   droppath_rate: float = 0.0
-  prefix: str = 'encoder'
+  prefix: str = ''
   torch_qkv: bool = False
 
   @nn.compact
@@ -294,12 +298,12 @@ class Encoder(nn.Module):
           dropout_rate=self.dropout_rate,
           attention_dropout_rate=self.attention_dropout_rate,
           droppath_rate=self.droppath_rate * lyr / (self.num_layers - 1) if self.droppath_rate > 0. else 0.,
-          name=self.prefix + 'block_{:02d}'.format(lyr),  # 'encoderblock_'
+          name=f'{self.prefix}layer.{lyr}',  # 'layer.%d' % lyr,
           num_heads=self.num_heads,
           layer_id=lyr,
           torch_qkv=self.torch_qkv)(
               x, deterministic=not train)
-    encoded = nn.LayerNorm(name=self.prefix + '_norm')(x)  # 'encoder_norm'
+    encoded = nn.LayerNorm(name=f'{self.prefix}layer.{lyr}.layernorm')(x)  # 'encoder_norm'
 
     return encoded
 
@@ -424,7 +428,7 @@ class VisionTransformer(nn.Module):
         kernel_size=self.patches,
         strides=self.patches,
         padding='VALID',
-        name='embedding',
+        name='vit.embeddings.patch_embeddings.projection',
         kernel_init=patch_kernel_init,
         bias_init=patch_bias_init,
         )(x)
@@ -435,7 +439,7 @@ class VisionTransformer(nn.Module):
     n, h, w, c = x.shape
     x = jnp.reshape(x, [n, h * w, c])
 
-    x = AddPositionEmbs(sincos=self.sincos, use_cls_token=use_cls_token, img_shape=(h, w, c), name='posembed_encoder')(x)
+    x = AddPositionEmbs(sincos=self.sincos, use_cls_token=use_cls_token, img_shape=(h, w, c), name='vit.embeddings.position_embeddings')(x)
 
     # masking: length -> length * mask_ratio
     x, mask, ids_restore = self.random_mask(x)
@@ -443,12 +447,12 @@ class VisionTransformer(nn.Module):
 
     # If we want to add a class token, add it here.
     if use_cls_token:
-      cls = self.param('cls', clstoken_init, (1, 1, c))
+      cls = self.param('vit.embeddings.cls_token', clstoken_init, (1, 1, c))
       cls = jnp.tile(cls, [n, 1, 1])
       x = jnp.concatenate([cls, x], axis=1)
 
     # apply the encoder
-    x = Encoder(name='Transformer', **self.transformer, prefix='encoder')(x, train=train)
+    x = Encoder(name='vit.encoder', **self.transformer)(x, train=train)
 
     return x, mask, ids_restore
 
@@ -464,22 +468,25 @@ class VisionTransformer(nn.Module):
       dtype=self.dtype,
       kernel_init=mlp_kernel_init,
       bias_init=mlp_bias_init,
-      name='bottleneck')(x)    
+      name='decoder.decoder_embed')(x)    
 
     # append mask token
     num_clstokens = 1 if use_cls_token else 0
-    mask_token = self.param('mask_token', masktoken_init, (1, 1, self.decoder.hidden_size))
+    mask_token = self.param('decoder.mask_token', masktoken_init, (1, 1, self.decoder.hidden_size))
+    # register trainable cls token, of shape [1, 1, hidden_size]
+    trainable_cls_token = self.param('decoder.trainable_cls_token', masktoken_init, (1, 1, self.decoder.hidden_size))
     mask_tokens = jnp.tile(mask_token, [n, ids_restore.shape[1] + num_clstokens - x.shape[1], 1])
     x_ = jnp.concatenate([x[:, num_clstokens:, :], mask_tokens], axis=1)  # no cls token
     x_ = vmapped_gather(x_, ids_restore)
 
     # add decoder posembed (before cls token)
-    x_ = AddPositionEmbs(sincos=self.sincos, use_cls_token=use_cls_token, img_shape=(h, w, self.decoder.hidden_size), name='posembed_decoder')(x_)
-
-    x = jnp.concatenate([x[:, :num_clstokens, :], x_], axis=1)  # append cls token
-
+    x_ = AddPositionEmbs(sincos=self.sincos, use_cls_token=use_cls_token, img_shape=(h, w, self.decoder.hidden_size), name='decoder_pos_embed')(x_)
+    # do not append cls, append trainable cls token
+    #x = jnp.concatenate([x[:, :num_clstokens, :], x_], axis=1)  # append cls token
+    batched_cls_token = jnp.tile(trainable_cls_token, [n, 1, 1])
+    x = jnp.concatenate([batched_cls_token, x_], axis=1)  # append trainable cls token
     # apply the decoder
-    x = Encoder(name='TransformerDecoder', **self.decoder.transformer, prefix='decoder')(x, train=train)
+    x = Encoder(name='decoder', **self.decoder.transformer, prefix='decoder_')(x, train=train)
 
     # apply the predictor
     x = nn.Dense(
@@ -487,7 +494,7 @@ class VisionTransformer(nn.Module):
       dtype=self.dtype,
       kernel_init=mlp_kernel_init,
       bias_init=mlp_bias_init,
-      name='pred')(x)
+      name='decoder.decoder_pred')(x)
 
     # remove cls token
     pred = x[:, num_clstokens:, :]
@@ -497,7 +504,11 @@ class VisionTransformer(nn.Module):
   def __call__(self, inputs, *, train):
     imgs = inputs['image']
     labels = inputs['label']
-
+    # register a persistent parameter
+    default_id_restore = jnp.arange(self.patches[0] * self.patches[1])
+    self.param('default_id_restore', lambda rng, shape: default_id_restore, (self.patches[0] * self.patches[1],))
+    noise = jnp.arange(self.patches[0] * self.patches[1])
+    self.param('noise', lambda rng, shape: noise, (self.patches[0] * self.patches[1],))
     # apply encoder
     x, mask, ids_restore = self.apply_encoder(imgs, train=train)
 

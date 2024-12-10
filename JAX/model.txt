@@ -1,0 +1,567 @@
+params:
+  default_id_restore: shape=(256,)
+  noise: shape=(256,)
+  vit.embeddings.patch_embeddings.projection:
+    kernel: shape=(16, 16, 3, 768)
+    bias: shape=(768,)
+  vit.embeddings.position_embeddings:
+    pos_embedding: shape=(1, 257, 768)
+  vit.embeddings.cls_token: shape=(1, 1, 768)
+  vit.encoder:
+    layer.0:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.1:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.2:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.3:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.4:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.5:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.6:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.7:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.8:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.9:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.10:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.11:
+      layernorm_before:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      attention.attention:
+        query:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        key:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        value:
+          kernel: shape=(768, 12, 64)
+          bias: shape=(12, 64)
+        dense:
+          kernel: shape=(12, 64, 768)
+          bias: shape=(768,)
+      layernorm_after:
+        scale: shape=(768,)
+        bias: shape=(768,)
+      :
+        intermediate.dense:
+          kernel: shape=(768, 3072)
+          bias: shape=(3072,)
+        output.dense:
+          kernel: shape=(3072, 768)
+          bias: shape=(768,)
+    layer.11.layernorm:
+      scale: shape=(768,)
+      bias: shape=(768,)
+  decoder.decoder_embed:
+    kernel: shape=(768, 512)
+    bias: shape=(512,)
+  decoder.mask_token: shape=(1, 1, 512)
+  decoder.trainable_cls_token: shape=(1, 1, 512)
+  decoder_pos_embed:
+    pos_embedding: shape=(1, 257, 512)
+  decoder:
+    decoder_layer.0:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.1:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.2:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.3:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.4:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.5:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.6:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.7:
+      layernorm_before:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      attention.attention:
+        query:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        key:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        value:
+          kernel: shape=(512, 16, 32)
+          bias: shape=(16, 32)
+        dense:
+          kernel: shape=(16, 32, 512)
+          bias: shape=(512,)
+      layernorm_after:
+        scale: shape=(512,)
+        bias: shape=(512,)
+      :
+        intermediate.dense:
+          kernel: shape=(512, 2048)
+          bias: shape=(2048,)
+        output.dense:
+          kernel: shape=(2048, 512)
+          bias: shape=(512,)
+    decoder_layer.7.layernorm:
+      scale: shape=(512,)
+      bias: shape=(512,)
+  decoder.decoder_pred:
+    kernel: shape=(512, 768)
+    bias: shape=(768,)
