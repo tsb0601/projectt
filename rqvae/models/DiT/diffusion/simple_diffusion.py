@@ -72,7 +72,6 @@ class SimpleDiffusion(GaussianDiffusion):
         elif self.pred_term == ModelMeanType.VELOCITY: # SID uses mse loss for velocity
             target = noise
             eps_pred = sigma_t * z_t + alpha_t * model_pred
-            assert torch.allclose(model_pred,torch.zeros_like(model_pred)), f'Invalid model_pred {model_pred}'
         else:
             raise NotImplementedError(f'Invalid pred_term {self.pred_term}')
         
