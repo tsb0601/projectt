@@ -46,7 +46,7 @@ def get_default_config():
   """Get the hyperparameter configuration to train on TPUs."""
   config = ml_collections.ConfigDict()
 
-  config.mask_ratio = 0.75
+  config.mask_ratio = 0.
   config.norm_pix_loss = True
 
   config.sincos = True

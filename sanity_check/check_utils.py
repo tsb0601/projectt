@@ -14,5 +14,6 @@ def get_default_image(im_size:tuple, single_image: bool = False) -> Image.Image:
         image = Image.open(image_path).resize(im_size).convert('RGB')
         #repeat 2 times to asssure model works with batch size > 1
         image = ToTensor()(image).unsqueeze(0).repeat(bsz,1,1,1)
+    image = torch.ones_like(image) 
     return image
 

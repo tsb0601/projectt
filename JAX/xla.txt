@@ -81,6 +81,8 @@ model.vit.embeddings.cls_token: shape=torch.Size([1, 1, 768])
 model.vit.embeddings.position_embeddings: shape=torch.Size([1, 257, 768])
 model.vit.embeddings.patch_embeddings.projection.weight: shape=torch.Size([768, 3, 16, 16])
 model.vit.embeddings.patch_embeddings.projection.bias: shape=torch.Size([768])
+
+
 model.vit.encoder.layer.0.attention.attention.query.weight: shape=torch.Size([768, 768])
 model.vit.encoder.layer.0.attention.attention.query.bias: shape=torch.Size([768])
 model.vit.encoder.layer.0.attention.attention.key.weight: shape=torch.Size([768, 768])
@@ -97,6 +99,9 @@ model.vit.encoder.layer.0.layernorm_before.weight: shape=torch.Size([768])
 model.vit.encoder.layer.0.layernorm_before.bias: shape=torch.Size([768])
 model.vit.encoder.layer.0.layernorm_after.weight: shape=torch.Size([768])
 model.vit.encoder.layer.0.layernorm_after.bias: shape=torch.Size([768])
+
+
+
 model.vit.encoder.layer.1.attention.attention.query.weight: shape=torch.Size([768, 768])
 model.vit.encoder.layer.1.attention.attention.query.bias: shape=torch.Size([768])
 model.vit.encoder.layer.1.attention.attention.key.weight: shape=torch.Size([768, 768])
