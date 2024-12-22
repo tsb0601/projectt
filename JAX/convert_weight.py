@@ -220,11 +220,23 @@ def main():
     params = unflatten_dict(undotted_params)
     print(params.keys())
     params = frozen_dict.freeze({'params': params})
+    #import pickle
+    #with open(os.path.join(os.path.dirname(torch_weight_path), 'mae_jax.pkl'), 'wb') as f:
+    #    pickle.dump(params, f)
     # do a forward pass
     example_input = jnp.ones((1, 256, 256, 3)) # (B, H, W, C)
-    loss, preds = model.apply(params, example_input, train=False, rngs = {"dropout": jax.random.PRNGKey(1)})
+    #loss, preds = model.apply(params, example_input, train=False, rngs = {"dropout": jax.random.PRNGKey(1)})
+    latent, mask, ids_restore = model.apply(params, example_input, train=False, rngs = {"dropout": jax.random.PRNGKey(1)}, method= VisionTransformer.apply_encoder)
+    patched_preds, preds = model.apply(params, latent, ids_restore, train=False, rngs = {"dropout": jax.random.PRNGKey(1)}, method= VisionTransformer.apply_decoder)
+    loss = model.compute_loss(example_input, patched_preds, mask)
     print(loss, preds.shape, preds.min(), preds.max())
     l1_loss = jnp.abs(example_input - preds).mean()
     print('L1 loss:', l1_loss)
+    from PIL import Image
+    # save as image
+    img = np.array(preds[0]) * 255.
+    img = img.astype(np.uint8)
+    img = Image.fromarray(img)
+    img.save('preds.png')
 if __name__ == "__main__":
     main()

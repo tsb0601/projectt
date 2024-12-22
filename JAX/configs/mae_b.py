@@ -36,7 +36,7 @@ def get_base_config():
     """Get the hyperparameter configuration to train on TPUs."""
     config = get_default_config()
     # mae config
-    config.mask_ratio = 0.75
+    config.mask_ratio = 0.
     config.norm_pix_loss = True   
     config.update(vit.get_b16_config())
     # config.model.hidden_size = 768

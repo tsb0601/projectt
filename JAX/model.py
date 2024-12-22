@@ -356,6 +356,33 @@ class VisionTransformer(nn.Module):
     h, w = self.image_size[0] // self.patches[0], self.image_size[1] // self.patches[1]
     self.noise = jnp.arange(h * w) # [L]
     self.default_id_restore = jnp.arange(self.patches[0] * self.patches[1])
+    self.patch_embed = nn.Conv(
+        features=self.hidden_size,
+        kernel_size=self.patches,
+        strides=self.patches,
+        padding='VALID',
+        name='model.vit.embeddings.patch_embeddings.projection',
+        kernel_init=patch_kernel_init,
+        bias_init=patch_bias_init,
+        )
+    self.pos_embed = AddPositionEmbs(sincos=self.sincos, use_cls_token=True, img_shape=(h, w, self.hidden_size), name='model.vit.embeddings')
+    self.encoder = Encoder(name='model.vit.encoder', **self.transformer)
+    self.layernorm = nn.LayerNorm(name='model.vit.layernorm')
+    self.decoder_embed = nn.Dense(
+      features=self.decoder.hidden_size,
+      dtype=self.dtype,
+      kernel_init=mlp_kernel_init,
+      bias_init=mlp_bias_init,
+      name='model.decoder.decoder_embed')
+    self.decoder = Encoder(name='model.decoder', **self.decoder.transformer, prefix='decoder_')
+    self.decoder_norm = nn.LayerNorm(name='model.decoder.decoder_norm')
+    self.decoder_pred = nn.Dense(
+      features=self.patches[0] * self.patches[1] * 3,
+      dtype=self.dtype,
+      kernel_init=mlp_kernel_init,
+      bias_init=mlp_bias_init,
+      name='model.decoder.decoder_pred')
+    self.trainable_cls_token = self.param('model.decoder.trainable_cls_token', masktoken_init, (1, 1, self.decoder.hidden_size))
   def random_mask(self, x, noise = None):
     N, L, _ = x.shape  # batch, length, dim
     len_keep = int(L * (1 - self.mask_ratio))
