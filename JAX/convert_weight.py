@@ -225,7 +225,7 @@ def get_model_from_jax_weight(jax_weight_path: str):
     model_params, model, init_rng, config = init_model()
     #model_params = model_params['params']
     #model_params.update(params['params'])
-    model = VisionTransformer(**config, num_classes=1000)
+    #model = VisionTransformer(**config, num_classes=1000)
     return model, params
 def get_model_from_torch_weight(torch_weight_path: str):
     model_params, model, init_rng, config = init_model()
@@ -268,9 +268,9 @@ def main():
     params = unflatten_dict(undotted_params)
     #print(params.keys())
     params = frozen_dict.freeze({'params': params})
-    #import pickle
-    #with open(os.path.join(os.path.dirname(torch_weight_path), 'mae_jax.pkl'), 'wb') as f:
-    #    pickle.dump(params, f)
+    import pickle
+    with open(os.path.join(os.path.dirname(torch_weight_path), 'mae_jax.pkl'), 'wb') as f:
+        pickle.dump(params, f)
     # do a forward pass
     #example_input = jnp.ones((1, 256, 256, 3)) # (B, H, W, C)
     # random input

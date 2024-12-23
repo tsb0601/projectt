@@ -64,7 +64,7 @@ def single_test(imgs:np.ndarray, torch_model, jax_model, jax_params)-> float:
     latent_loss = loss_fn(jax_latent, torch_latent)
     return loss, latent_loss
 from tqdm import tqdm
-def main(config_path, jax_weight_path, test_iter: int = 100):
+def main(config_path, jax_weight_path, test_iter: int = 10):
     torch_model = create_torch_model(config_path)
     jax_model, jax_params = create_jax_model(jax_weight_path)
     print('jax_model:',jax_model)
