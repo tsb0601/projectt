@@ -8,6 +8,8 @@ import numpy as np
 from jax._src import compilation_cache
 cache_dir = '/home/bytetriper/.cache/jax/compilation_cache/convert'
 import os
+import pickle
+from PIL import Image
 os.makedirs(cache_dir, exist_ok=True)
 compilation_cache.set_cache_dir(path=cache_dir)
 def flatten_nested_dict(nested_dict, parent_key='', sep='__SEP__'):
@@ -170,6 +172,7 @@ def torch_to_jax_renaming(torch_dict: dict, jax_dict: dict, config: dict) -> dic
     matched_keys = set(jax_name_mapping.values()).intersection(set(torch_dict.keys()))
     unmatched_keys = set(jax_name_mapping.values()).difference(set(torch_dict.keys()))
     print('unmatched keys:', unmatched_keys)
+    assert len(unmatched_keys) == 0, f"Unmatched keys: {unmatched_keys}"
     for key, torch_key in jax_name_mapping.items():
         if torch_key not in torch_dict.keys():
             print(f"Key {key} | {torch_key} not in torch_dict")
@@ -198,6 +201,51 @@ def init_model():
     )  # Initialize parameters
     return params, model, init_rng, config
 import sys
+def convert_torch_to_jax(torch_weight_path: str, save_path: str):
+    model_params, model, init_rng, config = init_model()
+    model_params = model_params['params']
+    # Flatten the model parameters
+    flat_params, mapping = flatten_nested_dict(model_params)
+    # Convert the separator in keys to dots
+    flat_params, mapping = convert_sep_to_dot(flat_params)
+    # Load the PyTorch weights
+    torch_weights = torch.load(torch_weight_path)
+    # Convert the PyTorch weights to JAX format
+    jax_weights = torch_to_jax_renaming(torch_weights, flat_params, config)
+    # Convert the flattened dictionary back to nested
+    undotted_params = convert_dot_to_sep(jax_weights, mapping)
+    params = unflatten_dict(undotted_params)
+    params = frozen_dict.freeze({'params': params})
+    with open(save_path, 'wb') as f:
+        pickle.dump(params, f)
+    return params
+def get_model_from_jax_weight(jax_weight_path: str):
+    with open(jax_weight_path, 'rb') as f:
+        params = pickle.load(f)
+    model_params, model, init_rng, config = init_model()
+    #model_params = model_params['params']
+    #model_params.update(params['params'])
+    model = VisionTransformer(**config, num_classes=1000)
+    return model, params
+def get_model_from_torch_weight(torch_weight_path: str):
+    model_params, model, init_rng, config = init_model()
+    model_params = model_params['params']
+    # Flatten the model parameters
+    flat_params, mapping = flatten_nested_dict(model_params)
+    # Convert the separator in keys to dots
+    flat_params, mapping = convert_sep_to_dot(flat_params)
+    # Load the PyTorch weights
+    torch_weights = torch.load(torch_weight_path)
+    # Convert the PyTorch weights to JAX format
+    jax_weights = torch_to_jax_renaming(torch_weights, flat_params, config)
+    # Convert the flattened dictionary back to nested
+    undotted_params = convert_dot_to_sep(jax_weights, mapping)
+    params = unflatten_dict(undotted_params)
+    params = frozen_dict.freeze({'params': params})
+    model = VisionTransformer(**config, num_classes=1000)
+    return model, params
+jax_model_encode = VisionTransformer.apply_encoder
+jax_model_decode = VisionTransformer.apply_decoder
 def main():
     torch_weight_path = sys.argv[1]
     model_params, model, init_rng, config = init_model()
@@ -218,22 +266,35 @@ def main():
     # Convert the flattened dictionary back to nested
     undotted_params = convert_dot_to_sep(jax_weights, mapping)
     params = unflatten_dict(undotted_params)
-    print(params.keys())
+    #print(params.keys())
     params = frozen_dict.freeze({'params': params})
     #import pickle
     #with open(os.path.join(os.path.dirname(torch_weight_path), 'mae_jax.pkl'), 'wb') as f:
     #    pickle.dump(params, f)
     # do a forward pass
-    example_input = jnp.ones((1, 256, 256, 3)) # (B, H, W, C)
+    #example_input = jnp.ones((1, 256, 256, 3)) # (B, H, W, C)
+    # random input
+    #example_input = jnp.array(np.random.uniform(0, 1, (1, 256, 256, 3)))
+    image_path = '../visuals/npz_image.png'
+    from PIL import Image
+    img = Image.open(image_path)
+    img = img.resize((256, 256))
+    img = np.array(img)
+    img = img / 255.
+    img = jnp.array(img)
+    example_input = img[None, ...]
+    example_input = jnp.array(example_input)
+    example_input = jnp.tile(example_input, (4, 1, 1, 1))
+    print('example_input:', example_input.shape)
     #loss, preds = model.apply(params, example_input, train=False, rngs = {"dropout": jax.random.PRNGKey(1)})
     latent, mask, ids_restore = model.apply(params, example_input, train=False, rngs = {"dropout": jax.random.PRNGKey(1)}, method= VisionTransformer.apply_encoder)
-    patched_preds, preds = model.apply(params, latent, ids_restore, train=False, rngs = {"dropout": jax.random.PRNGKey(1)}, method= VisionTransformer.apply_decoder)
+    patched_preds, preds = model.apply(params, latent, None, train=False, rngs = {"dropout": jax.random.PRNGKey(1)}, method= VisionTransformer.apply_decoder)
     loss = model.compute_loss(example_input, patched_preds, mask)
     print(loss, preds.shape, preds.min(), preds.max())
     l1_loss = jnp.abs(example_input - preds).mean()
     print('L1 loss:', l1_loss)
-    from PIL import Image
     # save as image
+    preds = preds.clip(0, 1)
     img = np.array(preds[0]) * 255.
     img = img.astype(np.uint8)
     img = Image.fromarray(img)
