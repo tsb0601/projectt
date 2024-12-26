@@ -134,6 +134,10 @@ def convert_output_weight(weight: torch.Tensor, config:dict = None) -> jnp.ndarr
     weight =  weight.numpy()
     weight = jnp.array(weight)
     return weight
+def convert_id_restore(id_restore: torch.Tensor, config:dict = None) -> jnp.ndarray:
+    id_restore =  id_restore.numpy()
+    id_restore = jnp.array(id_restore).astype(jnp.float32)
+    return id_restore
 def convert_basic(weight: torch.Tensor, config:dict = None) -> jnp.ndarray:
     weight =  weight.numpy()
     weight = jnp.array(weight)
@@ -149,8 +153,11 @@ def dispatcher(name: str ) -> callable:
         return convert_output_weight
     elif 'query.bias' in name or 'key.bias' in name or 'value.bias' in name:
         return convert_qkv_bias
+    elif 'default_id_restore' in name:
+        return convert_id_restore
     elif 'weight' in name: # Linear weight
         return convert_linear_weight
+    
     else:
         return convert_basic
 def torch_to_jax_renaming(torch_dict: dict, jax_dict: dict, config: dict) -> dict:
@@ -160,15 +167,22 @@ def torch_to_jax_renaming(torch_dict: dict, jax_dict: dict, config: dict) -> dic
     jax_rename = {
         'scale': 'weight',
         'kernel': 'weight',
-        'model.decoder_pos_embed.position_embeddings': 'model.decoder.decoder_pos_embed'
+        'model.decoder_pos_embed.position_embeddings': 'model.decoder.decoder_pos_embed',
+        'attention.value': 'attention.attention.value',
+        'attention.key': 'attention.attention.key',
+        'attention.query': 'attention.attention.query',
     }
     jax_name_mapping = {}
     for key in jax_dict.keys():
         jax_name_mapping[key] = key
+        cp_key = key
+
         for k, v in jax_rename.items():
             if k in key:
-                jax_name_mapping[key] = key.replace(k, v)
-                break
+                cp_key = cp_key.replace(k, v)
+                jax_name_mapping[key] = cp_key
+                #print(f"Renaming {key} to {jax_name_mapping[key]}")
+                #break
     matched_keys = set(jax_name_mapping.values()).intersection(set(torch_dict.keys()))
     unmatched_keys = set(jax_name_mapping.values()).difference(set(torch_dict.keys()))
     print('unmatched keys:', unmatched_keys)

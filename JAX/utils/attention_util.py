@@ -108,9 +108,9 @@ class MultiHeadDotProductAttention(Module):
                     precision=self.precision)
     # project inputs_q to multi-headed q/k/v
     # dimensions are then [batch..., length, n_heads, n_features_per_head]
-    query, key, value = (dense(dtype=self.dtype, name='attention.query')(inputs_q),
-                         dense(dtype=self.dtype, name='attention.key')(inputs_kv),
-                         dense(dtype=self.dtype, name='attention.value')(inputs_kv))
+    query, key, value = (dense(dtype=self.dtype, name='query')(inputs_q),
+                         dense(dtype=self.dtype, name='key')(inputs_kv),
+                         dense(dtype=self.dtype, name='value')(inputs_kv))
 
     dropout_rng = None
     if not deterministic and self.dropout_rate > 0.:

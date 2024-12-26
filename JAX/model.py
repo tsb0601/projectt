@@ -333,7 +333,7 @@ def gather(x, ids):
   return x[ids]
 vmapped_gather = jax.jit(jax.vmap(gather, in_axes=(0, 0), out_axes=0))
 
-
+import numpy as np
 class VisionTransformer(nn.Module):
   """VisionTransformer."""
 
@@ -355,10 +355,11 @@ class VisionTransformer(nn.Module):
     # register default noise
     h, w = self.image_size[0] // self.patches[0], self.image_size[1] // self.patches[1]
     self.noise = jnp.arange(h * w) # [L]
-    default_id_restore = jnp.arange(self.patches[0] * self.patches[1])
+    default_id_restore = np.arange(self.patches[0] * self.patches[1])
     # reshape to [h, w]
-    default_id_restore = jnp.reshape(default_id_restore, [h, w])
-    self.default_id_restore = default_id_restore
+    default_id_restore = np.reshape(default_id_restore, [h, w])
+    default_id_restore = jnp.asarray(default_id_restore, jnp.float32)  # [h, w]
+    self.default_id_restore = default_id_restore # linen does not support int param in optims
     self.patch_embed = nn.Conv(
         features=self.hidden_size,
         kernel_size=self.patches,
@@ -526,7 +527,7 @@ class VisionTransformer(nn.Module):
     use_cls_token=(self.classifier == 'token')
     if ids_restore is None:
       # use default
-      ids_restore = self.default_id_restore
+      ids_restore = self.default_id_restore.astype(jnp.int32)
       n = x.shape[0]
       # ids_restore: [1, h, w], expand to [N, h, w]
       ids_restore = jnp.tile(jnp.expand_dims(ids_restore, axis=0), [n, 1, 1])
