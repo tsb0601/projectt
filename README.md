@@ -33,6 +33,14 @@ If you want to use the PSNR/SSIM metric under `eval/`, you need to additionally 
 
 and `pip install opencv-python`
 
+
+Also need to login to wandb:
+
+```bash
+export PATH=/home/{USER_NAME}/.local/bin:$PATH && wandb login {KEY}
+```
+
+The wandb login only needs to be done once on the pod/vm. But multiple times will not hurt.
 ### Basic Usage
 
 A main illustration of the structure of the repo is:
