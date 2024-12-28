@@ -87,9 +87,9 @@ The main idea for Stage1 Model is that it encodes the input into a latent repres
 Stage1 Model's behavior is defined (in `rqvae/models/interfaces.py`) as:
 
 - `forward`: it accepts a `LabeledImageData` as input and returns a `Stage1ModelOutput` as output in forward pass (encoding and decoding)
-- in encoding, it accepts a `LabeledImageData` and returns a `Stage1Encodings` 
-- in decoding, it accepts a `Stage1Encodings`  and returns a `Stage1ModelOutput`
-- for loss computation, it accepts a `Stage1ModelOutput`(reconstruction) and a `LabeledImageData`(input) and returns a dict for loss.
+- `encode` it accepts a `LabeledImageData` and returns a `Stage1Encodings` 
+- `decode` it accepts a `Stage1Encodings`  and returns a `Stage1ModelOutput`
+- `compute_loss` it accepts a `Stage1ModelOutput`(reconstruction) and a `LabeledImageData`(input) and returns a dict for loss.
 
 
 `Stage1ModelOutput` is a `@dataclass` with the following fields:
@@ -101,12 +101,37 @@ Stage1 Model's behavior is defined (in `rqvae/models/interfaces.py`) as:
 - `zs`: `torch.Tensor` (latent representation)
 - `additional_attr`: `dict` (optional) for storing possible additional attributes like `mu`, `logvar` in VAE
 
+
+For loss, it's a dict (sorry for no abstraction here, it should be one), with three keys:
+```python
+{
+    'loss_total': torch.Tensor, # total loss
+    'loss_recon': torch.Tensor, # reconstruction loss like L1
+    'loss_latent': torch.Tensor, # latent loss like KL divergence
+}
+```
+you should always set `loss_total` to be the sum of `loss_recon` and `loss_latent` in `compute_loss`. The actual total loss in training will be `loss_total`.
+
+**Connector**
+
+The connector is a simple class that connects the Stage1 and Stage2 models. For example, you may want to do a reshape to reshape a 1D stage1 latent to 2D for stage2, and reshape it back for decoding. The connector is defined in `rqvae.models.interfaces.py` as:
+
 **Stage2 Model**
 
 The main idea for Stage2 Model is that it accepts the latent from stage1 and the input data, learn something from them, then output a latent for decoding in generation. 
 Stage2 Model's behavior is defined (in `rqvae/models/interfaces.py`) as:
 
-- 
+- `forward`: it accepts a `Stage1Encodings` and a `LabeledImageData` as input and returns a `Stage2ModelOutput` as output in forward pass
+- `compute_loss`: it accepts a `Stage1Encodings`, a `Stage2ModelOutput` and a `LabeledImageData` and returns a dict for loss. Only `loss_total` is required here.
+- `infer` (generation): it accepts a `LabeledImageData` (usually not needed as we're doing noise-to-image generation) and returns a `Stage2ModelOutput` for decoding.
+
+
+`Stage2ModelOutput` is a `@dataclass` with the following fields:
+- `zs_pred`: `torch.Tensor` (generated latent)
+- `zs_degraded`: `torch.Tensor` (degraded latent, for example, noised), often not needed
+- `additional_attr`: `dict` (optional) for storing possible additional attributes
+
+
 
 #### Customize your model
 
@@ -118,3 +143,4 @@ To customize your model `MyModel`, you need to:
 - Done
 
 More specifically, to implement a Stage1 Model:
+
