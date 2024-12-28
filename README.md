@@ -202,6 +202,12 @@ Define your Stage1, Stage2 models and put them in `rqvae/models/`. Define your c
 
 ### Training & Testing
 
+**NOTE**: 
+
+- You should change the `XLACACHE_PATH` in script to somewhere **local** you like (on pod/vm). This is temporary storage for XLA cache files and should not be uploaded to GCS or PD. Using the cache will significantly speed up the warm-up time for XLA after first run.
+- `export XLA_DISABLE_FUNCTIONALIZATION=1` is set by default for a 30-70% speedup in training (due to some optimizer bugs). If you want to disable it, simply comment out the line in the script. You MUST use `torch_xla >= 2.5.0` to avoid possible function bug when ` XLA_DISABLE_FUNCTIONALIZATION=1` is used.
+
+
 To train your Stage1 Model:
 
 ```bash
