@@ -195,6 +195,11 @@ The config file is defined as a `yaml` file in `configs/` (or any other director
 Currently, please see `configs/imagenet256/stage1/klvae/f_16.yaml` for an example for Stage1 and `configs/imagenet256/stage2/pixel/SID.yaml` for an example for Stage2.
 
 For training we'll need all the fields, but for inference we only need the definition of dataset and model. Additional fields are simply ignored.
+
+### Customization
+
+Define your Stage1, Stage2 models and put them in `rqvae/models/`. Define your connectors and put them in `rqvae/models/connectors.py`. Then define a config for your training recipe. You're then all set!
+
 ### Training & Testing
 
 To train your Stage1 Model:
@@ -208,5 +213,32 @@ This will save the checkpoints to `save_directory/wand_project_name/wandb_run_na
 To do an inference for Stage1 Model (the input will be the test set):
 
 ```bash
-./recon_stage1.sh [save_directory] [ckpt_path] [config] [world_size] [wandb_run_name] [resume_ckpt_path(optional)] [resume_wandb_id(optional)]
+./recon_stage1.sh [save_directory] [ckpt_path] [config] [world_size]
 ```
+
+And we'll save all the reconstructions directly under `save_directory/`
+
+To train your Stage2 Model:
+
+**TBD**
+
+
+### Useful Sanity Check
+
+To check if the Stage1 model is properly defined, you can run:
+
+```bash
+python sanity_check/stage1_connect.py [config_path] [image_shape]
+``` 
+
+`image_shape` is a tuple of the shape for the input. If not set, it will default to `(3, 256, 256)`. If the input is 2D `(H,W)`, it will be reshaped to 3D with `(3, H, W)`.
+
+This will call the Stage1 Model with a predefined image (resized to `image_shape`) and check every function in the model. If it doesn't raise any error, then your model is properly defined.
+
+Likewise, call:
+
+```bash
+sanity_check/stage2_forward.py [config_path] [image_shape]
+```
+
+to check the Stage2 Model.
