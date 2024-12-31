@@ -1,0 +1,8 @@
+{"time":"2024-12-30T04:06:32.245528129Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2024-12-30T04:06:32.245556189Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_040632-8orgm8al/logs/debug-core.log"}
+{"time":"2024-12-30T04:06:32.349807834Z","level":"INFO","msg":"created new stream","id":"8orgm8al"}
+{"time":"2024-12-30T04:06:32.349848854Z","level":"INFO","msg":"stream: started","id":"8orgm8al"}
+{"time":"2024-12-30T04:06:32.349884304Z","level":"INFO","msg":"writer: Do: started","stream_id":"8orgm8al"}
+{"time":"2024-12-30T04:06:32.349929454Z","level":"INFO","msg":"sender: started","stream_id":"8orgm8al"}
+{"time":"2024-12-30T04:06:32.349881004Z","level":"INFO","msg":"handler: started","stream_id":"8orgm8al"}
+{"time":"2024-12-30T04:06:32.490720756Z","level":"INFO","msg":"Starting system monitor"}

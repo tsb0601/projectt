@@ -23,7 +23,7 @@ from rqvae.utils.setup import setup , wandb_dir
 import time
 import torch_xla.distributed.xla_multiprocessing as xmp
 xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assure accuracy
-CACHE_DIR = '/home/bytetriper/.cache/xla_compile'
+CACHE_DIR = '/home/tsb/.cache/xla_compile'
 project_name = 'tmp'
 cache_path = os.path.join(CACHE_DIR, project_name)
 cache_path = os.environ.get('XLACACHE_PATH', cache_path)
@@ -168,6 +168,7 @@ def main(rank, args, extra_args):
     if args.use_ddp:
         dist.destroy_process_group()
     xm.rendezvous('done')
+    
 if __name__ == '__main__':
     args, extra_args = parser.parse_known_args()
     args.eval = args.action != 'train' # sp judge for backward compatibility

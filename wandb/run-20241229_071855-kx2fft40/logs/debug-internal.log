@@ -1,0 +1,9 @@
+{"time":"2024-12-29T07:18:55.872631238Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2024-12-29T07:18:55.872653309Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241229_071855-kx2fft40/logs/debug-core.log"}
+{"time":"2024-12-29T07:18:55.976709287Z","level":"INFO","msg":"created new stream","id":"kx2fft40"}
+{"time":"2024-12-29T07:18:55.976760757Z","level":"INFO","msg":"stream: started","id":"kx2fft40"}
+{"time":"2024-12-29T07:18:55.976770517Z","level":"INFO","msg":"handler: started","stream_id":"kx2fft40"}
+{"time":"2024-12-29T07:18:55.976791947Z","level":"INFO","msg":"sender: started","stream_id":"kx2fft40"}
+{"time":"2024-12-29T07:18:55.976791757Z","level":"INFO","msg":"writer: Do: started","stream_id":"kx2fft40"}
+{"time":"2024-12-29T07:18:56.112601565Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-12-29T07:31:56.136052775Z","level":"ERROR","msg":"monitor: tpu: error sampling metrics: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:8431: connect: connection refused\""}

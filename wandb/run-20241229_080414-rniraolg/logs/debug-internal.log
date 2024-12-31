@@ -1,0 +1,16 @@
+{"time":"2024-12-29T08:04:14.431231787Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2024-12-29T08:04:14.431260847Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241229_080414-rniraolg/logs/debug-core.log"}
+{"time":"2024-12-29T08:04:14.535944021Z","level":"INFO","msg":"created new stream","id":"rniraolg"}
+{"time":"2024-12-29T08:04:14.535976101Z","level":"INFO","msg":"stream: started","id":"rniraolg"}
+{"time":"2024-12-29T08:04:14.535995691Z","level":"INFO","msg":"handler: started","stream_id":"rniraolg"}
+{"time":"2024-12-29T08:04:14.536007821Z","level":"INFO","msg":"writer: Do: started","stream_id":"rniraolg"}
+{"time":"2024-12-29T08:04:14.536043081Z","level":"INFO","msg":"sender: started","stream_id":"rniraolg"}
+{"time":"2024-12-29T08:04:14.696137163Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-12-29T08:09:19.017837217Z","level":"INFO","msg":"stream: closing","id":"rniraolg"}
+{"time":"2024-12-29T08:09:19.017870967Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-12-29T08:09:19.018762517Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-12-29T08:09:19.307163852Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-12-29T08:09:19.367017438Z","level":"INFO","msg":"handler: closed","stream_id":"rniraolg"}
+{"time":"2024-12-29T08:09:19.367060348Z","level":"INFO","msg":"sender: closed","stream_id":"rniraolg"}
+{"time":"2024-12-29T08:09:19.367050318Z","level":"INFO","msg":"writer: Close: closed","stream_id":"rniraolg"}
+{"time":"2024-12-29T08:09:19.367139108Z","level":"INFO","msg":"stream: closed","id":"rniraolg"}

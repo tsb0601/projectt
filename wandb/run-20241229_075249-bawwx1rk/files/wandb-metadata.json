@@ -1,0 +1,37 @@
+{
+  "os":  "Linux-5.19.0-1022-gcp-x86_64-with-glibc2.35",
+  "python":  "CPython 3.10.12",
+  "startedAt":  "2024-12-29T07:52:49.224830Z",
+  "program":  "/home/tsb/VAE-enhanced/train.py",
+  "codePath":  "train.py",
+  "git":  {
+    "remote":  "https://github.com/bytetriper/VAE-enhanced.git",
+    "commit":  "6f3b83dd586dc1b7e7444b458a78bdd3ed5e0c81"
+  },
+  "email":  "tsb@berkeley.edu",
+  "root":  "/home/tsb/VAE-enhanced",
+  "host":  "t1v-n-c787936a-w-0",
+  "executable":  "/usr/bin/python",
+  "codePathLocal":  "train.py",
+  "cpu_count":  120,
+  "cpu_count_logical":  240,
+  "disk":  {
+    "/":  {
+      "total":  "103865303040",
+      "used":  "24010862592"
+    }
+  },
+  "memory":  {
+    "total":  "430004367360"
+  },
+  "cpu":  {
+    "count":  120,
+    "countLogical":  240
+  },
+  "tpu":  {
+    "name":  "v4",
+    "hbmGib":  32,
+    "devicesPerChip":  1,
+    "count":  1
+  }
+}

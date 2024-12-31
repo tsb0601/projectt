@@ -36,7 +36,6 @@ else
 fi
 export WANDB_DIR=$SAVE_DIR
 export WANDB_PROJECT=$EXP_NAME
-#env | grep WANDB
 export XLA_DISABLE_FUNCTIONALIZATION=1
 python main_stage1.py \
     -m=$model_config \
@@ -44,4 +43,4 @@ python main_stage1.py \
     --world_size=$world_size \
     -l=$load_ckpt \
     --exp=$exp \
-    --do_online_eval
+    --do_online_eval \

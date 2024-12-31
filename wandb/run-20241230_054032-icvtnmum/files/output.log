@@ -1,0 +1,33 @@
+/home/tsb/.local/lib/python3.10/site-packages/webdataset/compat.py:136: UserWarning: WebDataset(shardshuffle=...) is None; set explicitly to False or a number
+  warnings.warn("WebDataset(shardshuffle=...) is None; set explicitly to False or a number")
+111111111111111
+777777777777777
+88888888888888
+9999999999999999
+1010101010101010101010
+11_11_11_11_11_11_11_11_11_11_11
+12_12_12_12_12_12_12_12_12_
+13_13_13_13_13_13_13_13_13_13_13_13_13_
+14_14_14_14_14_14_14_14_14_14_14_14_14_
+111111111111111
+777777777777777
+88888888888888
+9999999999999999
+1010101010101010101010
+11_11_11_11_11_11_11_11_11_11_11
+12_12_12_12_12_12_12_12_12_
+13_13_13_13_13_13_13_13_13_13_13_13_13_
+14_14_14_14_14_14_14_14_14_14_14_14_14_
+Process ForkProcess-1:
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 317, in _bootstrap
+    util._exit_function()
+  File "/usr/lib/python3.10/multiprocessing/util.py", line 357, in _exit_function
+    p.join()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 149, in join
+    res = self._popen.wait(timeout)
+  File "/usr/lib/python3.10/multiprocessing/popen_fork.py", line 43, in wait
+    return self.poll(os.WNOHANG if timeout == 0.0 else 0)
+  File "/usr/lib/python3.10/multiprocessing/popen_fork.py", line 27, in poll
+    pid, sts = os.waitpid(self.pid, flag)
+KeyboardInterrupt

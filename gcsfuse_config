@@ -1,0 +1,8 @@
+file-cache:
+  max-size-mb: 10240 # 10
+  cache-file-for-range-read: false
+metadata-cache:
+  stat-cache-max-size-mb: 32
+  ttl-secs: 20 # to cut down the cost
+  type-cache-max-size-mb: 4
+cache-dir: ./tmp

@@ -1,0 +1,8 @@
+{"time":"2024-12-30T07:17:57.378880227Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2024-12-30T07:17:57.378903717Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_071757-ufe09fao/logs/debug-core.log"}
+{"time":"2024-12-30T07:17:57.483142565Z","level":"INFO","msg":"created new stream","id":"ufe09fao"}
+{"time":"2024-12-30T07:17:57.483186665Z","level":"INFO","msg":"stream: started","id":"ufe09fao"}
+{"time":"2024-12-30T07:17:57.483215815Z","level":"INFO","msg":"writer: Do: started","stream_id":"ufe09fao"}
+{"time":"2024-12-30T07:17:57.483234025Z","level":"INFO","msg":"handler: started","stream_id":"ufe09fao"}
+{"time":"2024-12-30T07:17:57.483224515Z","level":"INFO","msg":"sender: started","stream_id":"ufe09fao"}
+{"time":"2024-12-30T07:17:57.671862371Z","level":"INFO","msg":"Starting system monitor"}

@@ -1,0 +1,31 @@
+/home/tsb/.local/lib/python3.10/site-packages/webdataset/compat.py:136: UserWarning: WebDataset(shardshuffle=...) is None; set explicitly to False or a number
+  warnings.warn("WebDataset(shardshuffle=...) is None; set explicitly to False or a number")
+111111111111111
+2222222222222
+333333333333
+torch.Size([32, 3, 256, 256]) torch.Size([32, 3, 256, 256])
+3.33.33.33.33.33.33.33.33.33.3
+/home/tsb/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+3.73.73.73.73.73.73.73.73.73.73.73.73.7
+4444444444444444444
+5555555555555555555555
+666666666666666666666
+777777777777777
+88888888888888
+9999999999999999
+1010101010101010101010
+11_11_11_11_11_11_11_11_11_11_11
+Process ForkProcess-1:
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/usr/lib/python3.10/concurrent/futures/process.py", line 240, in _process_worker
+    call_item = call_queue.get(block=True)
+  File "/usr/lib/python3.10/multiprocessing/queues.py", line 102, in get
+    with self._rlock:
+  File "/usr/lib/python3.10/multiprocessing/synchronize.py", line 95, in __enter__
+    return self._semlock.__enter__()
+KeyboardInterrupt

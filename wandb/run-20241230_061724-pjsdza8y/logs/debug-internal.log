@@ -1,0 +1,9 @@
+{"time":"2024-12-30T06:17:24.419157462Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2024-12-30T06:17:24.419185622Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_061724-pjsdza8y/logs/debug-core.log"}
+{"time":"2024-12-30T06:17:24.524873035Z","level":"INFO","msg":"created new stream","id":"pjsdza8y"}
+{"time":"2024-12-30T06:17:24.524914215Z","level":"INFO","msg":"stream: started","id":"pjsdza8y"}
+{"time":"2024-12-30T06:17:24.524941165Z","level":"INFO","msg":"writer: Do: started","stream_id":"pjsdza8y"}
+{"time":"2024-12-30T06:17:24.524950745Z","level":"INFO","msg":"sender: started","stream_id":"pjsdza8y"}
+{"time":"2024-12-30T06:17:24.524950565Z","level":"INFO","msg":"handler: started","stream_id":"pjsdza8y"}
+{"time":"2024-12-30T06:17:24.740690412Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-12-30T06:27:15.121396592Z","level":"ERROR","msg":"monitor: tpu: error sampling metrics: rpc error: code = Unavailable desc = error reading from server: read tcp 127.0.0.1:36946->127.0.0.1:8431: read: connection reset by peer"}

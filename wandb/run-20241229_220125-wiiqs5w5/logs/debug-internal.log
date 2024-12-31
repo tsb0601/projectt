@@ -1,0 +1,8 @@
+{"time":"2024-12-29T22:01:25.128200382Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2024-12-29T22:01:25.128224173Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241229_220125-wiiqs5w5/logs/debug-core.log"}
+{"time":"2024-12-29T22:01:25.233019617Z","level":"INFO","msg":"created new stream","id":"wiiqs5w5"}
+{"time":"2024-12-29T22:01:25.233065317Z","level":"INFO","msg":"stream: started","id":"wiiqs5w5"}
+{"time":"2024-12-29T22:01:25.233085777Z","level":"INFO","msg":"sender: started","stream_id":"wiiqs5w5"}
+{"time":"2024-12-29T22:01:25.233092437Z","level":"INFO","msg":"writer: Do: started","stream_id":"wiiqs5w5"}
+{"time":"2024-12-29T22:01:25.233082347Z","level":"INFO","msg":"handler: started","stream_id":"wiiqs5w5"}
+{"time":"2024-12-29T22:01:25.397018318Z","level":"INFO","msg":"Starting system monitor"}
