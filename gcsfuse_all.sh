@@ -9,7 +9,7 @@ sudo dpkg --configure -a # dpkg may get corrupted
 sleep 10
 sudo apt-get install gcsfuse
 #
-mkdir VAE-enhanced/ckpt_gcs -p
-gcsfuse --config-file gcsfuse_config tsb-data "VAE-enhanced/ckpt_gcs"
+mkdir projectt/ckpt_gcs -p
+gcsfuse --config-file gcsfuse_config tsb-data "projectt/ckpt_gcs"
 
 # fusermount -u VAE-enhanced/ckpt_gcs
