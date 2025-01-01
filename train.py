@@ -587,7 +587,7 @@ def train_tpu(index, args):
 
             print("4444444444444")
             # Checkpointing
-            if state.global_step % args.save_step == 0:
+            if (state.global_step+1) % args.save_step == 0:
                 print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
 
                 save_checkpoint(

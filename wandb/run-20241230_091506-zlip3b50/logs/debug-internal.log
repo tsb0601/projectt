@@ -1,8 +1,0 @@
-{"time":"2024-12-30T09:15:06.540829313Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-30T09:15:06.540850173Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_091506-zlip3b50/logs/debug-core.log"}
-{"time":"2024-12-30T09:15:06.645286867Z","level":"INFO","msg":"created new stream","id":"zlip3b50"}
-{"time":"2024-12-30T09:15:06.645955957Z","level":"INFO","msg":"stream: started","id":"zlip3b50"}
-{"time":"2024-12-30T09:15:06.645953187Z","level":"INFO","msg":"handler: started","stream_id":"zlip3b50"}
-{"time":"2024-12-30T09:15:06.646032177Z","level":"INFO","msg":"writer: Do: started","stream_id":"zlip3b50"}
-{"time":"2024-12-30T09:15:06.646042837Z","level":"INFO","msg":"sender: started","stream_id":"zlip3b50"}
-{"time":"2024-12-30T09:15:06.77311851Z","level":"INFO","msg":"Starting system monitor"}

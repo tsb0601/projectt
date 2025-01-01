@@ -1,7 +1,0 @@
-/home/tsb/.local/lib/python3.10/site-packages/webdataset/compat.py:136: UserWarning: WebDataset(shardshuffle=...) is None; set explicitly to False or a number
-  warnings.warn("WebDataset(shardshuffle=...) is None; set explicitly to False or a number")
-12_12_12_12_12_12_12_12_12_
-13_13_13_13_13_13_13_13_13_13_13_13_13_
-12_12_12_12_12_12_12_12_12_
-13_13_13_13_13_13_13_13_13_13_13_13_13_
-Process ForkProcess-1:

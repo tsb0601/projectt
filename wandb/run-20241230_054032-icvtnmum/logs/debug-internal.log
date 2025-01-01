@@ -1,8 +1,0 @@
-{"time":"2024-12-30T05:40:32.214257502Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-30T05:40:32.214280882Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_054032-icvtnmum/logs/debug-core.log"}
-{"time":"2024-12-30T05:40:32.318461576Z","level":"INFO","msg":"created new stream","id":"icvtnmum"}
-{"time":"2024-12-30T05:40:32.318526886Z","level":"INFO","msg":"stream: started","id":"icvtnmum"}
-{"time":"2024-12-30T05:40:32.318543316Z","level":"INFO","msg":"sender: started","stream_id":"icvtnmum"}
-{"time":"2024-12-30T05:40:32.318546696Z","level":"INFO","msg":"writer: Do: started","stream_id":"icvtnmum"}
-{"time":"2024-12-30T05:40:32.318594016Z","level":"INFO","msg":"handler: started","stream_id":"icvtnmum"}
-{"time":"2024-12-30T05:40:32.598816241Z","level":"INFO","msg":"Starting system monitor"}

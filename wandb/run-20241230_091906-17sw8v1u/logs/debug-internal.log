@@ -1,9 +1,0 @@
-{"time":"2024-12-30T09:19:06.063399709Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-30T09:19:06.063422949Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_091906-17sw8v1u/logs/debug-core.log"}
-{"time":"2024-12-30T09:19:06.168175553Z","level":"INFO","msg":"created new stream","id":"17sw8v1u"}
-{"time":"2024-12-30T09:19:06.168217584Z","level":"INFO","msg":"stream: started","id":"17sw8v1u"}
-{"time":"2024-12-30T09:19:06.168466684Z","level":"INFO","msg":"handler: started","stream_id":"17sw8v1u"}
-{"time":"2024-12-30T09:19:06.168465293Z","level":"INFO","msg":"sender: started","stream_id":"17sw8v1u"}
-{"time":"2024-12-30T09:19:06.168460944Z","level":"INFO","msg":"writer: Do: started","stream_id":"17sw8v1u"}
-{"time":"2024-12-30T09:19:06.296610586Z","level":"INFO","msg":"Starting system monitor"}
-{"time":"2024-12-30T09:37:46.321211817Z","level":"ERROR","msg":"monitor: tpu: error sampling metrics: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:8431: connect: connection refused\""}

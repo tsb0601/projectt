@@ -1,9 +1,0 @@
-{"time":"2024-12-29T22:07:20.340173676Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-29T22:07:20.340194946Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241229_220720-abesxecp/logs/debug-core.log"}
-{"time":"2024-12-29T22:07:20.44439874Z","level":"INFO","msg":"created new stream","id":"abesxecp"}
-{"time":"2024-12-29T22:07:20.44444855Z","level":"INFO","msg":"stream: started","id":"abesxecp"}
-{"time":"2024-12-29T22:07:20.444466Z","level":"INFO","msg":"handler: started","stream_id":"abesxecp"}
-{"time":"2024-12-29T22:07:20.44448418Z","level":"INFO","msg":"sender: started","stream_id":"abesxecp"}
-{"time":"2024-12-29T22:07:20.4444794Z","level":"INFO","msg":"writer: Do: started","stream_id":"abesxecp"}
-{"time":"2024-12-29T22:07:20.680473167Z","level":"INFO","msg":"Starting system monitor"}
-{"time":"2024-12-29T22:08:14.796935103Z","level":"ERROR","msg":"monitor: tpu: error sampling metrics: rpc error: code = Unavailable desc = error reading from server: read tcp 127.0.0.1:60332->127.0.0.1:8431: read: connection reset by peer"}

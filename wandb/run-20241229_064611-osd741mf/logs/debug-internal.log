@@ -1,8 +1,0 @@
-{"time":"2024-12-29T06:46:11.478845585Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-29T06:46:11.478868434Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241229_064611-osd741mf/logs/debug-core.log"}
-{"time":"2024-12-29T06:46:11.582382069Z","level":"INFO","msg":"created new stream","id":"osd741mf"}
-{"time":"2024-12-29T06:46:11.582426659Z","level":"INFO","msg":"stream: started","id":"osd741mf"}
-{"time":"2024-12-29T06:46:11.582499339Z","level":"INFO","msg":"handler: started","stream_id":"osd741mf"}
-{"time":"2024-12-29T06:46:11.582502869Z","level":"INFO","msg":"writer: Do: started","stream_id":"osd741mf"}
-{"time":"2024-12-29T06:46:11.582553239Z","level":"INFO","msg":"sender: started","stream_id":"osd741mf"}
-{"time":"2024-12-29T06:46:11.76117591Z","level":"INFO","msg":"Starting system monitor"}

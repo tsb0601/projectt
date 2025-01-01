@@ -1,9 +1,0 @@
-{"time":"2024-12-29T08:16:49.449179297Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-29T08:16:49.449203977Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241229_081649-ok4a0n64/logs/debug-core.log"}
-{"time":"2024-12-29T08:16:49.553454641Z","level":"INFO","msg":"created new stream","id":"ok4a0n64"}
-{"time":"2024-12-29T08:16:49.553497611Z","level":"INFO","msg":"stream: started","id":"ok4a0n64"}
-{"time":"2024-12-29T08:16:49.553532101Z","level":"INFO","msg":"writer: Do: started","stream_id":"ok4a0n64"}
-{"time":"2024-12-29T08:16:49.553553421Z","level":"INFO","msg":"handler: started","stream_id":"ok4a0n64"}
-{"time":"2024-12-29T08:16:49.553533231Z","level":"INFO","msg":"sender: started","stream_id":"ok4a0n64"}
-{"time":"2024-12-29T08:16:49.741041541Z","level":"INFO","msg":"Starting system monitor"}
-{"time":"2024-12-29T11:48:50.067984548Z","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}

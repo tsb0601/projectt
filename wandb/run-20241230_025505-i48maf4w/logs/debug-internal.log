@@ -1,8 +1,0 @@
-{"time":"2024-12-30T02:55:05.160655931Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2024-12-30T02:55:05.160679511Z","level":"INFO","msg":"created symlink","path":"/home/tsb/VAE-enhanced/wandb/run-20241230_025505-i48maf4w/logs/debug-core.log"}
-{"time":"2024-12-30T02:55:05.264754845Z","level":"INFO","msg":"created new stream","id":"i48maf4w"}
-{"time":"2024-12-30T02:55:05.264800125Z","level":"INFO","msg":"stream: started","id":"i48maf4w"}
-{"time":"2024-12-30T02:55:05.264822225Z","level":"INFO","msg":"handler: started","stream_id":"i48maf4w"}
-{"time":"2024-12-30T02:55:05.264906275Z","level":"INFO","msg":"sender: started","stream_id":"i48maf4w"}
-{"time":"2024-12-30T02:55:05.264930295Z","level":"INFO","msg":"writer: Do: started","stream_id":"i48maf4w"}
-{"time":"2024-12-30T02:55:05.447710545Z","level":"INFO","msg":"Starting system monitor"}
