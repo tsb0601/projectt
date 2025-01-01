@@ -1,0 +1,9 @@
+{"time":"2025-01-01T08:30:11.555032046Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2025-01-01T08:30:11.555049606Z","level":"INFO","msg":"created symlink","path":"/home/tsb/projectt/wandb/run-20250101_083011-301rnb99/logs/debug-core.log"}
+{"time":"2025-01-01T08:30:11.659267898Z","level":"INFO","msg":"created new stream","id":"301rnb99"}
+{"time":"2025-01-01T08:30:11.659315638Z","level":"INFO","msg":"stream: started","id":"301rnb99"}
+{"time":"2025-01-01T08:30:11.659362689Z","level":"INFO","msg":"sender: started","stream_id":"301rnb99"}
+{"time":"2025-01-01T08:30:11.659348698Z","level":"INFO","msg":"writer: Do: started","stream_id":"301rnb99"}
+{"time":"2025-01-01T08:30:11.659363929Z","level":"INFO","msg":"handler: started","stream_id":"301rnb99"}
+{"time":"2025-01-01T08:30:11.842093064Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-01T09:33:22.156477813Z","level":"ERROR","msg":"monitor: tpu: error sampling metrics: rpc error: code = Unavailable desc = error reading from server: read tcp 127.0.0.1:47190->127.0.0.1:8431: read: connection reset by peer"}

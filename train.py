@@ -585,9 +585,11 @@ def train_tpu(index, args):
 
                         # print("wtfffff")
 
-            # print("4444444444444")
+            print("4444444444444")
             # Checkpointing
             if state.global_step % args.save_step == 0:
+                print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
+
                 save_checkpoint(
                     vae, discriminator, optimizer, d_optimizer, scheduler,
                     state.global_step,
@@ -595,7 +597,7 @@ def train_tpu(index, args):
                     state.epoch
                 )
                 
-            # print("55555555555")
+            print("55555555555")
             state.global_step += 1
             xm.mark_step()
         
