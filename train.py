@@ -174,7 +174,7 @@ def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, glo
         }
     
     # Only master saves
-    if xm.is_master_ordinal():
+    if xm.get_ordinal() == 0:
         # Save VAE checkpoint
         xm.save(vae_checkpoint, path)
         
@@ -514,7 +514,8 @@ def train_tpu(index, args):
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_scheduler_fn)
     
     # Initialize wandb for master process
-    if xm.is_master_ordinal():
+    if xm.get_ordinal() == 0:
+
         wandb.init(
             project="siglip-vae-tpu",
             config={**vars(args), "steps_per_epoch": steps_per_epoch},
@@ -528,7 +529,7 @@ def train_tpu(index, args):
     if args.resume or args.checkpoint_path:
         checkpoint_path = args.checkpoint_path or get_latest_checkpoint(args.save_dir)
         if checkpoint_path:
-            if xm.is_master_ordinal():
+            if xm.get_ordinal() == 0:
                 logger.info(f"Resuming from checkpoint: {checkpoint_path}")
                 
             # Load both VAE and discriminator (if using GAN) in a synchronized way
@@ -560,7 +561,7 @@ def train_tpu(index, args):
             scheduler.step()
             # print("1111111111111111111")
             # Logging
-            if xm.is_master_ordinal():
+            if xm.get_ordinal() == 0:
                 # print("22222222222222")
                 wandb.log({
                     **losses,
@@ -600,7 +601,7 @@ def train_tpu(index, args):
         
         state.epoch += 1
     
-    if xm.is_master_ordinal():
+    if xm.get_ordinal() == 0:
         wandb.finish()
 
 def main():
