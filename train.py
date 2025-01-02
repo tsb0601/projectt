@@ -672,8 +672,8 @@ def add_vq_args(parser):
                        help="Gradually unfreeze encoder")
     parser.add_argument("--unfreeze_after_steps", type=int, default=20000,
                        help="Steps before starting unfreezing")
-    parser.add_argument("--unfreeze_strategy", type=str, default='gradual',
-                       choices=['all', 'gradual'],
+    parser.add_argument("--unfreeze_strategy", type=str, default='all',
+                       choices=['all'],
                        help="How to unfreeze encoder")
     
 
