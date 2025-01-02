@@ -593,10 +593,14 @@ def train_tpu(index, args):
             # Training step
             losses, vae_images, recon_images, indices = train_one_step(
                 batch, models, optimizers, state
+                
             )
+
+            print("indices", indices, indices.shape)
+
             
             # Update codebook analysis
-            codebook_analyzer.analyze_batch(indices, recon_images)
+            codebook_analyzer.analyze_batch(indices)
 
 
 

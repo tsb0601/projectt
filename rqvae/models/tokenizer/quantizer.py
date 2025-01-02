@@ -186,8 +186,6 @@ class VectorQuantizer(nn.Module):
     @torch.no_grad()
     def get_codebook_entry(self, indices):
         return F.normalize(self.embeddings[indices], p=2, dim=-1)
-
-
 class CodebookAnalyzer:
     def __init__(self, vq_layer):
         self.vq_layer = vq_layer
@@ -201,15 +199,17 @@ class CodebookAnalyzer:
             (self.vq_layer.num_embeddings, self.vq_layer.num_embeddings),
             device=self.vq_layer.embeddings.device
         )
+        # Change spatial usage to track per-position code frequencies
         self.spatial_usage = torch.zeros(
             (int(math.sqrt(self.vq_layer.num_embeddings)), 
-             int(math.sqrt(self.vq_layer.num_embeddings))),
+             int(math.sqrt(self.vq_layer.num_embeddings)),
+             self.vq_layer.num_embeddings),  # Add dimension for code frequencies
             device=self.vq_layer.embeddings.device
         )
         xm.rendezvous('post_reset_analysis')
         
     @torch.no_grad()
-    def analyze_batch(self, indices, quantized):
+    def analyze_batch(self, indices):
         """Analyze a batch of quantized outputs and their indices"""
         # Update transition matrix (how often codes follow each other)
         if indices.dim() > 1:  # If we have spatial dimensions
@@ -229,10 +229,11 @@ class CodebookAnalyzer:
             spatial_indices = indices.view(-1, h, w)
             for i in range(h):
                 for j in range(w):
-                    self.spatial_usage[i, j] += torch.bincount(
+                    counts = torch.bincount(
                         spatial_indices[:, i, j],
                         minlength=self.vq_layer.num_embeddings
                     ).float()
+                    self.spatial_usage[i, j] += counts  # Now the shapes match
     
     def get_analysis(self):
         """Get comprehensive analysis of codebook usage"""
@@ -270,13 +271,16 @@ class CodebookAnalyzer:
             code2 = idx % self.vq_layer.num_embeddings
             top_transitions.append((code1.item(), code2.item(), values[i].item()))
         
+        # Sum over codes to get spatial usage heatmap
+        spatial_heatmap = self.spatial_usage.sum(dim=-1)
+        
         analysis = {
             **usage_stats,
             'similarity_matrix': similarity_matrix.cpu(),
             'similar_pairs': similar_pairs,
             'transition_matrix': transition_probs.cpu(),
             'top_transitions': top_transitions,
-            'spatial_usage': self.spatial_usage.cpu(),
+            'spatial_usage': spatial_heatmap.cpu(),
         }
         
         xm.rendezvous('post_analysis')
