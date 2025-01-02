@@ -39,6 +39,15 @@ class VectorQuantizer(nn.Module):
         self.embeddings = F.normalize(self.embeddings, p=2, dim=1)
         
     def forward(self, inputs):
+        # Handle input shape and ensure it's 3D [batch_size, num_tokens, embedding_dim]
+        orig_shape = inputs.shape
+        if inputs.dim() == 2:
+            inputs = inputs.unsqueeze(0)
+        
+        # Flatten if more than 3 dimensions
+        if inputs.dim() > 3:
+            inputs = inputs.view(-1, inputs.size(-2), inputs.size(-1))
+            
         # Ensure input embeddings are normalized
         inputs = F.normalize(inputs, p=2, dim=-1)
         
@@ -50,16 +59,19 @@ class VectorQuantizer(nn.Module):
         )
 
         # Encoding
-        encoding_indices = torch.argmin(distances, dim=-1)
+        encoding_indices = torch.argmin(distances, dim=-1)  # [batch_size * num_tokens]
+        
+        # Create one-hot encodings
         encodings = torch.zeros(
-            encoding_indices.shape[0], 
-            self.num_embeddings, 
+            encoding_indices.shape[0] * encoding_indices.shape[1],  # Flattened batch * tokens
+            self.num_embeddings,
             device=inputs.device
         )
-        encodings.scatter_(1, encoding_indices.unsqueeze(1), 1)
+        encodings.scatter_(1, encoding_indices.view(-1, 1), 1)
         
         # Quantize
         quantized = torch.matmul(encodings, self.embeddings)
+        quantized = quantized.view(inputs.shape)  # Reshape back to input shape
         
         # Compute losses
         if self.use_commitment:
@@ -75,7 +87,12 @@ class VectorQuantizer(nn.Module):
         # Update usage statistics and EMA in training
         if self.training:
             self._update_usage_stats(encoding_indices)
-            self._ema_update(encodings, inputs)
+            self._ema_update(encodings.view(inputs.shape[0], -1, self.num_embeddings), inputs)
+            
+        # Restore original shape if needed
+        if len(orig_shape) != len(quantized.shape):
+            quantized = quantized.view(orig_shape)
+            encoding_indices = encoding_indices.view(orig_shape[:-1])
             
         return quantized, loss, encoding_indices
 
@@ -143,6 +160,21 @@ class VectorQuantizer(nn.Module):
         self.usage_count.zero_()
         self.total_usage.zero_()
         xm.rendezvous('post_reset_stats')
+
+    def to(self, device):
+        """Override to() to ensure all buffers move to device"""
+        super().to(device)
+        if hasattr(self, 'embeddings'):
+            self.embeddings = self.embeddings.to(device)
+        if hasattr(self, 'cluster_size'):
+            self.cluster_size = self.cluster_size.to(device)
+        if hasattr(self, 'embed_avg'):
+            self.embed_avg = self.embed_avg.to(device)
+        if hasattr(self, 'usage_count'):
+            self.usage_count = self.usage_count.to(device)
+        if hasattr(self, 'total_usage'):
+            self.total_usage = self.total_usage.to(device)
+        return self
 
     @torch.no_grad()
     def get_codebook_entry(self, indices):

@@ -382,7 +382,7 @@ def train_one_step(batch, models, optimizers, state):
     # (2) GENERATOR (VAE) PHASE
     # =============================================================================
     # Get quantized embeddings and VQ loss
-    quantized, vq_loss, encoding_indices = siglip_encoder(siglip_images)
+    quantized, total_loss, encoding_indices, clean_loss = siglip_encoder(siglip_images)
     recon_images = vae(quantized)
 
     # Reconstruction + perceptual losses
@@ -416,6 +416,7 @@ def train_one_step(batch, models, optimizers, state):
         "perceptual_loss": float(perceptual_loss.item()),
         "vq_loss": float(vq_loss.item()),
         "total_loss": float(total_loss.item()),
+        "clean_embedding_loss": float(clean_loss.item()),
     }, vae_images, recon_images, encoding_indices
 
 

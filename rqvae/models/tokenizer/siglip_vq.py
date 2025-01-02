@@ -44,6 +44,11 @@ class SigLIPVQEncoder(nn.Module):
             commitment_cost=commitment_cost
         )
         
+        # Move VQ to device explicitly
+        if self.device:
+            self.vq = self.vq.to(self.device)
+
+            
         # Initially freeze all parameters if not trainable
         if not trainable:
             self.freeze_encoder()
