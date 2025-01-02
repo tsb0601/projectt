@@ -35,7 +35,8 @@ xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assur
 
 from rqvae.models.tokenizer.decoder import VAEDecoder
 from rqvae.models.tokenizer.discriminator import create_dinov2_discriminator
-
+from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
+from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -148,17 +149,17 @@ def get_latest_checkpoint(save_dir):
     latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
     return latest_checkpoint
 
-def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, global_step, path, epoch):
-    """Save checkpoint with proper distributed handling for both VAE and GAN"""
-    xm.rendezvous('pre_save')  # First sync point
+def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, global_step, path, epoch, siglip_encoder):
+    xm.rendezvous('pre_save')
     
     os.makedirs(os.path.dirname(path), exist_ok=True)
     
-    # Prepare the VAE checkpoint
+    # Add VQ state to checkpoint
     vae_checkpoint = {
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
+        'siglip_encoder_state_dict': siglip_encoder.state_dict(),  # Added
         'global_step': global_step,
         'epoch': epoch
     }
@@ -184,20 +185,18 @@ def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, glo
             xm.save(d_checkpoint, d_path)
     
     xm.rendezvous('post_save')  # Final sync point
-def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, checkpoint_path):
-    """
-    Load checkpoint with proper distributed handling for both VAE and GAN,
-    WITHOUT broadcasting the large checkpoint data via mesh_reduce().
-    Instead, each rank loads the same file from disk.
-    """
-    # Synchronize all processes before loading
-    xm.rendezvous('checkpoint_load')
 
-    # Every process loads the same checkpoint from disk
+
+
+
+def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, checkpoint_path, siglip_encoder):
+    xm.rendezvous('checkpoint_load')
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     
-    # Load model state
+    # Load model states including VQ
     model.load_state_dict(checkpoint['model_state_dict'])
+    if 'siglip_encoder_state_dict' in checkpoint:  # For backward compatibility
+        siglip_encoder.load_state_dict(checkpoint['siglip_encoder_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     global_step = checkpoint['global_step']
@@ -345,62 +344,58 @@ def compute_g_loss(fake_images, discriminator):
     g_loss = F.softplus(-fake_pred).mean()
     return g_loss
 
+    
 def train_one_step(batch, models, optimizers, state):
     """
-    Correct two-stage GAN step on TPU:
-      1) Discriminator forward/backward
-      2) Generator (VAE) forward/backward
-    so we do NOT do two backwards on the *same* forward pass.
+    Modified training step to handle VQ
     """
     siglip_images, vae_images = batch
     vae, discriminator, siglip_encoder, lpips_loss = models
     optimizer, d_optimizer = optimizers
-    args = state.args  # user-defined training config object
+    args = state.args
     device = xm.xla_device()
 
     # =============================================================================
     # (1) DISCRIMINATOR PHASE
-    #     Forward pass for D using a *detached* VAE output
     # =============================================================================
     if args.use_gan and state.global_step >= args.gan_start_steps:
-        # Encode images once for D pass
+        # Get quantized embeddings
         with torch.no_grad():
-            siglip_embeddings = siglip_encoder.encode_image(siglip_images)
-            fake_images = vae(siglip_embeddings).detach()  # detach so G doesn’t get grads
+            quantized, _, _ = siglip_encoder(siglip_images)
+            fake_images = vae(quantized).detach()
 
         d_loss = compute_d_loss(real_images=vae_images,
-                                fake_images=fake_images,
-                                discriminator=discriminator)
+                              fake_images=fake_images,
+                              discriminator=discriminator)
 
-        # Only update D periodically, or always, depending on your strategy
         if state.global_step % args.d_reg_every == 0:
             d_optimizer.zero_grad()
             d_loss.backward()
             xm.optimizer_step(d_optimizer)
             xm.mark_step()
         else:
-            d_loss = d_loss.detach()  # Not updating D this iteration
-
+            d_loss = d_loss.detach()
     else:
-        # If not using or not started GAN yet, set d_loss to 0
         d_loss = torch.tensor(0.0, device=device)
 
     # =============================================================================
     # (2) GENERATOR (VAE) PHASE
-    #     Re-run forward pass for the VAE + optional G adversarial loss
     # =============================================================================
-    siglip_embeddings = siglip_encoder.encode_image(siglip_images)
-    recon_images = vae(siglip_embeddings)  # Forward pass for generator
+    # Get quantized embeddings and VQ loss
+    quantized, vq_loss, encoding_indices = siglip_encoder(siglip_images)
+    recon_images = vae(quantized)
 
     # Reconstruction + perceptual losses
     recon_loss = F.mse_loss(recon_images, vae_images)
     perceptual_loss = lpips_loss(recon_images, vae_images).mean()
-    total_loss = recon_loss + args.perceptual_weight * perceptual_loss
+    
+    # Combine all losses
+    total_loss = recon_loss + args.perceptual_weight * perceptual_loss + vq_loss
 
     # Add generator adversarial loss if in GAN mode
     if args.use_gan and state.global_step >= args.gan_start_steps:
         g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
-        gan_weight = compute_gan_weight(state.global_step, args)  # user’s ramp-up function
+        gan_weight = compute_gan_weight(state.global_step, args)
         total_loss = total_loss + gan_weight * g_loss
     else:
         g_loss = torch.tensor(0.0, device=device)
@@ -409,6 +404,8 @@ def train_one_step(batch, models, optimizers, state):
     optimizer.zero_grad()
     total_loss.backward()
     torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
+    if args.train_encoder:
+        torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
     xm.optimizer_step(optimizer)
     xm.mark_step()
 
@@ -417,8 +414,11 @@ def train_one_step(batch, models, optimizers, state):
         "g_loss": float(g_loss.item()),
         "recon_loss": float(recon_loss.item()),
         "perceptual_loss": float(perceptual_loss.item()),
+        "vq_loss": float(vq_loss.item()),
         "total_loss": float(total_loss.item()),
-    }, vae_images, recon_images
+    }, vae_images, recon_images, encoding_indices
+
+
 
 def compute_gan_weight(global_step, args):
     """
@@ -474,7 +474,26 @@ def train_tpu(index, args):
         xr.initialize_cache(cache_path, readonly=False)
     
     # Model setup
-    siglip_encoder = SigLIPEncoder(num_tokens=args.num_tokens, device=device)
+    # siglip_encoder = SigLIPEncoder(num_tokens=args.num_tokens, device=device)
+
+    siglip_encoder = SigLIPVQEncoder(
+        num_tokens=args.num_tokens,
+        num_codebook_vectors=args.num_codebook_vectors,
+        use_commitment=args.use_commitment,
+        commitment_cost=args.commitment_cost,
+        trainable=args.train_encoder,
+        progressive_unfreeze=args.progressive_unfreeze,
+        unfreeze_after_steps=args.unfreeze_after_steps,
+        unfreeze_strategy=args.unfreeze_strategy,
+        device=device
+    )
+
+    # Initialize codebook analyzer
+    codebook_analyzer = CodebookAnalyzer(siglip_encoder.vq)
+    
+    
+
+
     siglip_processor = siglip_encoder.processor
     vae = VAEDecoder(num_tokens=args.num_tokens, output_resolution=args.resolution).to(device)
     lpips_loss = lpips.LPIPS(net='alex').to(device)
@@ -493,14 +512,20 @@ def train_tpu(index, args):
         len(shard_files), args.batch_size, world_size
     )
     
+    # Get optimizer parameters - include encoder if trainable
+    optimizer_params = list(vae.parameters())
+    if args.train_encoder:
+        optimizer_params.extend(siglip_encoder.parameters())
+    
     # Initialize optimizers
     optimizer = torch.optim.AdamW(
-        vae.parameters(),
+        optimizer_params,
         lr=args.base_lr,
         betas=(0.9, 0.999),
         weight_decay=0.01
     )
-    
+
+
     d_optimizer = None
     if args.use_gan:
         d_optimizer = torch.optim.AdamW(
@@ -539,7 +564,8 @@ def train_tpu(index, args):
                 optimizer=optimizer,
                 d_optimizer=d_optimizer if args.use_gan else None,
                 scheduler=scheduler,
-                checkpoint_path=checkpoint_path
+                checkpoint_path=checkpoint_path, 
+                siglip_encoder=siglip_encoder
             )
         
     # Models and optimizers bundles
@@ -556,8 +582,21 @@ def train_tpu(index, args):
         for batch in train_loader:
             if state.global_step >= args.max_steps:
                 break
+
+            # Update encoder freeze status if using progressive unfreezing
+            if args.progressive_unfreeze:
+                siglip_encoder.update_freeze_status(state.global_step)
             
-            losses, vae_images, recon_images = train_one_step(batch, models, optimizers, state)
+            # Training step
+            losses, vae_images, recon_images, indices = train_one_step(
+                batch, models, optimizers, state
+            )
+            
+            # Update codebook analysis
+            codebook_analyzer.analyze_batch(indices, recon_images)
+
+
+
             scheduler.step()
             # print("1111111111111111111")
             # Logging
@@ -568,6 +607,9 @@ def train_tpu(index, args):
                     "lr": scheduler.get_last_lr()[0],
                     "epoch": state.epoch,
                     "global_step": state.global_step,
+                    "codebook_usage": siglip_encoder.vq.get_usage_stats()['usage_fraction'],  # Added
+                    "codebook_perplexity": siglip_encoder.vq.get_usage_stats()['perplexity'],  # Added
+ 
                 })
                 # print("33333333333333")
                 if state.global_step % args.sample_steps == 0:
@@ -583,9 +625,14 @@ def train_tpu(index, args):
                             "global_step": state.global_step
                         })
 
+                # Log codebook analysis periodically
+                if state.global_step % args.analysis_steps == 0:
+                    codebook_analyzer.log_analysis(state.global_step)
+                    codebook_analyzer.reset_analysis()
+
                         # print("wtfffff")
 
-            print("4444444444444")
+            # print("4444444444444")
             # Checkpointing
             if (state.global_step+1) % args.save_step == 0:
                 print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
@@ -594,10 +641,11 @@ def train_tpu(index, args):
                     vae, discriminator, optimizer, d_optimizer, scheduler,
                     state.global_step,
                     f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
-                    state.epoch
+                    state.epoch, 
+                    siglip_encoder
                 )
                 
-            print("55555555555")
+            # print("55555555555")
             state.global_step += 1
             xm.mark_step()
         
@@ -605,6 +653,29 @@ def train_tpu(index, args):
     
     if xm.get_ordinal() == 0:
         wandb.finish()
+
+def add_vq_args(parser):
+    # VQ-specific arguments
+    parser.add_argument("--num_codebook_vectors", type=int, default=16384,
+                       help="Number of vectors in VQ codebook")
+    parser.add_argument("--use_commitment", action="store_true",
+                       help="Use commitment loss in VQ")
+    parser.add_argument("--commitment_cost", type=float, default=0.25,
+                       help="Weight of commitment loss if used")
+    parser.add_argument("--analysis_steps", type=int, default=1000,
+                       help="Steps between detailed codebook analysis")
+                       
+    # Encoder training arguments
+    parser.add_argument("--train_encoder", action="store_true",
+                       help="Allow encoder to be trained")
+    parser.add_argument("--progressive_unfreeze", action="store_true",
+                       help="Gradually unfreeze encoder")
+    parser.add_argument("--unfreeze_after_steps", type=int, default=20000,
+                       help="Steps before starting unfreezing")
+    parser.add_argument("--unfreeze_strategy", type=str, default='gradual',
+                       choices=['all', 'gradual'],
+                       help="How to unfreeze encoder")
+    
 
 def main():
     parser = argparse.ArgumentParser(description="VAE Training Script for TPU")
@@ -647,6 +718,10 @@ def main():
     
     # Run configuration
     parser.add_argument("--run_name", type=str, default="vae_run", help="Name of the run")
+
+    # Add VQ arguments
+    add_vq_args(parser)
+    
     args = parser.parse_args()
     
 
