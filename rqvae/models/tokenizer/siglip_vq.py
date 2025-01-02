@@ -86,9 +86,10 @@ class SigLIPVQEncoder(nn.Module):
         
         # Apply VQ
         quantized, vq_loss, encoding_indices = self.vq(image_features)
+        # print("encoding_indices", encoding_indices)
         
-        # Add clean embedding loss
-        clean_loss = F.mse_loss(quantized, ref_features.detach())
+        # Use cosine similarity loss instead of MSE
+        clean_loss = 1 - F.cosine_similarity(quantized, ref_features.detach(), dim=-1).mean()
         total_loss = vq_loss + self.clean_embedding_weight * clean_loss
         
         return quantized, total_loss, encoding_indices, clean_loss, vq_loss

@@ -596,7 +596,7 @@ def train_tpu(index, args):
                 
             )
 
-            print("indices", indices, indices.shape)
+            # print("indices", indices, indices.shape)
 
             
             # Update codebook analysis

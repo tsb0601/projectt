@@ -51,12 +51,9 @@ class VectorQuantizer(nn.Module):
         # Ensure input embeddings are normalized
         inputs = F.normalize(inputs, p=2, dim=-1)
         
-        # Calculate distances
-        distances = (
-            torch.sum(inputs ** 2, dim=-1, keepdim=True) +
-            torch.sum(self.embeddings ** 2, dim=1) -
-            2 * torch.matmul(inputs, self.embeddings.t())
-        )
+        # Calculate cosine similarity instead of L2 distance
+        similarity = torch.matmul(inputs, self.embeddings.t())  # Using dot product since vectors are normalized
+        distances = -similarity  # Convert to distance (negative similarity)
 
         # Encoding
         encoding_indices = torch.argmin(distances, dim=-1)  # [batch_size * num_tokens]
@@ -73,13 +70,13 @@ class VectorQuantizer(nn.Module):
         quantized = torch.matmul(encodings, self.embeddings)
         quantized = quantized.view(inputs.shape)  # Reshape back to input shape
         
-        # Compute losses
+        # Compute losses using cosine similarity
         if self.use_commitment:
-            e_latent_loss = F.mse_loss(quantized.detach(), inputs)
-            q_latent_loss = F.mse_loss(quantized, inputs.detach())
+            e_latent_loss = 1 - F.cosine_similarity(quantized.detach(), inputs, dim=-1).mean()
+            q_latent_loss = 1 - F.cosine_similarity(quantized, inputs.detach(), dim=-1).mean()
             loss = q_latent_loss + self.commitment_cost * e_latent_loss
         else:
-            loss = F.mse_loss(quantized, inputs.detach())
+            loss = 1 - F.cosine_similarity(quantized, inputs.detach(), dim=-1).mean()
         
         # Straight through estimator
         quantized = inputs + (quantized - inputs).detach()
