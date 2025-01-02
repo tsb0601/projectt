@@ -382,7 +382,7 @@ def train_one_step(batch, models, optimizers, state):
     # (2) GENERATOR (VAE) PHASE
     # =============================================================================
     # Get quantized embeddings and VQ loss
-    quantized, total_loss, encoding_indices, clean_loss = siglip_encoder(siglip_images)
+    quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
     recon_images = vae(quantized)
 
     # Reconstruction + perceptual losses
@@ -390,7 +390,7 @@ def train_one_step(batch, models, optimizers, state):
     perceptual_loss = lpips_loss(recon_images, vae_images).mean()
     
     # Combine all losses
-    total_loss = recon_loss + args.perceptual_weight * perceptual_loss + vq_loss
+    total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
 
     # Add generator adversarial loss if in GAN mode
     if args.use_gan and state.global_step >= args.gan_start_steps:
@@ -415,6 +415,8 @@ def train_one_step(batch, models, optimizers, state):
         "recon_loss": float(recon_loss.item()),
         "perceptual_loss": float(perceptual_loss.item()),
         "vq_loss": float(vq_loss.item()),
+        "clean_loss": float(clean_loss.item()),
+        "total_vq_loss": float(total_vq_loss.item()),
         "total_loss": float(total_loss.item()),
         "clean_embedding_loss": float(clean_loss.item()),
     }, vae_images, recon_images, encoding_indices

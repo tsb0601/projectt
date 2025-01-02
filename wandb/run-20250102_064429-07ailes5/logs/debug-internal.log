@@ -1,0 +1,8 @@
+{"time":"2025-01-02T06:44:29.226912101Z","level":"INFO","msg":"using version","core version":"0.19.1"}
+{"time":"2025-01-02T06:44:29.226934731Z","level":"INFO","msg":"created symlink","path":"/home/tsb/projectt/wandb/run-20250102_064429-07ailes5/logs/debug-core.log"}
+{"time":"2025-01-02T06:44:29.331293092Z","level":"INFO","msg":"created new stream","id":"07ailes5"}
+{"time":"2025-01-02T06:44:29.331335323Z","level":"INFO","msg":"stream: started","id":"07ailes5"}
+{"time":"2025-01-02T06:44:29.331429932Z","level":"INFO","msg":"writer: Do: started","stream_id":"07ailes5"}
+{"time":"2025-01-02T06:44:29.331444503Z","level":"INFO","msg":"handler: started","stream_id":"07ailes5"}
+{"time":"2025-01-02T06:44:29.331433872Z","level":"INFO","msg":"sender: started","stream_id":"07ailes5"}
+{"time":"2025-01-02T06:44:29.461410982Z","level":"INFO","msg":"Starting system monitor"}

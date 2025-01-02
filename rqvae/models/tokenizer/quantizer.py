@@ -104,27 +104,34 @@ class VectorQuantizer(nn.Module):
 
     def _ema_update(self, encodings, inputs):
         xm.rendezvous('pre_ema_update')  # Sync before EMA update
+
+        # Flatten first (B*T, E) and (B*T, D)
+        encodings_flat = encodings.view(-1, self.num_embeddings)  # => [B*T, E]
+        inputs_flat = inputs.view(-1, self.embedding_dim)         # => [B*T, D]
         
         # Calculate new cluster sizes and sum of embeddings
-        batch_cluster_size = encodings.sum(0)
-        batch_embed_sum = torch.matmul(encodings.t(), inputs)
+        batch_cluster_size = encodings_flat.sum(dim=0)  # => [E]
+        batch_embed_sum = torch.matmul(encodings_flat.transpose(0, 1), inputs_flat)  # => [E, D]
         
         # Update buffers
         self.cluster_size.data.mul_(self.decay).add_(
-            batch_cluster_size, alpha=1 - self.decay)
+            batch_cluster_size, alpha=1 - self.decay
+        )
         self.embed_avg.data.mul_(self.decay).add_(
-            batch_embed_sum, alpha=1 - self.decay)
+            batch_embed_sum, alpha=1 - self.decay
+        )
         
         # Update embeddings
         n = self.cluster_size.sum()
         cluster_size = (
-            (self.cluster_size + self.epsilon) /
-            (n + self.num_embeddings * self.epsilon) * n
-        )
+            (self.cluster_size + self.epsilon) 
+            / (n + self.num_embeddings * self.epsilon)
+        ) * n
         embed_normalized = self.embed_avg / cluster_size.unsqueeze(1)
         self.embeddings.data.copy_(F.normalize(embed_normalized, p=2, dim=1))
-        
+
         xm.rendezvous('post_ema_update')  # Sync after EMA update
+
         
     def get_usage_stats(self):
         """Returns statistics about codebook usage"""
