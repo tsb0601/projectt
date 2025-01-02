@@ -1,8 +1,0 @@
-{"time":"2025-01-02T05:12:57.059280897Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2025-01-02T05:12:57.059306877Z","level":"INFO","msg":"created symlink","path":"/home/tsb/projectt/wandb/run-20250102_051257-acm1atax/logs/debug-core.log"}
-{"time":"2025-01-02T05:12:57.163994888Z","level":"INFO","msg":"created new stream","id":"acm1atax"}
-{"time":"2025-01-02T05:12:57.164042079Z","level":"INFO","msg":"stream: started","id":"acm1atax"}
-{"time":"2025-01-02T05:12:57.164072608Z","level":"INFO","msg":"sender: started","stream_id":"acm1atax"}
-{"time":"2025-01-02T05:12:57.164074748Z","level":"INFO","msg":"writer: Do: started","stream_id":"acm1atax"}
-{"time":"2025-01-02T05:12:57.164079299Z","level":"INFO","msg":"handler: started","stream_id":"acm1atax"}
-{"time":"2025-01-02T05:12:57.369580813Z","level":"INFO","msg":"Starting system monitor"}

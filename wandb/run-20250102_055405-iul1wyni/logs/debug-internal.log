@@ -1,8 +1,0 @@
-{"time":"2025-01-02T05:54:05.849239132Z","level":"INFO","msg":"using version","core version":"0.19.1"}
-{"time":"2025-01-02T05:54:05.849263962Z","level":"INFO","msg":"created symlink","path":"/home/tsb/projectt/wandb/run-20250102_055405-iul1wyni/logs/debug-core.log"}
-{"time":"2025-01-02T05:54:05.954121524Z","level":"INFO","msg":"created new stream","id":"iul1wyni"}
-{"time":"2025-01-02T05:54:05.954175174Z","level":"INFO","msg":"stream: started","id":"iul1wyni"}
-{"time":"2025-01-02T05:54:05.954212414Z","level":"INFO","msg":"writer: Do: started","stream_id":"iul1wyni"}
-{"time":"2025-01-02T05:54:05.954214664Z","level":"INFO","msg":"sender: started","stream_id":"iul1wyni"}
-{"time":"2025-01-02T05:54:05.954203034Z","level":"INFO","msg":"handler: started","stream_id":"iul1wyni"}
-{"time":"2025-01-02T05:54:06.166311557Z","level":"INFO","msg":"Starting system monitor"}
