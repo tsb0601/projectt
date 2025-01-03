@@ -103,45 +103,45 @@ class VectorQuantizer(nn.Module):
 
         return quantized, loss, encoding_indices
 
-    # def get_metrics(self):
-    #     """Get metrics without forcing sync unless needed"""
-    #     if self.total_usage == 0:
-    #         return {
-    #             'perplexity': 0.0,
-    #             'usage_fraction': 0.0,
-    #             'code_usage': self.usage_count.clone(),
-    #         }
-            
-    #     used_codes = torch.sum(self.usage_count > 0).float()
-    #     usage_fraction = used_codes / self.num_embeddings
-        
-    #     return {
-    #         'perplexity': self.perplexity_ema.item(),
-    #         'usage_fraction': usage_fraction.item(),
-    #         'code_usage': self.usage_count.clone(),
-    #     }
-    
     def get_metrics(self):
-        """Get metrics with proper synchronization"""
+        """Get metrics without forcing sync unless needed"""
         if self.total_usage == 0:
             return {
                 'perplexity': 0.0,
                 'usage_fraction': 0.0,
                 'code_usage': self.usage_count.clone(),
             }
-        
-        # Sync metrics across TPU cores for logging
-        synced_usage_count = xm.all_reduce('sum', self.usage_count)
-        synced_total_usage = xm.all_reduce('sum', self.total_usage)
             
-        used_codes = torch.sum(synced_usage_count > 0).float()
+        used_codes = torch.sum(self.usage_count > 0).float()
         usage_fraction = used_codes / self.num_embeddings
         
         return {
             'perplexity': self.perplexity_ema.item(),
             'usage_fraction': usage_fraction.item(),
-            'code_usage': synced_usage_count,
+            'code_usage': self.usage_count.clone(),
         }
+    
+    # def get_metrics(self):
+    #     """Get metrics with proper synchronization"""
+    #     if self.total_usage == 0:
+    #         return {
+    #             'perplexity': 0.0,
+    #             'usage_fraction': 0.0,
+    #             'code_usage': self.usage_count.clone(),
+    #         }
+        
+    #     # Sync metrics across TPU cores for logging
+    #     synced_usage_count = xm.all_reduce('sum', self.usage_count)
+    #     synced_total_usage = xm.all_reduce('sum', self.total_usage)
+            
+    #     used_codes = torch.sum(synced_usage_count > 0).float()
+    #     usage_fraction = used_codes / self.num_embeddings
+        
+    #     return {
+    #         'perplexity': self.perplexity_ema.item(),
+    #         'usage_fraction': usage_fraction.item(),
+    #         'code_usage': synced_usage_count,
+    #     }
         
     def reset_metrics(self):
         """Reset all tracking metrics with single sync"""
