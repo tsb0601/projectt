@@ -35,7 +35,7 @@ xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assur
 
 from rqvae.models.tokenizer.decoder import VAEDecoder
 from rqvae.models.tokenizer.discriminator import create_dinov2_discriminator
-from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
+# from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -415,10 +415,9 @@ def train_one_step(batch, models, optimizers, state):
         "recon_loss": float(recon_loss.item()),
         "perceptual_loss": float(perceptual_loss.item()),
         "vq_loss": float(vq_loss.item()),
-        "clean_loss": float(clean_loss.item()),
+        "reference_loss": float(clean_loss.item()),
         "total_vq_loss": float(total_vq_loss.item()),
         "total_loss": float(total_loss.item()),
-        "clean_embedding_loss": float(clean_loss.item()),
     }, vae_images, recon_images, encoding_indices
 
 
@@ -492,7 +491,6 @@ def train_tpu(index, args):
     )
 
     # Initialize codebook analyzer
-    codebook_analyzer = CodebookAnalyzer(siglip_encoder.vq)
     
     
 
@@ -600,7 +598,6 @@ def train_tpu(index, args):
 
             
             # Update codebook analysis
-            codebook_analyzer.analyze_batch(indices)
 
 
 
@@ -614,8 +611,8 @@ def train_tpu(index, args):
                     "lr": scheduler.get_last_lr()[0],
                     "epoch": state.epoch,
                     "global_step": state.global_step,
-                    "codebook_usage": siglip_encoder.vq.get_usage_stats()['usage_fraction'],  # Added
-                    "codebook_perplexity": siglip_encoder.vq.get_usage_stats()['perplexity'],  # Added
+                    "codebook_usage": siglip_encoder.vq.get_metrics()['usage_fraction'],  # Added
+                    "codebook_perplexity": siglip_encoder.vq.get_metrics()['perplexity'],  # Added
  
                 })
                 # print("33333333333333")
@@ -632,10 +629,6 @@ def train_tpu(index, args):
                             "global_step": state.global_step
                         })
 
-                # Log codebook analysis periodically
-                if state.global_step % args.analysis_steps == 0:
-                    codebook_analyzer.log_analysis(state.global_step)
-                    codebook_analyzer.reset_analysis()
 
                         # print("wtfffff")
 
