@@ -16,7 +16,7 @@ class SigLIPVQEncoder(nn.Module):
         num_codebook_vectors=8192,
         commitment_cost=0.25,
         use_commitment=False,
-        clean_embedding_weight=1.0,  # Weight for clean embedding loss
+        clean_embedding_weight=1.0,
         trainable=False,
         progressive_unfreeze=False,
         unfreeze_after_steps=50000,
@@ -31,6 +31,12 @@ class SigLIPVQEncoder(nn.Module):
         self.trainable = trainable
         self.clean_embedding_weight = clean_embedding_weight
         
+        # Store progressive unfreezing parameters
+        self.progressive_unfreeze = progressive_unfreeze
+        self.unfreeze_after_steps = unfreeze_after_steps
+        self.unfreeze_strategy = unfreeze_strategy
+        self.is_unfrozen = False  # Track unfreezing status
+        
         # Load SigLIP model twice - one for training, one for reference
         self.load_model()
         
@@ -41,6 +47,10 @@ class SigLIPVQEncoder(nn.Module):
             use_commitment=use_commitment,
             commitment_cost=commitment_cost
         )
+        
+        # Initialize in frozen state if using progressive unfreezing
+        if self.progressive_unfreeze:
+            self.freeze_encoder()
         
         if self.device:
             self.vq = self.vq.to(self.device)
@@ -113,10 +123,27 @@ class SigLIPVQEncoder(nn.Module):
 
         return features
 
+    def update_freeze_status(self, global_step):
+        """Update which layers are frozen based on training progress"""
+        if not self.progressive_unfreeze or self.is_unfrozen:
+            return
+            
+        if global_step >= self.unfreeze_after_steps:
+            xm.rendezvous('pre_update_freeze')
+            
+            if self.unfreeze_strategy == 'all':
+                self.unfreeze_encoder()
+                self.is_unfrozen = True  # Mark as unfrozen
+                if xm.get_ordinal() == 0:  # Log only from master process
+                    print(f"Step {global_step}: Unfreezing encoder")
+            
+            xm.rendezvous('post_update_freeze')
+
     def freeze_encoder(self):
         """Freeze all encoder parameters"""
         for param in self.vision_tower.parameters():
             param.requires_grad = False
+            param.grad = None  # Clear any existing gradients
             
     def unfreeze_encoder(self):
         """Unfreeze all encoder parameters"""
@@ -128,21 +155,7 @@ class SigLIPVQEncoder(nn.Module):
         for param in self.encoder_layers[layer_idx].parameters():
             param.requires_grad = True
             
-    def update_freeze_status(self, global_step):
-        """Update which layers are frozen based on training progress"""
-        if not self.progressive_unfreeze or global_step < self.unfreeze_after_steps:
-            return
-            
-        xm.rendezvous('pre_update_freeze')
-        
-        if self.unfreeze_strategy == 'all':
-            self.unfreeze_encoder()
-            self.progressive_unfreeze = False  # Done unfreezing
-      
-                
-        xm.rendezvous('post_update_freeze')
-
-
+   
 
     def encode_image(self, image):
         if not isinstance(image, torch.Tensor):
