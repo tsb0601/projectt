@@ -88,8 +88,8 @@ class SigLIPVQEncoder(nn.Module):
         quantized, vq_loss, encoding_indices = self.vq(image_features)
         # print("encoding_indices", encoding_indices)
         
-        # Use cosine similarity loss instead of MSE
-        clean_loss = 1 - F.cosine_similarity(quantized, ref_features.detach(), dim=-1).mean()
+        # Use MSE loss instead of cosine similarity
+        clean_loss = F.mse_loss(quantized, ref_features.detach())
         total_loss = vq_loss + self.clean_embedding_weight * clean_loss
         
         return quantized, total_loss, encoding_indices, clean_loss, vq_loss
@@ -111,7 +111,7 @@ class SigLIPVQEncoder(nn.Module):
             features = features.permute(0, 2, 3, 1).contiguous()
             features = features.view(b, self.num_tokens, dim)
 
-        return F.normalize(features, p=2, dim=-1)
+        return features
 
     def freeze_encoder(self):
         """Freeze all encoder parameters"""
