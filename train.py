@@ -361,7 +361,7 @@ def train_one_step(batch, models, optimizers, state):
     if args.use_gan and state.global_step >= args.gan_start_steps:
         # Get quantized embeddings
         with torch.no_grad():
-            quantized, _, _ = siglip_encoder(siglip_images)
+            quantized, _, _, _, _ = siglip_encoder(siglip_images)
             fake_images = vae(quantized).detach()
 
         d_loss = compute_d_loss(real_images=vae_images,
