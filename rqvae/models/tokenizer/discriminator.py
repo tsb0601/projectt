@@ -76,8 +76,8 @@ class DiscriminatorHead(nn.Module):
 class DINOv2Discriminator(nn.Module):
     def __init__(
         self,
-        model_name: str = "facebook/dinov2-large",
-        hooks: List[int] = [5, 11, 17, 23],
+        model_name: str = "facebook/dinov2-small",
+        hooks: List[int] = [2, 5, 8, 11],
         img_size: int = 256,
         use_augment: bool = True
     ):
@@ -133,9 +133,9 @@ class DINOv2Discriminator(nn.Module):
         # Ensure input is properly scaled
         if x.min() < -1 or x.max() > 1:
             x = (x + 1) / 2  # Convert from [-1, 1] to [0, 1]
-        
         # DINOv2 forward pass
         self.backbone(x)
+            
         return self.features
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -168,7 +168,7 @@ class DINOv2Discriminator(nn.Module):
 
 # Convenience function for creating the discriminator
 def create_dinov2_discriminator(
-    model_size: str = "large",
+    model_size: str = "small",
     img_size: int = 256,
     use_augment: bool = True
 ) -> DINOv2Discriminator:

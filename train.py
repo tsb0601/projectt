@@ -30,6 +30,8 @@ import lpips
 import math
 import random
 from typing import Optional, List
+import torch_xla.amp as xla_amp
+
 
 xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assure accuracy
 
@@ -344,71 +346,165 @@ def compute_g_loss(fake_images, discriminator):
     g_loss = F.softplus(-fake_pred).mean()
     return g_loss
 
-    
+
+
+# def train_one_step(batch, models, optimizers, state):
+#     """
+#     Unified training step for both VAE and GAN paths to avoid recompilation.
+#     """
+#     # Unpack inputs, models, and optimizers
+#     siglip_images, vae_images = batch
+#     vae, discriminator, siglip_encoder, lpips_loss = models
+#     optimizer, d_optimizer = optimizers
+#     args = state.args
+#     device = xm.xla_device()
+
+#     # Determine GAN activity status and weight
+#     gan_active = 1.0 if state.global_step >= args.gan_start_steps else 0.0
+#     gan_weight = compute_gan_weight(state.global_step, args) if gan_active > 0 else 0.0
+
+#     # Enable BF16 autocast if specified
+#     with xla_amp.autocast(enabled=getattr(args, 'bf16', False), dtype=torch.bfloat16, device=device):
+#         # =========================================================
+#         # 1) DISCRIMINATOR PHASE (Always executed, but scaled by gan_active)
+#         # =========================================================
+#         quantized, _, _, _, _ = siglip_encoder(siglip_images)
+#         with torch.no_grad():
+#             fake_images = vae(quantized).detach()
+
+#         d_loss = compute_d_loss(
+#             real_images=vae_images,
+#             fake_images=fake_images,
+#             discriminator=discriminator
+#         )
+#         d_loss *= gan_active  # Scale by GAN activity status
+
+#         # =========================================================
+#         # 2) GENERATOR (VAE) PHASE
+#         # =========================================================
+#         quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
+#         recon_images = vae(quantized)
+
+#         # Reconstruction and perceptual losses
+#         recon_loss = F.mse_loss(recon_images, vae_images)
+#         perceptual_loss = lpips_loss(recon_images, vae_images).mean()
+
+#         # Combine losses
+#         total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
+
+#         # Add generator adversarial loss if GAN is active
+#         g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator) if gan_active > 0 else torch.tensor(0.0, device=device)
+#         total_loss += gan_weight * g_loss
+
+#     # =========================================================
+#     # Backward and Optimizer Steps
+#     # =========================================================
+
+#     # Update discriminator (if GAN active)
+#     d_optimizer.zero_grad()
+#     d_loss.backward()
+#     xm.optimizer_step(d_optimizer)
+#     xm.mark_step()
+
+#     # Update VAE (always executed)
+#     optimizer.zero_grad()
+#     total_loss.backward()
+
+#     # Gradient clipping
+#     torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
+#     if args.train_encoder:
+#         torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
+
+#     xm.optimizer_step(optimizer)
+#     xm.mark_step()
+
+#     # Return losses and images for logging
+#     return {
+#         "d_loss": float(d_loss.item()),
+#         "g_loss": float(g_loss.item() * gan_active),  # Show 0 if GAN inactive
+#         "recon_loss": float(recon_loss.item()),
+#         "perceptual_loss": float(perceptual_loss.item()),
+#         "vq_loss": float(vq_loss.item()),
+#         "reference_loss": float(clean_loss.item()),
+#         "total_vq_loss": float(total_vq_loss.item()),
+#         "total_loss": float(total_loss.item()),
+#     }, vae_images, recon_images, encoding_indices
+
+
+
 def train_one_step(batch, models, optimizers, state):
     """
-    Modified training step to handle VQ
+    Modified training step to handle VQ with optional BF16 autocast.
     """
+    # Unpack inputs and models
     siglip_images, vae_images = batch
     vae, discriminator, siglip_encoder, lpips_loss = models
     optimizer, d_optimizer = optimizers
     args = state.args
     device = xm.xla_device()
 
-    # =============================================================================
-    # (1) DISCRIMINATOR PHASE
-    # =============================================================================
-    if args.use_gan and state.global_step >= args.gan_start_steps:
-        # Get quantized embeddings
-        with torch.no_grad():
-            quantized, _, _, _, _ = siglip_encoder(siglip_images)
-            fake_images = vae(quantized).detach()
+    # Enable BF16 autocast if args.bf16 is True
+    with xla_amp.autocast(enabled=getattr(args, 'bf16', False), dtype=torch.bfloat16, device=device):
+        # =============================================================================
+        # (1) DISCRIMINATOR PHASE
+        # =============================================================================
+        if args.use_gan and state.global_step >= args.gan_start_steps:
+            # Get quantized embeddings
+            with torch.no_grad():
+                quantized, _, _, _, _ = siglip_encoder(siglip_images)
+                fake_images = vae(quantized).detach()
 
-        d_loss = compute_d_loss(real_images=vae_images,
-                              fake_images=fake_images,
-                              discriminator=discriminator)
+            d_loss = compute_d_loss(
+                real_images=vae_images,
+                fake_images=fake_images,
+                discriminator=discriminator
+            )
 
-        if state.global_step % args.d_reg_every == 0:
-            d_optimizer.zero_grad()
-            d_loss.backward()
-            xm.optimizer_step(d_optimizer)
-            xm.mark_step()
+            if state.global_step % args.d_reg_every == 0:
+                d_optimizer.zero_grad()
+                d_loss.backward()
+                xm.optimizer_step(d_optimizer)
+                xm.mark_step()
+            else:
+                # If not updating D this step, don't keep grads
+                d_loss = d_loss.detach()
         else:
-            d_loss = d_loss.detach()
-    else:
-        d_loss = torch.tensor(0.0, device=device)
+            d_loss = torch.tensor(0.0, device=device)
 
-    # =============================================================================
-    # (2) GENERATOR (VAE) PHASE
-    # =============================================================================
-    # Get quantized embeddings and VQ loss
-    quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
-    recon_images = vae(quantized)
+        # =============================================================================
+        # (2) GENERATOR (VAE) PHASE
+        # =============================================================================
+        quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
+        recon_images = vae(quantized)
 
-    # Reconstruction + perceptual losses
-    recon_loss = F.mse_loss(recon_images, vae_images)
-    perceptual_loss = lpips_loss(recon_images, vae_images).mean()
-    
-    # Combine all losses
-    total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
+        # Reconstruction + perceptual losses
+        recon_loss = F.mse_loss(recon_images, vae_images)
+        perceptual_loss = lpips_loss(recon_images, vae_images).mean()
 
-    # Add generator adversarial loss if in GAN mode
-    if args.use_gan and state.global_step >= args.gan_start_steps:
-        g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
-        gan_weight = compute_gan_weight(state.global_step, args)
-        total_loss = total_loss + gan_weight * g_loss
-    else:
-        g_loss = torch.tensor(0.0, device=device)
+        # Combine all losses
+        total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
 
-    # Backward + update generator (VAE)
-    optimizer.zero_grad()
-    total_loss.backward()
-    torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
-    if args.train_encoder:
-        torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
-    xm.optimizer_step(optimizer)
-    xm.mark_step()
+        # Add generator adversarial loss if in GAN mode
+        if args.use_gan and state.global_step >= args.gan_start_steps:
+            g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
+            gan_weight = compute_gan_weight(state.global_step, args)
+            total_loss = total_loss + gan_weight * g_loss
+        else:
+            g_loss = torch.tensor(0.0, device=device)
 
+        # Backward + update generator (VAE)
+        optimizer.zero_grad()
+        total_loss.backward()
+
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
+        if args.train_encoder:
+            torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
+
+        xm.optimizer_step(optimizer)
+        xm.mark_step()
+
+    # Return losses and images for logging
     return {
         "d_loss": float(d_loss.item()),
         "g_loss": float(g_loss.item()),
@@ -419,8 +515,6 @@ def train_one_step(batch, models, optimizers, state):
         "total_vq_loss": float(total_vq_loss.item()),
         "total_loss": float(total_loss.item()),
     }, vae_images, recon_images, encoding_indices
-
-
 
 def compute_gan_weight(global_step, args):
     """
@@ -701,7 +795,7 @@ def main():
     parser.add_argument("--disc_lr", type=float, default=1e-5, help="Discriminator learning rate")
     parser.add_argument("--d_reg_every", type=int, default=2, help="Discriminator regularization every n steps")
     parser.add_argument("--r1_weight", type=float, default=10, help="Weight for R1 regularization")
-    parser.add_argument("--dino_size", type=str, default="large", choices=["small", "base", "large", "giant"])
+    parser.add_argument("--dino_size", type=str, default="small", choices=["small", "base", "large", "giant"])
     
     # Loss weights and training options
     parser.add_argument("--beta", type=float, default=0.1, help="Weight for KL divergence loss")
@@ -715,6 +809,10 @@ def main():
     # Resume training arguments
     parser.add_argument("--resume", action="store_true", help="Resume training from last checkpoint")
     parser.add_argument("--checkpoint_path", type=str, help="Specific checkpoint to resume from")
+
+    # BF16 / Mixed precision
+    parser.add_argument("--bf16", action="store_true", help="Enable bfloat16 mixed precision training on TPU")
+
     
     # Run configuration
     parser.add_argument("--run_name", type=str, default="vae_run", help="Name of the run")
