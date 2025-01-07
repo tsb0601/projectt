@@ -10,6 +10,6 @@ sleep 10
 sudo apt-get install gcsfuse
 #
 mkdir ckpt_gcs -p
-gcsfuse --config-file gcsfuse_config tsb-data "ckpt_gcs"
+gcsfuse --config-file gcsfuse_config tsb-data-1 "ckpt_gcs"
 
 # fusermount -u VAE-enhanced/ckpt_gcs
