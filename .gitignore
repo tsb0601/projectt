@@ -1,2 +1,4 @@
 /ckpt_gcs/tokenizer/
 /wandb/
+**/__pycache__
+*.pyc
