@@ -31,7 +31,15 @@ import math
 import random
 from typing import Optional, List
 import torch_xla.amp as xla_amp
+from torch.utils.data import IterableDataset
 
+import PIL.Image
+import shutil
+import gcsfs
+import tempfile
+from tfrecord.torch.dataset import TFRecordDataset
+from typing import List, Dict, Any
+import numpy as np
 
 xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assure accuracy
 
@@ -39,9 +47,157 @@ from rqvae.models.tokenizer.decoder import VAEDecoder
 from rqvae.models.tokenizer.discriminator import create_dinov2_discriminator
 # from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+
+
+
+
+
+class ShardedTFRecordDataset(IterableDataset):
+    """
+    Dataset for reading sharded TFRecord files with TPU (or multi-process) support,
+    loading each shard on-the-fly to avoid high memory usage.
+    """
+    
+    def __init__(
+        self, 
+        urls: List[str], 
+        rank: int, 
+        world_size: int, 
+        processor: Any = None
+    ):
+        super().__init__()
+        self.rank = rank
+        self.world_size = world_size
+        self.processor = processor
+
+        
+        self.transform = transforms.Compose([
+            transforms.Resize(256, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(256),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ])
+    
+
+
+        # GCS filesystem (only if you need to download from GCS)
+        self.fs = gcsfs.GCSFileSystem()
+        
+        # Temporary directory for local shards
+        self.temp_dir = Path(tempfile.mkdtemp(prefix=f'worker_{rank}_'))
+        print(f"Worker {rank} using temp dir: {self.temp_dir}")
+        
+        # Calculate which shard indices this worker is responsible for
+        num_shards = len(urls)
+        min_shards_per_worker = num_shards // world_size
+        extra_shards = num_shards % world_size
+        
+        if rank < extra_shards:
+            start_shard = rank * (min_shards_per_worker + 1)
+            shards_for_this_worker = min_shards_per_worker + 1
+        else:
+            start_shard = rank * min_shards_per_worker + extra_shards
+            shards_for_this_worker = min_shards_per_worker
+        end_shard = start_shard + shards_for_this_worker
+        
+        print(f"Total shards: {num_shards}, worker {rank} handling shards {start_shard}..{end_shard-1}")
+        
+        # Store just the shard paths this worker will process
+        self.worker_urls = urls[start_shard:end_shard]
+        
+        if len(self.worker_urls) > 0:
+            print(f"Worker {rank} first shard: {self.worker_urls[0]}")
+            print(f"Worker {rank} last shard: {self.worker_urls[-1]}")
+
+        # TFRecord description - adapt to your actual schema
+        self.description = {
+            "image": "byte",
+        }
+
+    def process_sample(self, sample: Dict[str, bytes]) -> torch.Tensor:
+        """Process raw image bytes into a torch Tensor (or dict, etc.)."""
+        try:
+            # Convert bytes to PIL Image
+            image = PIL.Image.open(io.BytesIO(sample["image"])).convert("RGB")
+
+            # If you have a huggingface Processor, do it here
+            if self.processor is not None:
+
+                # print("I am here!!!!!!!!!!")
+                siglip_image = self.processor(images=image, return_tensors="pt").pixel_values.squeeze(0)
+
+                        # Preprocess for VAE
+                vae_image = self.transform(image)
+                
+                # print("Shape and shape are", siglip_image.shape, vae_image.shape)
+                
+                return siglip_image, vae_image
+                # return processed
+            
+            # Otherwise, do a trivial transform to tensor
+            return torch.from_numpy(np.array(image)).permute(2, 0, 1)
+
+        except Exception as e:
+            # Return None or raise an error, depending on your preference
+            print(f"Error processing image: {str(e)}")
+            return None
+
+    def __iter__(self):
+        """
+        Iterate through all shards assigned to this worker, and yield samples
+        one by one in a streaming fashion (no big memory overhead).
+        """
+        for tfrecord_path in self.worker_urls:
+            try:
+                # Download shard from GCS to local temp path
+                local_path = self.temp_dir / Path(tfrecord_path).name
+                print(f"Worker {self.rank} downloading shard {tfrecord_path} to {local_path}")
+                self.fs.get(tfrecord_path.replace('gs://', ''), str(local_path))
+
+                # Create TFRecordDataset pointing to local shard
+                dataset = TFRecordDataset(
+                    data_path=str(local_path),
+                    index_path=None,  # or set if you have .index
+                    description=self.description,
+                    transform=self.process_sample,  # apply transform per sample
+                )
+
+                # Iterate over *all* samples in the shard
+                # This yields them one by one, so memory usage is minimal
+                for sample in dataset:
+                    if sample is not None:
+                        yield sample
+
+                # Optionally remove local shard after iteration to free disk
+                # or you can remove them in __del__. 
+                # Here we remove it right away:
+                try:
+                    os.remove(local_path)
+                except OSError as e:
+                    print(f"Error removing {local_path}: {str(e)}")
+
+            except Exception as e:
+                print(f"Error loading {tfrecord_path}: {str(e)}")
+                # If a shard fails, just continue to the next
+                continue
+
+    def __del__(self):
+        """Cleanup temporary directory."""
+        try:
+            if self.temp_dir.exists():
+                shutil.rmtree(self.temp_dir)
+                print(f"Cleaned up temporary directory {self.temp_dir}")
+        except Exception as e:
+            print(f"Error cleaning up temporary dir: {str(e)}")
+
+
+
 
 
 CACHE_DIR = '/home/tsb/.cache/xla_compile'
@@ -316,9 +472,44 @@ def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
     
     return loader, estimated_samples
 
+
+def get_data_loader(rank: int, world_size: int, epoch: int, urls: List[str], 
+                   siglip_processor: Any, args: Any) -> tuple:
+    """Create a data loader for TPU training"""
+    print(f"\nInitializing loader for rank {rank}/{world_size}")
+    
+    # Create dataset
+    dataset = ShardedTFRecordDataset(
+        urls=urls,
+        rank=rank,
+        world_size=world_size,
+        processor=siglip_processor
+    )
+    
+    # Create CPU data loader
+    cpu_loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
+    
+    # Wrap with ParallelLoader for TPU
+    device = xm.xla_device()
+    loader = pl.ParallelLoader(
+        cpu_loader,
+        [device],
+        batchdim=0
+    ).per_device_loader(device)
+    
+    # Estimate samples (based on LAION-400M average shard size)
+    estimated_samples = len(urls) * 5750 // world_size
+    print(f"Worker {rank} estimated samples: {estimated_samples}")
+    
+    return loader, estimated_samples
+
 def calculate_steps_per_epoch(total_shards, batch_size, world_size):
     """Calculate steps per epoch for proper tracking"""
-    samples_per_shard = 2500  # CC3M average
+    samples_per_shard = 5500  # CC3M average
     total_samples = total_shards * samples_per_shard
     return total_samples // (batch_size * world_size)
 
@@ -474,6 +665,10 @@ def train_one_step(batch, models, optimizers, state):
         # =============================================================================
         # (2) GENERATOR (VAE) PHASE
         # =============================================================================
+        # print("whyyyy the shape is", siglip_images.shape)
+
+
+
         quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
         recon_images = vae(quantized)
 
@@ -556,6 +751,14 @@ def train_gan_step(real_images, fake_images, discriminator, args):
     
     return d_loss, g_loss
 
+def get_all_urls():
+    base_path = "gs://us-central2-storage/tensorflow_datasets/tensorflow_datasets/laion400m/images/1.0.0"
+    total_shards = 66256
+    urls = [f"{base_path}/laion400m-train.tfrecord-{i:05d}-of-{total_shards:05d}" 
+            for i in range(total_shards)]
+    return urls
+
+
 
 def train_tpu(index, args):
     # Setup TPU device and process
@@ -602,7 +805,7 @@ def train_tpu(index, args):
         ).to(device)
     
     # Get all shard files
-    shard_files = get_cc3m_shards()
+    shard_files = get_all_urls()
     steps_per_epoch = calculate_steps_per_epoch(
         len(shard_files), args.batch_size, world_size
     )
@@ -831,7 +1034,7 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
     
     # Start TPU training
-    xmp.spawn(train_tpu, args=(args,), start_method='fork')  # 8 TPU cores
+    xmp.spawn(train_tpu, args=(args,), start_method='spawn')  # 8 TPU cores
 
 if __name__ == "__main__":
     main()
