@@ -803,12 +803,6 @@ def train_tpu(index, args):
 
 
     siglip_processor = siglip_encoder.processor
-    vae = VAEDecoder(num_tokens=args.num_tokens, output_resolution=args.resolution).to(device)
-    lpips_loss = lpips.LPIPS(net='alex').to(device)
-    
-    discriminator = None
-
-    # Initialize decoder based on type
     if args.decoder_type == 'conv':
         decoder = ConvDecoder(
             input_dim=1152,     # SigLIP hidden dimension
@@ -821,6 +815,18 @@ def train_tpu(index, args):
         decoder = VAEDecoder(
             num_tokens=args.num_tokens, 
             output_resolution=args.resolution
+        ).to(device)
+
+
+    # vae = VAEDecoder(num_tokens=args.num_tokens, output_resolution=args.resolution).to(device)
+    lpips_loss = lpips.LPIPS(net='alex').to(device)
+    
+    discriminator = None
+    if args.use_gan:
+        discriminator = create_dinov2_discriminator(
+            model_size=args.dino_size,
+            img_size=args.resolution,
+            use_augment=True
         ).to(device)
     
     # Get all shard files
