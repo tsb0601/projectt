@@ -8,6 +8,7 @@ from .quantizer import VectorQuantizer
 
 
 class SigLIPVQEncoder(nn.Module):
+
     def __init__(
         self, 
         model_name="google/siglip-so400m-patch14-384",
@@ -21,7 +22,8 @@ class SigLIPVQEncoder(nn.Module):
         progressive_unfreeze=False,
         unfreeze_after_steps=50000,
         unfreeze_strategy='gradual',
-        device=None
+        device=None,
+        use_vq=True  # New parameter to control VQ usage
     ):
         super().__init__()
         self.model_name = model_name
@@ -30,30 +32,64 @@ class SigLIPVQEncoder(nn.Module):
         self.device = device
         self.trainable = trainable
         self.clean_embedding_weight = clean_embedding_weight
+        self.use_vq = use_vq  # Store VQ mode
         
         # Store progressive unfreezing parameters
         self.progressive_unfreeze = progressive_unfreeze
         self.unfreeze_after_steps = unfreeze_after_steps
         self.unfreeze_strategy = unfreeze_strategy
-        self.is_unfrozen = False  # Track unfreezing status
+        self.is_unfrozen = False
         
         # Load SigLIP model twice - one for training, one for reference
         self.load_model()
         
-        # Add VQ layer
-        self.vq = VectorQuantizer(
-            num_embeddings=num_codebook_vectors,
-            embedding_dim=embedding_dim,
-            use_commitment=use_commitment,
-            commitment_cost=commitment_cost
-        )
+        # Add VQ layer only if using VQ mode
+        if self.use_vq:
+            self.vq = VectorQuantizer(
+                num_embeddings=num_codebook_vectors,
+                embedding_dim=embedding_dim,
+                use_commitment=use_commitment,
+                commitment_cost=commitment_cost
+            )
+            if self.device:
+                self.vq = self.vq.to(self.device)
         
         # Initialize in frozen state if using progressive unfreezing
         if self.progressive_unfreeze:
             self.freeze_encoder()
+
+    def forward(self, images):
+        if images.dim() == 3:
+            images = images.unsqueeze(0)
         
-        if self.device:
-            self.vq = self.vq.to(self.device)
+        # Get clean reference embeddings (always frozen)
+        with torch.no_grad():
+            ref_outputs = self.ref_vision_tower(images, output_hidden_states=True)
+            ref_features = ref_outputs.hidden_states[-1]
+            ref_features = self.process_features(ref_features)
+        
+        # Get trainable embeddings
+        with torch.set_grad_enabled(self.trainable):
+            outputs = self.vision_tower(images, output_hidden_states=True)
+            image_features = outputs.hidden_states[-1]
+            image_features = self.process_features(image_features)
+        
+        if self.use_vq:
+            # VQ mode: apply vector quantization
+            quantized, vq_loss, encoding_indices = self.vq(image_features)
+            clean_loss = F.mse_loss(quantized, ref_features.detach())
+            total_loss = vq_loss + self.clean_embedding_weight * clean_loss
+            return quantized, total_loss, encoding_indices, clean_loss, vq_loss
+        else:
+            # Autoencoder mode: return features directly
+            clean_loss = F.mse_loss(image_features, ref_features.detach())
+            return (
+                image_features,           # features instead of quantized
+                clean_loss,              # total_loss is just clean_loss
+                None,                    # no encoding indices
+                clean_loss,              # same clean_loss
+                torch.tensor(0.0, device=self.device)  # no vq_loss
+            )
 
     def load_model(self):
         xm.rendezvous('pre_load_model')
@@ -78,31 +114,31 @@ class SigLIPVQEncoder(nn.Module):
         self.processor = processor
         xm.rendezvous('post_load_model')
 
-    def forward(self, images):
-        if images.dim() == 3:
-            images = images.unsqueeze(0)
+    # def forward(self, images):
+    #     if images.dim() == 3:
+    #         images = images.unsqueeze(0)
         
-        # Get clean reference embeddings (always frozen)
-        with torch.no_grad():
-            ref_outputs = self.ref_vision_tower(images, output_hidden_states=True)
-            ref_features = ref_outputs.hidden_states[-1]
-            ref_features = self.process_features(ref_features)
+    #     # Get clean reference embeddings (always frozen)
+    #     with torch.no_grad():
+    #         ref_outputs = self.ref_vision_tower(images, output_hidden_states=True)
+    #         ref_features = ref_outputs.hidden_states[-1]
+    #         ref_features = self.process_features(ref_features)
         
-        # Get trainable embeddings
-        with torch.set_grad_enabled(self.trainable):
-            outputs = self.vision_tower(images, output_hidden_states=True)
-            image_features = outputs.hidden_states[-1]
-            image_features = self.process_features(image_features)
+    #     # Get trainable embeddings
+    #     with torch.set_grad_enabled(self.trainable):
+    #         outputs = self.vision_tower(images, output_hidden_states=True)
+    #         image_features = outputs.hidden_states[-1]
+    #         image_features = self.process_features(image_features)
         
-        # Apply VQ
-        quantized, vq_loss, encoding_indices = self.vq(image_features)
-        # print("encoding_indices", encoding_indices)
+    #     # Apply VQ
+    #     quantized, vq_loss, encoding_indices = self.vq(image_features)
+    #     # print("encoding_indices", encoding_indices)
         
-        # Use MSE loss instead of cosine similarity
-        clean_loss = F.mse_loss(quantized, ref_features.detach())
-        total_loss = vq_loss + self.clean_embedding_weight * clean_loss
+    #     # Use MSE loss instead of cosine similarity
+    #     clean_loss = F.mse_loss(quantized, ref_features.detach())
+    #     total_loss = vq_loss + self.clean_embedding_weight * clean_loss
         
-        return quantized, total_loss, encoding_indices, clean_loss, vq_loss
+    #     return quantized, total_loss, encoding_indices, clean_loss, vq_loss
 
     def process_features(self, features):
         b, num_tokens, dim = features.shape

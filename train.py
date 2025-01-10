@@ -700,17 +700,25 @@ def train_one_step(batch, models, optimizers, state):
         xm.mark_step()
 
     # Return losses and images for logging
-    return {
+    metrics = {
         "d_loss": float(d_loss.item()),
         "g_loss": float(g_loss.item()),
         "recon_loss": float(recon_loss.item()),
         "perceptual_loss": float(perceptual_loss.item()),
-        "vq_loss": float(vq_loss.item()),
-        "reference_loss": float(clean_loss.item()),
-        "total_vq_loss": float(total_vq_loss.item()),
+        "clean_loss": float(clean_loss.item()),
         "total_loss": float(total_loss.item()),
-    }, vae_images, recon_images, encoding_indices
+    }
+    
+    # Add VQ-specific metrics only in VQ mode
+    if state.args.encoder_mode == 'vq':
+        metrics.update({
+            "vq_loss": float(vq_loss.item()),
+            "total_vq_loss": float(total_feat_loss.item()),
+        })
 
+    return metrics, vae_images, recon_images, encoding_indices
+
+    
 def compute_gan_weight(global_step, args):
     """
     Example ramp-up function for the GAN weight.
@@ -784,9 +792,9 @@ def train_tpu(index, args):
         progressive_unfreeze=args.progressive_unfreeze,
         unfreeze_after_steps=args.unfreeze_after_steps,
         unfreeze_strategy=args.unfreeze_strategy,
-        device=device
+        device=device,
+        use_vq=(args.encoder_mode == 'vq')  # Set VQ mode based on encoder_mode
     )
-
     # Initialize codebook analyzer
     
     
@@ -903,15 +911,23 @@ def train_tpu(index, args):
             # Logging
             if xm.get_ordinal() == 0:
                 # print("22222222222222")
-                wandb.log({
+                log_dict = {
                     **losses,
                     "lr": scheduler.get_last_lr()[0],
                     "epoch": state.epoch,
                     "global_step": state.global_step,
-                    "codebook_usage": siglip_encoder.vq.get_metrics()['usage_fraction'],  # Added
-                    "codebook_perplexity": siglip_encoder.vq.get_metrics()['perplexity'],  # Added
- 
-                })
+                }
+                
+                # Only add VQ-specific metrics if in VQ mode
+                if args.encoder_mode == 'vq':
+                    log_dict.update({
+                        "codebook_usage": siglip_encoder.vq.get_metrics()['usage_fraction'],
+                        "codebook_perplexity": siglip_encoder.vq.get_metrics()['perplexity'],
+                    })
+                
+                wandb.log(log_dict)
+
+                
                 # print("33333333333333")
                 if state.global_step % args.sample_steps == 0:
                     with torch.no_grad():
@@ -972,7 +988,9 @@ def add_vq_args(parser):
     parser.add_argument("--unfreeze_strategy", type=str, default='all',
                        choices=['all'],
                        help="How to unfreeze encoder")
-    
+    parser.add_argument("--encoder_mode", type=str, choices=['vq', 'ae'], default='vq',
+                   help="Encoder mode: 'vq' for vector quantization, 'ae' for regular autoencoder")
+
 
 def main():
     parser = argparse.ArgumentParser(description="VAE Training Script for TPU")
