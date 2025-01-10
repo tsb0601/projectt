@@ -44,6 +44,8 @@ import numpy as np
 xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assure accuracy
 
 from rqvae.models.tokenizer.decoder import VAEDecoder
+from rqvae.models.tokenizer.convdecoder import ConvDecoder
+
 from rqvae.models.tokenizer.discriminator import create_dinov2_discriminator
 # from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
@@ -427,50 +429,50 @@ class WebDatasetAdapter:
         
         return siglip_image, vae_image
 
-def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
-    """
-    Create a data loader for the current TPU core and epoch
-    """
-    # Calculate shards for this worker
-    num_shards = len(urls)
-    shards_per_worker = num_shards // world_size
-    start_shard = rank * shards_per_worker
-    end_shard = start_shard + shards_per_worker
-    if rank == world_size - 1:  # Last worker takes remaining shards
-        end_shard = num_shards
+# def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
+#     """
+#     Create a data loader for the current TPU core and epoch
+#     """
+#     # Calculate shards for this worker
+#     num_shards = len(urls)
+#     shards_per_worker = num_shards // world_size
+#     start_shard = rank * shards_per_worker
+#     end_shard = start_shard + shards_per_worker
+#     if rank == world_size - 1:  # Last worker takes remaining shards
+#         end_shard = num_shards
     
-    worker_urls = urls[start_shard:end_shard]
+#     worker_urls = urls[start_shard:end_shard]
     
-    # Estimate number of samples (important for proper epoch handling)
-    samples_per_shard = 2500  # CC3M average
-    estimated_samples = len(worker_urls) * samples_per_shard
+#     # Estimate number of samples (important for proper epoch handling)
+#     samples_per_shard = 2500  # CC3M average
+#     estimated_samples = len(worker_urls) * samples_per_shard
     
-    # Create dataset
-    dataset = WebDatasetAdapter(
-        worker_urls,
-        siglip_processor,
-        args,
-        num_samples=estimated_samples
-    ).create_webdataset(epoch)
+#     # Create dataset
+#     dataset = WebDatasetAdapter(
+#         worker_urls,
+#         siglip_processor,
+#         args,
+#         num_samples=estimated_samples
+#     ).create_webdataset(epoch)
     
-    # Create data loader
+#     # Create data loader
 
-    # First create a regular PyTorch DataLoader
-    cpu_loader = DataLoader(
-        dataset,
-        batch_size=None,  # Already batched by WebDataset
-        num_workers=args.num_workers
-    )
+#     # First create a regular PyTorch DataLoader
+#     cpu_loader = DataLoader(
+#         dataset,
+#         batch_size=None,  # Already batched by WebDataset
+#         num_workers=args.num_workers
+#     )
     
-    # Then wrap it with ParallelLoader for TPU
-    device = xm.xla_device()
-    loader = ParallelLoader(
-        cpu_loader,
-        [device],  # List of devices where data should be sent
-        batchdim=0  # The dimension holding the batch size
-    ).per_device_loader(device)  # Get the per-device loader
+#     # Then wrap it with ParallelLoader for TPU
+#     device = xm.xla_device()
+#     loader = ParallelLoader(
+#         cpu_loader,
+#         [device],  # List of devices where data should be sent
+#         batchdim=0  # The dimension holding the batch size
+#     ).per_device_loader(device)  # Get the per-device loader
     
-    return loader, estimated_samples
+#     return loader, estimated_samples
 
 
 def get_data_loader(rank: int, world_size: int, epoch: int, urls: List[str], 
@@ -718,7 +720,7 @@ def train_one_step(batch, models, optimizers, state):
 
     return metrics, vae_images, recon_images, encoding_indices
 
-    
+
 def compute_gan_weight(global_step, args):
     """
     Example ramp-up function for the GAN weight.
@@ -805,11 +807,20 @@ def train_tpu(index, args):
     lpips_loss = lpips.LPIPS(net='alex').to(device)
     
     discriminator = None
-    if args.use_gan:
-        discriminator = create_dinov2_discriminator(
-            model_size=args.dino_size,
-            img_size=args.resolution,
-            use_augment=True
+    
+    # Initialize decoder based on type
+    if args.decoder_type == 'conv':
+        decoder = ConvDecoder(
+            input_dim=1152,     # SigLIP hidden dimension
+            latent_channels=4,  # Same as SD
+            hidden_channels=128,
+            output_resolution=args.resolution,
+            num_res_blocks=3
+        ).to(device)
+    else:  # 'vae' (default)
+        decoder = VAEDecoder(
+            num_tokens=args.num_tokens, 
+            output_resolution=args.resolution
         ).to(device)
     
     # Get all shard files
@@ -996,6 +1007,9 @@ def main():
     parser = argparse.ArgumentParser(description="VAE Training Script for TPU")
     
     # Basic training arguments
+    # Add decoder choice argument
+    parser.add_argument("--decoder_type", type=str, choices=['vae', 'conv'], default='vae',
+                       help="Type of decoder to use: 'vae' or 'conv'")
     parser.add_argument("--batch_size", type=int, default=24, help="Batch size per TPU core")
     parser.add_argument("--base_lr", type=float, default=1e-4, help="Base learning rate")
     parser.add_argument("--max_steps", type=int, default=500000, help="Maximum number of training steps")
