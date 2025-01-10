@@ -807,7 +807,7 @@ def train_tpu(index, args):
     lpips_loss = lpips.LPIPS(net='alex').to(device)
     
     discriminator = None
-    
+
     # Initialize decoder based on type
     if args.decoder_type == 'conv':
         decoder = ConvDecoder(
@@ -815,7 +815,7 @@ def train_tpu(index, args):
             latent_channels=4,  # Same as SD
             hidden_channels=128,
             output_resolution=args.resolution,
-            num_res_blocks=3
+            # num_res_blocks=3
         ).to(device)
     else:  # 'vae' (default)
         decoder = VAEDecoder(
