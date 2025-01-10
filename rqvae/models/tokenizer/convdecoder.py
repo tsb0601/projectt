@@ -131,24 +131,28 @@ class ConvDecoder(nn.Module):
         ])
 
     def forward(self, x):
-        # Project to spatial latents
-        x = self.proj_in(x)
-        x = x.view(-1, 4, self.initial_height, self.initial_width)
+        # x shape: [batch, seq_len, embed_dim]
+        batch_size = x.shape[0]
         
-        # Initial convolution
+        # We probably want to aggregate across the sequence dimension before projecting
+        # Could use mean, max, or other aggregation
+        x = x.mean(dim=1)  # Shape: [batch, embed_dim]
+        
+        # Project to spatial latents
+        x = self.proj_in(x)  # Shape: [batch, spatial_dims]
+        x = x.view(batch_size, 4, self.initial_height, self.initial_width)
+        
+        # Rest of processing remains the same...
         x = self.conv_in(x)
-
-        # Middle block
+        
         for block in self.mid:
             x = block(x)
 
-        # Up blocks with progressive channel reduction
         for up_block in self.up:
             for block in up_block:
                 x = block(x)
 
-        # Final convolution
         for block in self.final:
             x = block(x)
 
-        return x
+        return x  # Shape will be [batch, 3, 256, 256]

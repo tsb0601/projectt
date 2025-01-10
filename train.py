@@ -673,7 +673,7 @@ def train_one_step(batch, models, optimizers, state):
 
         quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
         recon_images = vae(quantized)
-
+        # print("input embed:", quantized.shape, "recon images shape:", recon_images.shape, "vae images shape:", vae_images.shape)
         # Reconstruction + perceptual losses
         recon_loss = F.mse_loss(recon_images, vae_images)
         perceptual_loss = lpips_loss(recon_images, vae_images).mean()
@@ -804,7 +804,7 @@ def train_tpu(index, args):
 
     siglip_processor = siglip_encoder.processor
     if args.decoder_type == 'conv':
-        decoder = ConvDecoder(
+        vae = ConvDecoder(
             input_dim=1152,     # SigLIP hidden dimension
             latent_channels=4,  # Same as SD
             hidden_channels=128,
@@ -812,7 +812,7 @@ def train_tpu(index, args):
             # num_res_blocks=3
         ).to(device)
     else:  # 'vae' (default)
-        decoder = VAEDecoder(
+        vae = VAEDecoder(
             num_tokens=args.num_tokens, 
             output_resolution=args.resolution
         ).to(device)
