@@ -805,10 +805,8 @@ def train_tpu(index, args):
     siglip_processor = siglip_encoder.processor
     if args.decoder_type == 'conv':
         vae = ConvDecoder(
-            input_dim=1152,     # SigLIP hidden dimension
-            latent_channels=4,  # Same as SD
-            hidden_channels=128,
-            output_resolution=args.resolution,
+            in_channels=1152,     # SigLIP hidden dimension
+            out_resolution=args.resolution,
             # num_res_blocks=3
         ).to(device)
     else:  # 'vae' (default)
