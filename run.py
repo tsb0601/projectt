@@ -773,12 +773,27 @@ def get_all_urls():
             for i in range(total_shards)]
     return urls
 
-
+def dataparallel_and_sync(model, find_unused_parameters=True):
+    """Unified function for DDP wrapping and parameter synchronization"""
+    model = DDP(
+        model,
+        find_unused_parameters=find_unused_parameters,
+        gradient_as_bucket_view=True
+    )
+    # Broadcast parameters from rank 0
+    for _, param in model.state_dict().items():
+        dist.broadcast(param, 0)
+   
+    xm.mark_step()
+    return model
 
 def train_tpu(index, args):
     # Setup TPU device and process
     device = xm.xla_device()
     world_size = xm.xrt_world_size()
+
+    os.environ['PJRT_DEVICE'] = 'TPU'
+
 
     # Initialize process group for DDP
     torch.distributed.init_process_group(
@@ -851,28 +866,7 @@ def train_tpu(index, args):
             use_augment=True
         ).to(device)
     
-    
-    # DDP
-    siglip_encoder = DDP(
-        siglip_encoder,
-        find_unused_parameters=True,
-        # gradient_as_bucket_view=True
-    )
-    vae = DDP(
-        vae,
-        find_unused_parameters=True,
-        # gradient_as_bucket_view=True
-    )
 
-    if args.use_gan:
-        discriminator = DDP(
-            discriminator,
-            find_unused_parameters=True,
-            # gradient_as_bucket_view=True
-        )
-
-       
-    
         
     # Get all shard files
     shard_files = get_all_urls()
@@ -902,6 +896,23 @@ def train_tpu(index, args):
             betas=(0.0, 0.99)
         )
     
+        
+    # DDP
+    siglip_encoder = dataparallel_and_sync(
+        siglip_encoder,
+    )
+    vae = dataparallel_and_sync(
+        vae,
+    )
+
+    if args.use_gan:
+        discriminator = dataparallel_and_sync(
+            discriminator,
+        )
+
+       
+    
+
 
 
     # Initialize schedulers
