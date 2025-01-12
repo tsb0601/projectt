@@ -640,71 +640,71 @@ def train_one_step(batch, models, optimizers, state):
     device = xm.xla_device()
 
     # Enable BF16 autocast if args.bf16 is True
-    # with xla_amp.autocast(enabled=getattr(args, 'bf16', False), dtype=torch.bfloat16, device=device):
-        # =============================================================================
-        # (1) DISCRIMINATOR PHASE
-        # =============================================================================
-    if args.use_gan and state.global_step >= args.gan_start_steps:
-        # Get quantized embeddings
-        with torch.no_grad():
-            quantized, _, _, _, _ = siglip_encoder(siglip_images)
-            fake_images = vae(quantized).detach()
+    with xla_amp.autocast(enabled=getattr(args, 'bf16', False), dtype=torch.bfloat16, device=device):
+            # =============================================================================
+            # (1) DISCRIMINATOR PHASE
+            # =============================================================================
+        if args.use_gan and state.global_step >= args.gan_start_steps:
+            # Get quantized embeddings
+            with torch.no_grad():
+                quantized, _, _, _, _ = siglip_encoder(siglip_images)
+                fake_images = vae(quantized).detach()
 
-        d_loss = compute_d_loss(
-            real_images=vae_images,
-            fake_images=fake_images,
-            discriminator=discriminator
-        )
+            d_loss = compute_d_loss(
+                real_images=vae_images,
+                fake_images=fake_images,
+                discriminator=discriminator
+            )
 
-        if state.global_step % args.d_reg_every == 0:
-            d_optimizer.zero_grad()
-            d_loss.backward()
-            # xm.optimizer_step(d_optimizer)
-            d_optimizer.step()
-            xm.mark_step()
+            if state.global_step % args.d_reg_every == 0:
+                d_optimizer.zero_grad()
+                d_loss.backward()
+                # xm.optimizer_step(d_optimizer)
+                d_optimizer.step()
+                xm.mark_step()
+            else:
+                # If not updating D this step, don't keep grads
+                d_loss = d_loss.detach()
         else:
-            # If not updating D this step, don't keep grads
-            d_loss = d_loss.detach()
-    else:
-        d_loss = torch.tensor(0.0, device=device)
+            d_loss = torch.tensor(0.0, device=device)
 
-    # =============================================================================
-    # (2) GENERATOR (VAE) PHASE
-    # =============================================================================
-    # print("whyyyy the shape is", siglip_images.shape)
+        # =============================================================================
+        # (2) GENERATOR (VAE) PHASE
+        # =============================================================================
+        # print("whyyyy the shape is", siglip_images.shape)
 
 
 
-    quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
-    recon_images = vae(quantized)
-    # print("input embed:", quantized.shape, "recon images shape:", recon_images.shape, "vae images shape:", vae_images.shape)
-    # Reconstruction + perceptual losses
-    recon_loss = F.mse_loss(recon_images, vae_images)
-    perceptual_loss = lpips_loss(recon_images, vae_images).mean()
+        quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
+        recon_images = vae(quantized)
+        # print("input embed:", quantized.shape, "recon images shape:", recon_images.shape, "vae images shape:", vae_images.shape)
+        # Reconstruction + perceptual losses
+        recon_loss = F.mse_loss(recon_images, vae_images)
+        perceptual_loss = lpips_loss(recon_images, vae_images).mean()
 
-    # Combine all losses
-    total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
+        # Combine all losses
+        total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
 
-    # Add generator adversarial loss if in GAN mode
-    if args.use_gan and state.global_step >= args.gan_start_steps:
-        g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
-        gan_weight = compute_gan_weight(state.global_step, args)
-        total_loss = total_loss + gan_weight * g_loss
-    else:
-        g_loss = torch.tensor(0.0, device=device)
+        # Add generator adversarial loss if in GAN mode
+        if args.use_gan and state.global_step >= args.gan_start_steps:
+            g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
+            gan_weight = compute_gan_weight(state.global_step, args)
+            total_loss = total_loss + gan_weight * g_loss
+        else:
+            g_loss = torch.tensor(0.0, device=device)
 
-    # Backward + update generator (VAE)
-    optimizer.zero_grad()
-    total_loss.backward()
+        # Backward + update generator (VAE)
+        optimizer.zero_grad()
+        total_loss.backward()
 
-    # Gradient clipping
-    torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
-    if args.train_encoder:
-        torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
-    # print(vae)
-    # xm.optimizer_step(optimizer)
-    optimizer.step()
-    xm.mark_step()
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
+        if args.train_encoder:
+            torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
+        # print(vae)
+        # xm.optimizer_step(optimizer)
+        optimizer.step()
+        xm.mark_step()
 
     # Return losses and images for logging
     metrics = {
