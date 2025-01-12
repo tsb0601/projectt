@@ -29,7 +29,6 @@ class DistEnv:
     master: bool
     device_name: str
     TPU: bool
-    use_ddp: bool
 
 def initialize(args: argparse.Namespace , logger =None):
     # see if args have rank or world_size, if not, try to get from env
@@ -45,9 +44,9 @@ def initialize(args: argparse.Namespace , logger =None):
     if args.world_size > 1:
         # recaculate rank and world_size
         print(f'[dist] Distributed: wait dist process group:{args.rank}')
-        if args.use_ddp:
-            dist.init_process_group(backend=args.dist_backend, init_method='xla://', world_size=args.world_size, rank=args.rank,
-            timeout=datetime.timedelta(0, args.timeout))
+        print(f"Back end is {args.dist_backend}")
+        dist.init_process_group(backend=args.dist_backend, init_method='xla://', world_size=args.world_size, rank=args.rank,
+        timeout=datetime.timedelta(0, args.timeout))
         print(
             f"""[dist] Distributed: success device:{args.rank}, """,
             f"""{args.local_rank}/{args.rank}/{args.world_size}""",
@@ -58,7 +57,6 @@ def initialize(args: argparse.Namespace , logger =None):
                           master=(args.rank == 0), # or xm.is_master_ordinal()
                           device_name=str(xm.xla_real_devices([str(xm.xla_device())])[0]),
                           TPU=True,
-                          use_ddp=args.use_ddp
                           )
         # set seed for each process to avoid same seed
         # the seed would be a function of (args.seed, xm.get_ordinal()) and should be random enough
@@ -82,6 +80,9 @@ def initialize(args: argparse.Namespace , logger =None):
         logger.info(distenv)
 
     return distenv
+
+
+
 def broadcast_master_param(model: torch.nn.Module) -> None:
   """
   Broadcast the model parameters from master process to other processes
@@ -90,6 +91,7 @@ def broadcast_master_param(model: torch.nn.Module) -> None:
       itertools.chain(model.parameters(), model.buffers()))
   collective_broadcast(parameters_and_buffers, pin_layout=False)
   xm.mark_step()
+
 def dataparallel_and_sync(distenv, model, find_unused_parameters=True):
     if distenv.use_ddp:
         assert dist.is_initialized(), 'DistributedDataParallel requires torch.distributed to be initialized.'

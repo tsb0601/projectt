@@ -431,50 +431,51 @@ class WebDatasetAdapter:
         
         return siglip_image, vae_image
 
-# def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
-#     """
-#     Create a data loader for the current TPU core and epoch
-#     """
-#     # Calculate shards for this worker
-#     num_shards = len(urls)
-#     shards_per_worker = num_shards // world_size
-#     start_shard = rank * shards_per_worker
-#     end_shard = start_shard + shards_per_worker
-#     if rank == world_size - 1:  # Last worker takes remaining shards
-#         end_shard = num_shards
-    
-#     worker_urls = urls[start_shard:end_shard]
-    
-#     # Estimate number of samples (important for proper epoch handling)
-#     samples_per_shard = 2500  # CC3M average
-#     estimated_samples = len(worker_urls) * samples_per_shard
-    
-#     # Create dataset
-#     dataset = WebDatasetAdapter(
-#         worker_urls,
-#         siglip_processor,
-#         args,
-#         num_samples=estimated_samples
-#     ).create_webdataset(epoch)
-    
-#     # Create data loader
 
-#     # First create a regular PyTorch DataLoader
-#     cpu_loader = DataLoader(
-#         dataset,
-#         batch_size=None,  # Already batched by WebDataset
-#         num_workers=args.num_workers
-#     )
+def get_cc_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
+    """
+    Create a data loader for the current TPU core and epoch
+    """
+    # Calculate shards for this worker
+    num_shards = len(urls)
+    shards_per_worker = num_shards // world_size
+    start_shard = rank * shards_per_worker
+    end_shard = start_shard + shards_per_worker
+    if rank == world_size - 1:  # Last worker takes remaining shards
+        end_shard = num_shards
     
-#     # Then wrap it with ParallelLoader for TPU
-#     device = xm.xla_device()
-#     loader = ParallelLoader(
-#         cpu_loader,
-#         [device],  # List of devices where data should be sent
-#         batchdim=0  # The dimension holding the batch size
-#     ).per_device_loader(device)  # Get the per-device loader
+    worker_urls = urls[start_shard:end_shard]
     
-#     return loader, estimated_samples
+    # Estimate number of samples (important for proper epoch handling)
+    samples_per_shard = 2500  # CC3M average
+    estimated_samples = len(worker_urls) * samples_per_shard
+    
+    # Create dataset
+    dataset = WebDatasetAdapter(
+        worker_urls,
+        siglip_processor,
+        args,
+        num_samples=estimated_samples
+    ).create_webdataset(epoch)
+    
+    # Create data loader
+
+    # First create a regular PyTorch DataLoader
+    cpu_loader = DataLoader(
+        dataset,
+        batch_size=None,  # Already batched by WebDataset
+        num_workers=args.num_workers
+    )
+    
+    # Then wrap it with ParallelLoader for TPU
+    device = xm.xla_device()
+    loader = ParallelLoader(
+        cpu_loader,
+        [device],  # List of devices where data should be sent
+        batchdim=0  # The dimension holding the batch size
+    ).per_device_loader(device)  # Get the per-device loader
+    
+    return loader, estimated_samples
 
 
 def get_data_loader(rank: int, world_size: int, epoch: int, urls: List[str], 
@@ -639,69 +640,71 @@ def train_one_step(batch, models, optimizers, state):
     device = xm.xla_device()
 
     # Enable BF16 autocast if args.bf16 is True
-    with xla_amp.autocast(enabled=getattr(args, 'bf16', False), dtype=torch.bfloat16, device=device):
+    # with xla_amp.autocast(enabled=getattr(args, 'bf16', False), dtype=torch.bfloat16, device=device):
         # =============================================================================
         # (1) DISCRIMINATOR PHASE
         # =============================================================================
-        if args.use_gan and state.global_step >= args.gan_start_steps:
-            # Get quantized embeddings
-            with torch.no_grad():
-                quantized, _, _, _, _ = siglip_encoder(siglip_images)
-                fake_images = vae(quantized).detach()
+    if args.use_gan and state.global_step >= args.gan_start_steps:
+        # Get quantized embeddings
+        with torch.no_grad():
+            quantized, _, _, _, _ = siglip_encoder(siglip_images)
+            fake_images = vae(quantized).detach()
 
-            d_loss = compute_d_loss(
-                real_images=vae_images,
-                fake_images=fake_images,
-                discriminator=discriminator
-            )
+        d_loss = compute_d_loss(
+            real_images=vae_images,
+            fake_images=fake_images,
+            discriminator=discriminator
+        )
 
-            if state.global_step % args.d_reg_every == 0:
-                d_optimizer.zero_grad()
-                d_loss.backward()
-                xm.optimizer_step(d_optimizer)
-                xm.mark_step()
-            else:
-                # If not updating D this step, don't keep grads
-                d_loss = d_loss.detach()
+        if state.global_step % args.d_reg_every == 0:
+            d_optimizer.zero_grad()
+            d_loss.backward()
+            # xm.optimizer_step(d_optimizer)
+            d_optimizer.step()
+            xm.mark_step()
         else:
-            d_loss = torch.tensor(0.0, device=device)
+            # If not updating D this step, don't keep grads
+            d_loss = d_loss.detach()
+    else:
+        d_loss = torch.tensor(0.0, device=device)
 
-        # =============================================================================
-        # (2) GENERATOR (VAE) PHASE
-        # =============================================================================
-        # print("whyyyy the shape is", siglip_images.shape)
+    # =============================================================================
+    # (2) GENERATOR (VAE) PHASE
+    # =============================================================================
+    # print("whyyyy the shape is", siglip_images.shape)
 
 
 
-        quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
-        recon_images = vae(quantized)
-        # print("input embed:", quantized.shape, "recon images shape:", recon_images.shape, "vae images shape:", vae_images.shape)
-        # Reconstruction + perceptual losses
-        recon_loss = F.mse_loss(recon_images, vae_images)
-        perceptual_loss = lpips_loss(recon_images, vae_images).mean()
+    quantized, total_vq_loss, encoding_indices, clean_loss, vq_loss = siglip_encoder(siglip_images)
+    recon_images = vae(quantized)
+    # print("input embed:", quantized.shape, "recon images shape:", recon_images.shape, "vae images shape:", vae_images.shape)
+    # Reconstruction + perceptual losses
+    recon_loss = F.mse_loss(recon_images, vae_images)
+    perceptual_loss = lpips_loss(recon_images, vae_images).mean()
 
-        # Combine all losses
-        total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
+    # Combine all losses
+    total_loss = recon_loss + args.perceptual_weight * perceptual_loss + total_vq_loss
 
-        # Add generator adversarial loss if in GAN mode
-        if args.use_gan and state.global_step >= args.gan_start_steps:
-            g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
-            gan_weight = compute_gan_weight(state.global_step, args)
-            total_loss = total_loss + gan_weight * g_loss
-        else:
-            g_loss = torch.tensor(0.0, device=device)
+    # Add generator adversarial loss if in GAN mode
+    if args.use_gan and state.global_step >= args.gan_start_steps:
+        g_loss = compute_g_loss(fake_images=recon_images, discriminator=discriminator)
+        gan_weight = compute_gan_weight(state.global_step, args)
+        total_loss = total_loss + gan_weight * g_loss
+    else:
+        g_loss = torch.tensor(0.0, device=device)
 
-        # Backward + update generator (VAE)
-        optimizer.zero_grad()
-        total_loss.backward()
+    # Backward + update generator (VAE)
+    optimizer.zero_grad()
+    total_loss.backward()
 
-        # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
-        if args.train_encoder:
-            torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
-
-        xm.optimizer_step(optimizer)
-        xm.mark_step()
+    # Gradient clipping
+    torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
+    if args.train_encoder:
+        torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
+    # print(vae)
+    # xm.optimizer_step(optimizer)
+    optimizer.step()
+    xm.mark_step()
 
     # Return losses and images for logging
     metrics = {
@@ -777,8 +780,13 @@ def train_tpu(index, args):
     device = xm.xla_device()
     world_size = xm.xrt_world_size()
 
-    setup_quick(args)
-
+    # Initialize process group for DDP
+    torch.distributed.init_process_group(
+        'xla',
+        init_method='xla://',
+        world_size=world_size,
+        rank=xm.get_ordinal()
+    )
     
     # Initialize cache
     global cache_path
@@ -830,17 +838,7 @@ def train_tpu(index, args):
             output_resolution=args.resolution
         ).to(device)
 
-    # DDP
-    siglip_encoder = DDP(
-        siglip_encoder,
-        find_unused_parameters=True,
-        gradient_as_bucket_view=True
-    )
-    vae = DDP(
-        vae,
-        find_unused_parameters=True,
-        gradient_as_bucket_view=True
-    )
+   
 
     # vae = VAEDecoder(num_tokens=args.num_tokens, output_resolution=args.resolution).to(device)
     lpips_loss = lpips.LPIPS(net='alex').to(device)
@@ -852,11 +850,29 @@ def train_tpu(index, args):
             img_size=args.resolution,
             use_augment=True
         ).to(device)
+    
+    
+    # DDP
+    siglip_encoder = DDP(
+        siglip_encoder,
+        # find_unused_parameters=True,
+        # gradient_as_bucket_view=True
+    )
+    vae = DDP(
+        vae,
+        # find_unused_parameters=True,
+        # gradient_as_bucket_view=True
+    )
+
+    if args.use_gan:
         discriminator = DDP(
             discriminator,
-            find_unused_parameters=True,
-            gradient_as_bucket_view=True
+            # find_unused_parameters=True,
+            # gradient_as_bucket_view=True
         )
+
+       
+    
         
     # Get all shard files
     shard_files = get_all_urls()
@@ -886,6 +902,8 @@ def train_tpu(index, args):
             betas=(0.0, 0.99)
         )
     
+
+
     # Initialize schedulers
     lr_scheduler_fn = get_scheduler_lambda(args.max_steps)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_scheduler_fn)
@@ -1109,6 +1127,8 @@ def main():
     parser.add_argument('--local_rank', default=-1, type=int, help='local rank for distributed training')
     parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
     parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
+    parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
+    parser.add_argument('--seed', type=int, default=41)
 
     # Add VQ arguments
     add_vq_args(parser)
