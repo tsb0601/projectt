@@ -1081,7 +1081,7 @@ def main():
     parser.add_argument("--decoder_type", type=str, choices=['vae', 'conv'], default='vae',
                        help="Type of decoder to use: 'vae' or 'conv'")
     parser.add_argument("--batch_size", type=int, default=24, help="Batch size per TPU core")
-    parser.add_argument("--base_lr", type=float, default=4.5e-5, help="Base learning rate (default: 4.5e-6)")
+    parser.add_argument("--base_lr", type=float, default=4.5e-6, help="Base learning rate (default: 4.5e-6)")
     parser.add_argument("--base_batch_size", type=int, default=12, help="Base batch size for LR scaling")
     parser.add_argument("--max_steps", type=int, default=500000, help="Maximum number of training steps")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of data loading workers")
