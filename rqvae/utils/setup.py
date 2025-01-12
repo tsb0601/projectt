@@ -44,6 +44,22 @@ def logger_setup(log_path, eval=False):
 
     return logger, writer
 
+def setup_quick(args):
+    """
+    meaning of args.result_path:
+        - if args.eval, directory where the model is
+        - if args.resume, no meaning
+        - otherwise, path to store the logs
+
+    Returns:
+        config, logger, writer
+    """
+
+    distenv = dist_init(args)
+
+
+
+
 
 def setup(args, extra_args=()):
     """

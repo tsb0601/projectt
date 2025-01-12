@@ -63,10 +63,12 @@ class SigLIPVQEncoder(nn.Module):
             images = images.unsqueeze(0)
         
         # Get clean reference embeddings (always frozen)
-        with torch.no_grad():
-            ref_outputs = self.ref_vision_tower(images, output_hidden_states=True)
-            ref_features = ref_outputs.hidden_states[-1]
-            ref_features = self.process_features(ref_features)
+        if self.use_vq:
+
+            with torch.no_grad():
+                ref_outputs = self.ref_vision_tower(images, output_hidden_states=True)
+                ref_features = ref_outputs.hidden_states[-1]
+                ref_features = self.process_features(ref_features)
         
         # Get trainable embeddings
         with torch.set_grad_enabled(self.trainable):
@@ -82,12 +84,11 @@ class SigLIPVQEncoder(nn.Module):
             return quantized, total_loss, encoding_indices, clean_loss, vq_loss
         else:
             # Autoencoder mode: return features directly
-            clean_loss = F.mse_loss(image_features, ref_features.detach())
             return (
                 image_features,           # features instead of quantized
-                clean_loss,              # total_loss is just clean_loss
+                torch.tensor(0.0, device=self.device),  # no vq_loss
                 None,                    # no encoding indices
-                clean_loss,              # same clean_loss
+                torch.tensor(0.0, device=self.device),  # no vq_loss
                 torch.tensor(0.0, device=self.device)  # no vq_loss
             )
 

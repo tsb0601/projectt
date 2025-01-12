@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch_xla.distributed.parallel_loader import ParallelLoader
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from transformers import AutoProcessor, AutoModel
 from torchvision import transforms
@@ -45,7 +46,8 @@ xla._XLAC._xla_set_mat_mul_precision('highest') # set precision to high to assur
 
 from rqvae.models.tokenizer.decoder import VAEDecoder
 from rqvae.models.tokenizer.convdecoder import ConvDecoder
-
+import rqvae.utils.dist as dist_utils
+from rqvae.utils.setup import setup, setup_quick, wandb_dir
 from rqvae.models.tokenizer.discriminator import create_dinov2_discriminator
 # from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
@@ -774,6 +776,9 @@ def train_tpu(index, args):
     # Setup TPU device and process
     device = xm.xla_device()
     world_size = xm.xrt_world_size()
+
+    setup_quick(args)
+
     
     # Initialize cache
     global cache_path
@@ -825,6 +830,17 @@ def train_tpu(index, args):
             output_resolution=args.resolution
         ).to(device)
 
+    # DDP
+    siglip_encoder = DDP(
+        siglip_encoder,
+        find_unused_parameters=True,
+        gradient_as_bucket_view=True
+    )
+    vae = DDP(
+        vae,
+        find_unused_parameters=True,
+        gradient_as_bucket_view=True
+    )
 
     # vae = VAEDecoder(num_tokens=args.num_tokens, output_resolution=args.resolution).to(device)
     lpips_loss = lpips.LPIPS(net='alex').to(device)
@@ -836,7 +852,12 @@ def train_tpu(index, args):
             img_size=args.resolution,
             use_augment=True
         ).to(device)
-    
+        discriminator = DDP(
+            discriminator,
+            find_unused_parameters=True,
+            gradient_as_bucket_view=True
+        )
+        
     # Get all shard files
     shard_files = get_all_urls()
     steps_per_epoch = calculate_steps_per_epoch(
@@ -1083,6 +1104,11 @@ def main():
     
     # Run configuration
     parser.add_argument("--run_name", type=str, default="vae_run", help="Name of the run")
+
+    parser.add_argument('--world_size', default=-1, type=int, help='number of nodes for distributed training')
+    parser.add_argument('--local_rank', default=-1, type=int, help='local rank for distributed training')
+    parser.add_argument('--node_rank', default=-1, type=int, help='node rank for distributed training')
+    parser.add_argument('--dist-backend', default='xla', choices=['xla'],type=str, help='distributed backend')
 
     # Add VQ arguments
     add_vq_args(parser)
