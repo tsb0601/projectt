@@ -659,8 +659,8 @@ def train_one_step(batch, models, optimizers, state):
             if state.global_step % args.d_reg_every == 0:
                 d_optimizer.zero_grad()
                 d_loss.backward()
-                # xm.optimizer_step(d_optimizer)
-                d_optimizer.step()
+                xm.optimizer_step(d_optimizer)
+                # d_optimizer.step()
                 xm.mark_step()
             else:
                 # If not updating D this step, don't keep grads
@@ -702,8 +702,8 @@ def train_one_step(batch, models, optimizers, state):
         # if args.train_encoder:
         #     torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
         # print(vae)
-        # xm.optimizer_step(optimizer)
-        optimizer.step()
+        xm.optimizer_step(optimizer)
+        # optimizer.step()
         xm.mark_step()
 
     # Return losses and images for logging
@@ -787,7 +787,7 @@ def dataparallel_and_sync(model, find_unused_parameters=True):
     xm.mark_step()
     return model
 
-def train_tpu(index, args):
+def train_tpu(args):
     # Setup TPU device and process
     device = xm.xla_device()
     world_size = xm.xrt_world_size()
@@ -796,12 +796,12 @@ def train_tpu(index, args):
 
 
     # Initialize process group for DDP
-    torch.distributed.init_process_group(
-        'xla',
-        init_method='xla://',
-        world_size=world_size,
-        rank=xm.get_ordinal()
-    )
+    # torch.distributed.init_process_group(
+    #     'xla',
+    #     init_method='xla://',
+    #     world_size=world_size,
+    #     rank=xm.get_ordinal()
+    # )
     
     # Initialize cache
     global cache_path
@@ -877,19 +877,19 @@ def train_tpu(index, args):
 
         
     # DDP
-    siglip_encoder = dataparallel_and_sync(
-        siglip_encoder,
-    )
-    vae = dataparallel_and_sync(
-        vae,
-    )
+    # siglip_encoder = dataparallel_and_sync(
+    #     siglip_encoder,
+    # )
+    # vae = dataparallel_and_sync(
+    #     vae,
+    # )
 
-    if args.use_gan:
-        discriminator = dataparallel_and_sync(
-            discriminator,
-        )
+    # if args.use_gan:
+    #     discriminator = dataparallel_and_sync(
+    #         discriminator,
+    #     )
 
-        # Get optimizer parameters - include encoder if trainable
+    #     # Get optimizer parameters - include encoder if trainable
     optimizer_params = list(vae.parameters())
     if args.train_encoder:
         optimizer_params.extend(siglip_encoder.parameters())
@@ -1157,7 +1157,12 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
     
     # Start TPU training
-    xmp.spawn(train_tpu, args=(args,), start_method='spawn')  # 8 TPU cores
+    train_tpu(args)
 
-if __name__ == "__main__":
+def _mp_fn(index):
+    # cache init needs to happens inside the mp_fn.
+    xr.initialize_cache(f'/tmp/xla_cache_{index}', readonly=False)
     main()
+    
+if __name__ == "__main__":
+    torch_xla.launch(_mp_fn, args=())
