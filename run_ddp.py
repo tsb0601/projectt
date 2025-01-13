@@ -787,7 +787,7 @@ def dataparallel_and_sync(model, find_unused_parameters=True):
     xm.mark_step()
     return model
 
-def train_tpu(args):
+def train_tpu(index, args):
     # Setup TPU device and process
     device = xm.xla_device()
     world_size = xm.xrt_world_size()
@@ -1086,7 +1086,7 @@ def calculate_scaled_lr(base_lr: float, base_batch_size: int, current_batch_size
     return scaled_lr
 
 
-def main():
+def main(index):
     parser = argparse.ArgumentParser(description="VAE Training Script for TPU")
     
     # Basic training arguments
@@ -1157,12 +1157,12 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
     
     # Start TPU training
-    train_tpu(args)
+    train_tpu(index, args)
 
 def _mp_fn(index):
     # cache init needs to happens inside the mp_fn.
     xr.initialize_cache(f'/tmp/xla_cache_{index}', readonly=False)
-    main()
+    main(index)
     
 if __name__ == "__main__":
     torch_xla.launch(_mp_fn, args=())
