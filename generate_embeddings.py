@@ -228,7 +228,7 @@ class EmbeddingGenerator:
                             estimated_seconds = remaining_tokens / tokens_per_second if tokens_per_second > 0 else 0
                             eta = datetime.now() + timedelta(seconds=estimated_seconds)
                             
-                            logger.info(
+                            print(
                                 f"Worker {rank}: Processed {total_tokens} tokens "
                                 f"({tokens_per_second:.1f} tokens/sec, "
                                 f"ETA: {eta.strftime('%Y-%m-%d %H:%M:%S')})"
@@ -241,6 +241,13 @@ class EmbeddingGenerator:
                     processed_since_last_update += embeddings_np.shape[0]
             
             logger.info(f"Worker {rank}: Completed. Total tokens: {total_tokens}")
+
+
+
+
+
+
+            
 def main():
     import argparse
     parser = argparse.ArgumentParser()
