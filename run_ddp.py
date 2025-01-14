@@ -1148,11 +1148,6 @@ def main(index):
     
     args = parser.parse_args()
     
-
-
-   
-
-
     args.save_dir = f"ckpt_gcs/tokenizer/{args.run_name}_tpu"
     os.makedirs(args.save_dir, exist_ok=True)
     
