@@ -2,3 +2,5 @@
 /wandb/
 **/__pycache__
 *.pyc
+/cluster_results/
+/cc3m_embeddings/
