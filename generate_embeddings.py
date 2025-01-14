@@ -47,30 +47,18 @@ class WebDatasetAdapter:
         # Create a unique seed for each epoch that's the same across all workers
         seed = 42 + epoch
         
-        # Create dataset pipeline
+        # Create dataset pipeline without max_images limitation
         dataset = (
-            wds.WebDataset(self.urls, shardshuffle=1000)  # Explicitly set shardshuffle
-            .shuffle(5000, seed=seed)  # Large shuffle buffer
+            wds.WebDataset(self.urls, shardshuffle=1000)
+            .shuffle(5000, seed=seed)
             .decode("pil")
             .to_tuple("jpg")
             .map(self.preprocess_sample)
             .batched(self.args.batch_size, collation_fn=self.collate_fn)
         )
         
-        if self.args.max_images:
-            # Calculate max samples for this worker
-            world_size = xm.xrt_world_size()
-            rank = xm.get_ordinal()
-            images_per_worker = self.args.max_images // world_size
-            
-            if rank == world_size - 1:  # Last worker takes remaining images
-                images_per_worker += self.args.max_images % world_size
-            print(f"world_size {world_size}, rank {rank} and estimated images per worker are {images_per_worker}.")
-
-            dataset = dataset.with_length(images_per_worker)
-            print(f"Worker {rank}: Processing up to {images_per_worker} images")
-            
         return dataset
+
     
     def preprocess_sample(self, sample):
         image = sample[0]
@@ -144,7 +132,7 @@ class EmbeddingGenerator:
             model_name="google/siglip-so400m-patch14-384",
             num_tokens=256,
             embedding_dim=1152,
-            use_vq=False,  # We don't need VQ for embedding generation
+            use_vq=False,
             device=self.device,
             trainable=False
         )
@@ -154,7 +142,6 @@ class EmbeddingGenerator:
     def process_batch(self, images):
         """Process a batch of images and return their embeddings"""
         with torch.no_grad():
-            # Forward pass without VQ (will return image_features directly)
             features, _, _, _, _ = self.model(images)
             return features
             
@@ -164,12 +151,15 @@ class EmbeddingGenerator:
         rank = xm.get_ordinal()
         world_size = xm.xrt_world_size()
         
-        # Create output directory if it doesn't exist
-        print("Output path passed in is", output_path)
         os.makedirs(output_path, exist_ok=True)
-        
-        # Create HDF5 file for this worker
         worker_output = os.path.join(output_path, f"worker_{rank}.h5")
+        
+        # Initialize timing metrics
+        import time
+        from datetime import datetime, timedelta
+        start_time = time.time()
+        last_update_time = start_time
+        processed_since_last_update = 0
         
         with h5py.File(worker_output, 'w') as f:
             embeddings_dataset = f.create_dataset(
@@ -182,20 +172,32 @@ class EmbeddingGenerator:
             
             total_tokens = 0
             
+            # Calculate max steps for this worker
+            global_batch_size = self.args.batch_size * world_size
+            max_steps_per_worker = self.args.max_images // global_batch_size
+            if rank == world_size - 1:  # Last worker handles remainder
+                max_steps_per_worker += (self.args.max_images % global_batch_size) // self.args.batch_size
+            
+            logger.info(f"Worker {rank}: Will process {max_steps_per_worker} steps")
+            
             for epoch in range(1):
-                train_loader, num_samples = get_data_loader(
+                train_loader, _ = get_data_loader(
                     rank, world_size, epoch,
                     shard_files, self.model.processor, self.args
                 )
                 
                 for batch_idx, batch in enumerate(tqdm(train_loader, desc=f"Worker {rank}")):
+                    # Stop if we've reached our target number of steps
+                    if batch_idx >= max_steps_per_worker:
+                        logger.info(f"Worker {rank}: Reached target number of steps")
+                        break
+                        
                     images = batch["image"]
                     
                     # Get embeddings (shape: [batch_size, 256, 1152])
                     embeddings = self.process_batch(images)
                     
-                    # Reshape to [batch_size * 256, 1152]
-                    # Convert to float16 before reshaping
+                    # Convert to float16 and reshape
                     embeddings = embeddings.to(torch.float16)
                     embeddings = embeddings.reshape(-1, 1152)
                     
@@ -209,15 +211,36 @@ class EmbeddingGenerator:
                     embeddings_dataset[current_size:new_size] = embeddings_np
                     
                     total_tokens += embeddings_np.shape[0]
-                    
-                    # Sync to make sure XLA operations are complete
                     xm.mark_step()
                     
                     if batch_idx % 100 == 0:
-                        logger.info(f"Worker {rank}: Processed {total_tokens} tokens")
+                        current_time = time.time()
+                        elapsed = current_time - start_time
+                        time_since_last_update = current_time - last_update_time
+                        
+                        # Calculate processing speed (tokens per second)
+                        if time_since_last_update > 0:
+                            tokens_per_second = processed_since_last_update / time_since_last_update
+                            
+                            # Estimate remaining time
+                            remaining_steps = max_steps_per_worker - batch_idx
+                            remaining_tokens = remaining_steps * self.args.batch_size * 256  # 256 tokens per image
+                            estimated_seconds = remaining_tokens / tokens_per_second if tokens_per_second > 0 else 0
+                            eta = datetime.now() + timedelta(seconds=estimated_seconds)
+                            
+                            logger.info(
+                                f"Worker {rank}: Processed {total_tokens} tokens "
+                                f"({tokens_per_second:.1f} tokens/sec, "
+                                f"ETA: {eta.strftime('%Y-%m-%d %H:%M:%S')})"
+                            )
+                            
+                            # Reset counters for next update
+                            last_update_time = current_time
+                            processed_since_last_update = 0
+                        
+                    processed_since_last_update += embeddings_np.shape[0]
             
             logger.info(f"Worker {rank}: Completed. Total tokens: {total_tokens}")
-
 def main():
     import argparse
     parser = argparse.ArgumentParser()
