@@ -77,16 +77,16 @@ class DINOv2Discriminator(nn.Module):
     def __init__(
         self,
         model_name: str = "facebook/dinov2-small",
-        hooks: List[int] = [2, 5, 8, 11],
+        # hooks: List[int] = [2, 5, 8, 11],
         img_size: int = 256,
         use_augment: bool = True
     ):
         super().__init__()
         self.model_name = model_name
-        self.hooks = hooks
+        self.hooks = self._get_hooks_from_name(model_name)
         self.img_size = img_size
         self.use_augment = use_augment
-        self.n_heads = len(hooks)
+        self.n_heads = len(self.hooks)
         
         # Load DINOv2
         self.backbone = AutoModel.from_pretrained(model_name)
@@ -121,7 +121,7 @@ class DINOv2Discriminator(nn.Module):
         """Apply DiffAugment to input images during training"""
         if self.training and self.use_augment:
             # DiffAugment expects input in range [-1, 1]
-            if x.min() < -1 or x.max() > 1:
+            if x.min() >= 0 and x.max() <= 1:
                 x = (x * 2) - 1
             x = DiffAugment(x, policy='color,translation,cutout', channels_first=True)
         return x
@@ -137,6 +137,21 @@ class DINOv2Discriminator(nn.Module):
         self.backbone(x)
             
         return self.features
+
+
+    def _get_hooks_from_name(self, model_name: str) -> List[int]:
+        """Return appropriate hook indices based on model name"""
+        # Extract size from model name (e.g., 'facebook/dinov2-small' -> 'small')
+        size = model_name.split('-')[-1].lower()
+        
+        if size in ['small', 'base']:
+            return [2, 5, 8, 11]  # 12 layers
+        elif size == 'large':
+            return [5, 11, 17, 23]  # 24 layers
+        elif size == 'giant':
+            return [9, 19, 29, 39]  # 40 layers
+        else:
+            raise ValueError(f"Unknown DINOv2 model size: {size}")
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Apply augmentation

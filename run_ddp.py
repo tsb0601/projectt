@@ -366,11 +366,14 @@ def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, che
 
     # If using a discriminator, load it too
     if discriminator is not None and d_optimizer is not None:
-        d_path = checkpoint_path.replace('checkpoint', 'discriminator')
-        if os.path.exists(d_path):
-            d_checkpoint = torch.load(d_path, map_location='cpu')
-            discriminator.load_state_dict(d_checkpoint['model_state_dict'])
-            d_optimizer.load_state_dict(d_checkpoint['optimizer_state_dict'])
+        try:
+            d_path = checkpoint_path.replace('checkpoint', 'discriminator')
+            if os.path.exists(d_path):
+                d_checkpoint = torch.load(d_path, map_location='cpu')
+                discriminator.load_state_dict(d_checkpoint['model_state_dict'])
+                d_optimizer.load_state_dict(d_checkpoint['optimizer_state_dict'])
+        except:
+            print("didn't find matched discriminator")
 
     # Final sync
     xm.rendezvous('post_load')
