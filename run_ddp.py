@@ -907,7 +907,7 @@ def train_tpu(index, args):
     if args.use_gan:
         d_optimizer = torch.optim.AdamW(
             discriminator.parameters(),
-            lr=scaled_lr/10,
+            lr=scaled_lr/args.disc_lr,
             betas=(0.0, 0.99)
         )
     
@@ -1111,7 +1111,7 @@ def main(index):
     parser.add_argument("--gan_start_steps", type=int, default=20000, help="Start GAN training after n steps")
     parser.add_argument("--gan_rampup_steps", type=int, default=100000, help="Steps to ramp up GAN weight")
     parser.add_argument("--gan_weight", type=float, default=1.0, help="Weight for GAN loss")
-    parser.add_argument("--disc_lr", type=float, default=1e-5, help="Discriminator learning rate")
+    parser.add_argument("--disc_lr", type=float, default=10, help="Discriminator learning rate")
     parser.add_argument("--d_reg_every", type=int, default=2, help="Discriminator regularization every n steps")
     parser.add_argument("--r1_weight", type=float, default=10, help="Weight for R1 regularization")
     parser.add_argument("--dino_size", type=str, default="small", choices=["small", "base", "large", "giant"])

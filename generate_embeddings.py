@@ -57,8 +57,18 @@ class WebDatasetAdapter:
             .batched(self.args.batch_size, collation_fn=self.collate_fn)
         )
         
-        if self.num_samples is not None:
-            dataset = dataset.with_length(self.num_samples)
+        if self.args.max_images:
+            # Calculate max samples for this worker
+            world_size = xm.xrt_world_size()
+            rank = xm.get_ordinal()
+            images_per_worker = self.args.max_images // world_size
+            
+            if rank == world_size - 1:  # Last worker takes remaining images
+                images_per_worker += self.args.max_images % world_size
+            print(f"world_size {world_size}, rank {rank} and estimated images per worker are {images_per_worker}.")
+
+            dataset = dataset.with_length(images_per_worker)
+            print(f"Worker {rank}: Processing up to {images_per_worker} images")
             
         return dataset
     
@@ -166,7 +176,7 @@ class EmbeddingGenerator:
                 'embeddings',
                 shape=(0, 1152),
                 maxshape=(None, 1152),
-                dtype='float32',
+                dtype='float16',
                 chunks=(1000, 1152)
             )
             
@@ -185,6 +195,8 @@ class EmbeddingGenerator:
                     embeddings = self.process_batch(images)
                     
                     # Reshape to [batch_size * 256, 1152]
+                    # Convert to float16 before reshaping
+                    embeddings = embeddings.to(torch.float16)
                     embeddings = embeddings.reshape(-1, 1152)
                     
                     # Move to CPU and convert to numpy
@@ -213,10 +225,14 @@ def main():
     parser.add_argument('--output_path', type=str, default="cc3m_embeddings")
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--max_images', type=int, default=50000, help='Maximum number of images to process')
     parser.add_argument('--resolution', type=int, default=384)
     args = parser.parse_args()
     
     # Initialize embedding generator
+    if xm.get_ordinal() == 0:
+        print(f"Starting embedding generation for {args.max_images} images")
+        print(f"Estimated storage (fp16): {args.max_images * 256 * 1152 * 2 / (1024**3):.2f} GB")
     generator = EmbeddingGenerator(args)
     
     # Generate and save embeddings
