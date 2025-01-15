@@ -1146,6 +1146,13 @@ def main(index):
     parser.add_argument('--timeout', type=int, default=120, help='time limit (s) to wait for other nodes in DDP')
     parser.add_argument('--seed', type=int, default=41)
 
+
+    parser.add_argument("--eval_freq", type=int, default=1000, help="Run RFID evaluation every n steps")
+    parser.add_argument("--fid_gt_act_path", type=str, default="ckpt_gcs/tokenizer/acts/val_256_act.npz", 
+                        help="Path to pre-computed inception features")
+    parser.add_argument("--imagenet_val_path", type=str, default="/mnt/disks/boyang/datasets/ImageNet/val",
+                        help="Path to ImageNet validation set")
+
     # Add VQ arguments
     add_vq_args(parser)
     
