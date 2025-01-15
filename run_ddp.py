@@ -502,12 +502,27 @@ def get_scheduler_lambda(total_steps=500000):
 import glob  # Add this at the top with other imports
 
 def get_latest_checkpoint(save_dir):
-    """Find the latest checkpoint in the save directory"""
+    """
+    Find the latest checkpoint in the save directory.
+    Returns tuple of (checkpoint_path, step_number).
+    """
     checkpoints = glob.glob(f"{save_dir}/checkpoint_step_*.pt")
     if not checkpoints:
-        return None
-    latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
-    return latest_checkpoint
+        return None, -1
+        
+    # Get step numbers for all checkpoints
+    checkpoint_steps = [(ckpt, extract_step_from_checkpoint(ckpt)) for ckpt in checkpoints]
+    # Filter out any checkpoints where we couldn't parse the step number
+    valid_checkpoints = [(ckpt, step) for ckpt, step in checkpoint_steps if step >= 0]
+    
+    if not valid_checkpoints:
+        return None, -1
+        
+    # Find checkpoint with highest step number
+    latest_checkpoint, latest_step = max(valid_checkpoints, key=lambda x: x[1])
+    return latest_checkpoint, latest_step
+
+
 
 def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, global_step, path, epoch, siglip_encoder):
     xm.rendezvous('pre_save')
@@ -579,12 +594,48 @@ def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, che
     return global_step, epoch
 
 
-def get_latest_checkpoint(save_dir):
-    checkpoints = glob.glob(f"{save_dir}/checkpoint_step_*.pt")
-    if not checkpoints:
-        return None
-    latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
-    return latest_checkpoint
+# def get_latest_checkpoint(save_dir):
+#     checkpoints = glob.glob(f"{save_dir}/checkpoint_step_*.pt")
+#     if not checkpoints:
+#         return None
+#     latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+#     return latest_checkpoint
+
+
+
+def determine_checkpoint_to_load(save_dir, specified_checkpoint=None, rank=0):
+   
+    """
+    Determine which checkpoint to load based on latest checkpoint and specified checkpoint.
+    
+    Args:
+        save_dir: Directory where checkpoints are saved
+        specified_checkpoint: Optional specific checkpoint path to consider
+    
+    Returns:
+        tuple: (checkpoint_path_to_use, step_number)
+    """
+    # Get latest checkpoint and its step
+    latest_checkpoint, latest_step = get_latest_checkpoint(save_dir)
+    
+    # If no checkpoint specified, use latest
+    if not specified_checkpoint:
+        return latest_checkpoint, latest_step
+        
+    # Get step number from specified checkpoint
+    specified_step = extract_step_from_checkpoint(specified_checkpoint)
+    
+    # If we can't parse the specified checkpoint step, use it anyway
+    if specified_step < 0:
+        return specified_checkpoint, specified_step
+        
+    # If latest step is higher than specified, use latest
+    if latest_step > specified_step:
+        return latest_checkpoint, latest_step
+        
+    # Otherwise use specified checkpoint
+    return specified_checkpoint, specified_step
+
 
 class WebDatasetAdapter:
     def __init__(self, urls, siglip_processor, args, num_samples=None):
@@ -989,6 +1040,16 @@ def dataparallel_and_sync(model, find_unused_parameters=True):
     return model
 
 
+def extract_step_from_checkpoint(checkpoint_path):
+    """Extract step number from checkpoint path."""
+    try:
+        # Extract the step number from checkpoint path format "checkpoint_step_{step}.pt"
+        step = int(checkpoint_path.split('checkpoint_step_')[-1].split('.pt')[0])
+        return step
+    except (ValueError, IndexError):
+        return -1  # Return -1 if we can't parse the step number
+
+
 
 def train_tpu(index, args):
     # Setup TPU device and process
@@ -1146,10 +1207,13 @@ def train_tpu(index, args):
     
     # Load checkpoint if exists
     if args.resume or args.checkpoint_path:
-        checkpoint_path = args.checkpoint_path or get_latest_checkpoint(args.save_dir)
-        if checkpoint_path:
-            if xm.get_ordinal() == 0:
-                logger.info(f"Resuming from checkpoint: {checkpoint_path}")
+        checkpoint_to_load, step = determine_checkpoint_to_load(
+            args.save_dir,
+            args.checkpoint_path,
+            rank=xm.get_ordinal()
+        )
+
+        if checkpoint_to_load:
                 
             # Load both VAE and discriminator (if using GAN) in a synchronized way
             state.global_step, state.epoch = load_checkpoint(
@@ -1158,9 +1222,12 @@ def train_tpu(index, args):
                 optimizer=optimizer,
                 d_optimizer=d_optimizer if args.use_gan else None,
                 scheduler=scheduler,
-                checkpoint_path=checkpoint_path, 
+                checkpoint_path=checkpoint_to_load, 
                 siglip_encoder=siglip_encoder
             )
+        else:
+            if xm.get_ordinal() == 0:
+                logger.warning("No checkpoint found to resume from")
         
     # Models and optimizers bundles
     models = (vae, discriminator, siglip_encoder, lpips_loss)
