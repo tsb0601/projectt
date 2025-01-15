@@ -52,14 +52,212 @@ from rqvae.models.tokenizer.discriminator import create_dinov2_discriminator
 # from rqvae.models.tokenizer.quantizer import CodebookAnalyzer
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
 from pathlib import Path
+from rqvae.metrics.fid import InceptionWrapper, frechet_distance, Inception_Score, InceptionV3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
 
+from torch.utils.data import DataLoader, DistributedSampler
+import torchvision.transforms as transforms
+from torchvision.datasets import ImageNet
+from typing import Optional, Tuple
+import numpy as np
+from tqdm import tqdm
+from torchvision import datasets
+
+def create_inception_transform():
+    """Create transform for inception model input"""
+    return transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    ])
+class SigLIPTransform:
+    def __init__(self, processor):
+        self.processor = processor
+        
+    def __call__(self, image):
+        return self.processor(images=image, return_tensors="pt").pixel_values.squeeze(0)
 
 
+
+def setup_val_loader(
+    val_root: str = '/mnt/disks/boyang/datasets/ImageNet/',
+    batch_size: int = 128,
+    num_workers: int = 4,
+    device = None,
+    siglip_processor = None
+) -> Tuple[DataLoader, InceptionWrapper]:
+    """
+    Sets up validation loader using SigLIP processor
+    """
+    if device is None:
+        device = xm.xla_device()
+    
+
+    
+    # Create validation dataset using SigLIP processor
+    val_dataset = datasets.ImageFolder(
+        root=os.path.join(val_root, 'val'),
+        transform=SigLIPTransform(siglip_processor)
+    )
+    
+    # Setup distributed sampler
+    val_sampler = DistributedSampler(
+        val_dataset,
+        num_replicas=xm.xrt_world_size(),
+        rank=xm.get_ordinal(),
+        shuffle=False
+    )
+    
+    # Create basic loader
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        sampler=val_sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=False
+    )
+    
+    # Wrap for TPU
+    val_loader = ParallelLoader(
+        val_loader, 
+        [device]
+    ).per_device_loader(device)
+    
+    # Setup inception model
+    inception_model = InceptionWrapper(
+        [InceptionV3.BLOCK_INDEX_BY_DIM[2048]]
+    ).to(device)
+    inception_model.eval()
+    
+    return val_loader, inception_model
+
+def compute_rfid_and_is(
+    vae,
+    siglip_encoder,
+    val_loader,
+    inception_model,
+    device=None,
+    fid_gt_act=None
+):
+    """
+    Compute both RFID score and Inception Score using all TPU cores
+    """
+    if device is None:
+        device = xm.xla_device()
+        
+    inception_acts = []
+    inception_logits = []  # For IS score
+    
+    # All ranks: compute inception features
+    with torch.no_grad():
+        pbar = tqdm(val_loader, desc="Computing RFID/IS", disable=not xm.is_master_ordinal())
+        # counter = 0
+        for siglip_images, _ in pbar:
+            # print("11111111111")
+            siglip_images = siglip_images.to(device)
+            # print("222222222")
+            # Get reconstructions through SigLIP-VAE pipeline
+            quantized, _, _, _, _ = siglip_encoder(siglip_images)
+            recon_images = vae(quantized)
+            # print("333333333333")
+            # Convert to float32 for consistent processing
+            recon_images = recon_images.detach().clone().float()
+            # print("44444444444444")
+            # Efficient conversion to uint8 and back
+            recon_np = tensor_image_to_numpy(recon_images)
+            recon_processed = torch.from_numpy(recon_np).to(torch.float32).to(device) / 255.
+            recon_processed = recon_processed.permute(0, 3, 1, 2)  # BHWC -> BCHW
+            # print("5555555555555")
+            # Get inception features and logits
+            incep_act, incep_logits = inception_model.get_logits(recon_processed)
+            inception_acts.append(incep_act)
+            inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
+            # print("666666666666")
+            xm.mark_step()
+
+            # counter += 1
+            # if counter ==3:
+            #     break
+    
+    # print("111111111111111")
+    # Gather and concatenate all features
+    inception_acts = torch.cat(inception_acts, dim=0)
+    inception_acts = xm.all_gather(inception_acts, pin_layout=True)
+    # print("2222222222222")
+    inception_logits = torch.cat(inception_logits, dim=0)
+    inception_logits = xm.all_gather(inception_logits, pin_layout=True)
+    # print("333333333333")
+    # Only master computes final scores
+    # if xm.is_master_ordinal():
+    
+    # print("444444444444")
+
+    inception_acts = inception_acts.cpu().numpy()
+    inception_logits = inception_logits.cpu().float()
+    
+    # Compute FID statistics
+    mu = np.mean(inception_acts, axis=0)
+    sigma = np.cov(inception_acts, rowvar=False)
+    
+    mu_gt = np.mean(fid_gt_act, axis=0)
+    sigma_gt = np.cov(fid_gt_act, rowvar=False)
+
+    # print("55555555555")
+
+    # Calculate FID
+    fid = frechet_distance(mu_gt, sigma_gt, mu, sigma)
+
+    
+    print(f"FID score is {fid}")
+    # print("66666666666666")
+
+    # # Calculate IS
+    # scores = []
+    # splits = 10  # Number of splits for IS computation
+    # split_size = inception_logits.shape[0] // splits
+    
+    # for k in range(splits):
+    #     part = inception_logits[k * split_size: (k + 1) * split_size]
+    #     kl = part * (np.log(part) - np.log(np.expand_dims(np.mean(part, axis=0), 0)))
+    #     kl = np.mean(np.sum(kl, axis=1))
+    #     scores.append(np.exp(kl))
+        
+    # is_score = np.mean(scores)
+    # is_std = np.std(scores)
+    # print("77777777777777")
+
+    IS_value, IS_std = Inception_Score(inception_logits)
+
+    # print("IS 2:", IS_value)
+    # print("IS std 2:", IS_std)
+    print(f"IS Score is {IS_value}")
+    
+
+    return fid, IS_value, IS_std
+
+    # return None
+
+def tensor_image_to_numpy(tensor_im: torch.Tensor) -> np.ndarray:
+    """
+    Convert tensor image in range [-1, 1] to numpy array in range [0, 255]
+    """
+    len_shape = len(tensor_im.shape)
+    if len_shape == 3:
+        tensor_im = tensor_im.unsqueeze(0)
+    # Direct conversion from [-1, 1] to [0, 255]
+    tensor_im = torch.clamp(tensor_im * 127.5 + 128, 0, 255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy()
+    if len_shape == 3:
+        tensor_im = tensor_im.squeeze(0)
+    return tensor_im
 
 
 class ShardedTFRecordDataset(IterableDataset):
@@ -790,6 +988,8 @@ def dataparallel_and_sync(model, find_unused_parameters=True):
     xm.mark_step()
     return model
 
+
+
 def train_tpu(index, args):
     # Setup TPU device and process
     device = xm.xla_device()
@@ -913,6 +1113,14 @@ def train_tpu(index, args):
             lr=scaled_lr/args.disc_lr,
             betas=(0.0, 0.99)
         )
+
+
+    
+    val_loader, inception_model = setup_val_loader(
+        siglip_processor=siglip_encoder.processor,  # Add this line
+        device=device
+    )
+    fid_gt_act = np.load(args.fid_gt_act_path)['act']
     
 
        
@@ -968,6 +1176,11 @@ def train_tpu(index, args):
         for batch in train_loader:
             if state.global_step >= args.max_steps:
                 break
+
+
+                    # In training loop where we process batches
+          
+
 
             # Update encoder freeze status if using progressive unfreezing
             if args.progressive_unfreeze:
@@ -1027,7 +1240,9 @@ def train_tpu(index, args):
 
             # print("4444444444444")
             # Checkpointing
+            # if (state.global_step+1) % args.save_step == 0:
             if (state.global_step+1) % args.save_step == 0:
+            
                 print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
 
                 save_checkpoint(
@@ -1037,7 +1252,33 @@ def train_tpu(index, args):
                     state.epoch, 
                     siglip_encoder
                 )
+            if (state.global_step+1) % args.eval_freq == 0:
                 
+                print("Started online eval")
+                rfid, is_score, is_std = compute_rfid_and_is(
+                    vae=vae,
+                    siglip_encoder=siglip_encoder,
+                    val_loader=val_loader,
+                    inception_model=inception_model,
+                    device=device,
+                    fid_gt_act=fid_gt_act
+                )
+                
+                # Only master logs
+                if xm.is_master_ordinal():
+                    wandb.log({
+                        "metrics/rfid": rfid,
+                        "metrics/is_score": is_score,
+                        "metrics/is_std": is_std,
+                        "global_step": state.global_step
+                    })
+                
+                # Make sure all ranks sync up after evaluation
+                xm.rendezvous("rfid_eval")
+                print("Finished online eval")
+
+
+    
             # print("55555555555")
             state.global_step += 1
             xm.mark_step()
