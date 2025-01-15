@@ -1241,17 +1241,6 @@ def train_tpu(index, args):
             # print("4444444444444")
             # Checkpointing
             # if (state.global_step+1) % args.save_step == 0:
-            if (state.global_step+1) % args.save_step == 0:
-            
-                print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
-
-                save_checkpoint(
-                    vae, discriminator, optimizer, d_optimizer, scheduler,
-                    state.global_step,
-                    f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
-                    state.epoch, 
-                    siglip_encoder
-                )
 
 
             if (state.global_step+1) % args.eval_freq == 0:
@@ -1283,6 +1272,19 @@ def train_tpu(index, args):
     
             # print("55555555555")
             state.global_step += 1
+
+            if (state.global_step+1) % args.save_step == 0:
+            
+                print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
+
+                save_checkpoint(
+                    vae, discriminator, optimizer, d_optimizer, scheduler,
+                    state.global_step,
+                    f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
+                    state.epoch, 
+                    siglip_encoder
+                )
+
             xm.mark_step()
         
         state.epoch += 1
