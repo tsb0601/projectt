@@ -3,4 +3,5 @@
 **/__pycache__
 *.pyc
 /cluster_results/
-/cc3m_embeddings/
+/cc3m_embeddings/tmp/
+cc3m_embeddings/
