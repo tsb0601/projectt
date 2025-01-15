@@ -1252,6 +1252,8 @@ def train_tpu(index, args):
                     state.epoch, 
                     siglip_encoder
                 )
+
+
             if (state.global_step+1) % args.eval_freq == 0:
                 
                 print("Started online eval")
@@ -1274,7 +1276,7 @@ def train_tpu(index, args):
                     })
                 
                 # Make sure all ranks sync up after evaluation
-                xm.rendezvous("rfid_eval")
+                # xm.rendezvous("rfid_eval")
                 print("Finished online eval")
 
 
