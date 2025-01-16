@@ -93,7 +93,7 @@ def setup_val_loader(
     num_workers: int = 4,
     device = None,
     siglip_processor = None
-) -> Tuple[DataLoader, InceptionWrapper]:
+):
     """
     Sets up validation loader using SigLIP processor
     """
@@ -132,13 +132,29 @@ def setup_val_loader(
         [device]
     ).per_device_loader(device)
     
+
+    
+    return val_loader
+
+
+
+def setup_incetpion_model():
+    """
+    Sets up validation loader using SigLIP processor
+    """
+    
+    device = xm.xla_device()
+    
     # Setup inception model
     inception_model = InceptionWrapper(
         [InceptionV3.BLOCK_INDEX_BY_DIM[2048]]
     ).to(device)
     inception_model.eval()
     
-    return val_loader, inception_model
+    return inception_model
+
+
+
 
 def compute_rfid_and_is(
     vae,
@@ -1177,12 +1193,10 @@ def train_tpu(index, args):
 
 
     
-    val_loader, inception_model = setup_val_loader(
-        siglip_processor=siglip_encoder.processor,  # Add this line
-        device=device
-    )
+
     fid_gt_act = np.load(args.fid_gt_act_path)['act']
     
+    inception_model = setup_incetpion_model()
 
        
     
@@ -1313,6 +1327,12 @@ def train_tpu(index, args):
             if (state.global_step+1) % args.eval_freq == 0:
                 
                 print("Started online eval")
+                val_loader = setup_val_loader(
+                    siglip_processor=siglip_encoder.processor,  # Add this line
+                    device=device
+                )
+                print("Got my loader!")
+
                 rfid, is_score, is_std = compute_rfid_and_is(
                     vae=vae,
                     siglip_encoder=siglip_encoder,
