@@ -189,12 +189,12 @@ def compute_rfid_and_is(
             recon_images = recon_images.detach().clone().float()
             # print("44444444444444")
             # Efficient conversion to uint8 and back
-            recon_np = tensor_image_to_numpy(recon_images)
-            recon_processed = torch.from_numpy(recon_np).to(torch.float32).to(device) / 255.
-            recon_processed = recon_processed.permute(0, 3, 1, 2)  # BHWC -> BCHW
+            # recon_np = tensor_image_to_numpy(recon_images)
+            # recon_processed = torch.from_numpy(recon_np).to(torch.float32).to(device) / 255.
+            # recon_processed = recon_processed.permute(0, 3, 1, 2)  # BHWC -> BCHW
             # print("5555555555555")
             # Get inception features and logits
-            incep_act, incep_logits = inception_model.get_logits(recon_processed)
+            incep_act, incep_logits = inception_model.get_logits(recon_images)
             inception_acts.append(incep_act)
             inception_logits.append(torch.nn.functional.softmax(incep_logits, dim=-1))
             # print("666666666666")
@@ -1480,7 +1480,7 @@ def main(index):
 
 
     parser.add_argument("--eval_freq", type=int, default=1000, help="Run RFID evaluation every n steps")
-    parser.add_argument("--fid_gt_act_path", type=str, default="ckpt_gcs/tokenizer/acts/val_256_act.npz", 
+    parser.add_argument("--fid_gt_act_path", type=str, default="val_256_act_norm.npz", 
                         help="Path to pre-computed inception features")
     parser.add_argument("--imagenet_val_path", type=str, default="/mnt/disks/boyang/datasets/ImageNet/val",
                         help="Path to ImageNet validation set")
