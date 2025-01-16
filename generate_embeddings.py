@@ -14,6 +14,7 @@ from torchvision import transforms
 from PIL import Image
 import webdataset as wds
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
+import torch_xla.runtime as xr
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
         end_shard = num_shards
     
     worker_urls = urls[start_shard:end_shard]
+    # print("Woker url is", worker_urls)
     logger.info(f"Worker {rank}: Processing {len(worker_urls)} shards")
     
     # Estimate number of samples
@@ -152,7 +154,6 @@ class EmbeddingGenerator:
         world_size = xm.xrt_world_size()
         
         os.makedirs(output_path, exist_ok=True)
-        worker_output = os.path.join(output_path, f"worker_{rank}.h5")
         
         # Initialize timing metrics
         import time
@@ -161,91 +162,113 @@ class EmbeddingGenerator:
         last_update_time = start_time
         processed_since_last_update = 0
         
-        with h5py.File(worker_output, 'w') as f:
-            embeddings_dataset = f.create_dataset(
-                'embeddings',
-                shape=(0, 1152),
-                maxshape=(None, 1152),
-                dtype='float16',
-                chunks=(1000, 1152)
+        # Calculate max steps for this worker
+        global_batch_size = self.args.batch_size * world_size
+        max_steps_per_worker = self.args.max_images // global_batch_size
+        if rank == world_size - 1:  # Last worker handles remainder
+            max_steps_per_worker += (self.args.max_images % global_batch_size) // self.args.batch_size
+        
+        logger.info(f"Worker {rank}: Will process {max_steps_per_worker} steps")
+        
+        # List to store embeddings for this worker
+        all_embeddings = []
+        
+        for epoch in range(1):
+            train_loader, _ = get_data_loader(
+                rank, world_size, epoch,
+                shard_files, self.model.processor, self.args
             )
             
-            total_tokens = 0
-            
-            # Calculate max steps for this worker
-            global_batch_size = self.args.batch_size * world_size
-            max_steps_per_worker = self.args.max_images // global_batch_size
-            if rank == world_size - 1:  # Last worker handles remainder
-                max_steps_per_worker += (self.args.max_images % global_batch_size) // self.args.batch_size
-            
-            logger.info(f"Worker {rank}: Will process {max_steps_per_worker} steps")
-            
-            for epoch in range(1):
-                train_loader, _ = get_data_loader(
-                    rank, world_size, epoch,
-                    shard_files, self.model.processor, self.args
+            for batch_idx, batch in enumerate(tqdm(train_loader, desc=f"Worker {rank}")):
+                if batch_idx >= max_steps_per_worker:
+                    logger.info(f"Worker {rank}: Reached target number of steps")
+                    break
+                    
+                images = batch["image"]
+                
+                # Get embeddings (shape: [batch_size, 256, 1152])
+                embeddings = self.process_batch(images)
+                
+                # Convert to float16 and reshape
+                embeddings = embeddings.to(torch.float16)
+                embeddings = embeddings.reshape(-1, 1152)
+                
+                # Collect embeddings
+                all_embeddings.append(embeddings)
+                
+                # Log progress
+                if batch_idx % 100 == 0:
+                    current_time = time.time()
+                    time_since_last_update = current_time - last_update_time
+                    if time_since_last_update > 0:
+                        tokens_processed = len(all_embeddings) * self.args.batch_size * 256
+                        tokens_per_second = processed_since_last_update / time_since_last_update
+                        remaining_steps = max_steps_per_worker - batch_idx
+                        remaining_tokens = remaining_steps * self.args.batch_size * 256
+                        estimated_seconds = remaining_tokens / tokens_per_second if tokens_per_second > 0 else 0
+                        eta = datetime.now() + timedelta(seconds=estimated_seconds)
+                        
+                        print(
+                            f"Worker {rank}: Processed {tokens_processed} tokens "
+                            f"({tokens_per_second:.1f} tokens/sec, "
+                            f"ETA: {eta.strftime('%Y-%m-%d %H:%M:%S')})"
+                        )
+                        
+                        last_update_time = current_time
+                        processed_since_last_update = 0
+                
+                xm.mark_step()
+                processed_since_last_update += embeddings.shape[0]
+        
+        # Concatenate all embeddings from this worker
+        local_embeddings = torch.cat(all_embeddings, dim=0)
+        
+        # All-gather embeddings from all workers
+        gathered_embeddings = xm.all_gather(local_embeddings)
+
+        print("Gathered embedding shape is", gathered_embeddings.shape)
+        
+        
+        chunk_size = 20000  
+    
+        # Save on master only
+        if rank == 0:
+            # Create the HDF5 file and dataset
+            with h5py.File(os.path.join(output_path, 'embeddings.h5'), 'w') as f:
+                # Create dataset with final size but don't write data yet
+                dset = f.create_dataset(
+                    'embeddings',
+                    shape=gathered_embeddings.shape,
+                    dtype='float16',
+                    chunks=(1000, 1152)
                 )
                 
-                for batch_idx, batch in enumerate(tqdm(train_loader, desc=f"Worker {rank}")):
-                    # Stop if we've reached our target number of steps
-                    if batch_idx >= max_steps_per_worker:
-                        logger.info(f"Worker {rank}: Reached target number of steps")
-                        break
-                        
-                    images = batch["image"]
+                # Process in chunks
+                for start_idx in range(0, gathered_embeddings.shape[0], chunk_size):
+                    end_idx = min(start_idx + chunk_size, gathered_embeddings.shape[0])
                     
-                    # Get embeddings (shape: [batch_size, 256, 1152])
-                    embeddings = self.process_batch(images)
+                    # Process chunk
+                    chunk = gathered_embeddings[start_idx:end_idx]
+                    chunk_np = chunk.cpu().numpy()
                     
-                    # Convert to float16 and reshape
-                    embeddings = embeddings.to(torch.float16)
-                    embeddings = embeddings.reshape(-1, 1152)
+                    # Write chunk to file
+                    dset[start_idx:end_idx] = chunk_np
                     
-                    # Move to CPU and convert to numpy
-                    embeddings_np = embeddings.cpu().numpy()
+                    logger.info(f"Master: Processed chunk {start_idx//chunk_size + 1}")
                     
-                    # Resize dataset and add new embeddings
-                    current_size = embeddings_dataset.shape[0]
-                    new_size = current_size + embeddings_np.shape[0]
-                    embeddings_dataset.resize(new_size, axis=0)
-                    embeddings_dataset[current_size:new_size] = embeddings_np
-                    
-                    total_tokens += embeddings_np.shape[0]
+                    # Force garbage collection after each chunk
+                    import gc
+                    del chunk
+                    del chunk_np
+                    gc.collect()
                     xm.mark_step()
-                    
-                    if batch_idx % 100 == 0:
-                        current_time = time.time()
-                        elapsed = current_time - start_time
-                        time_since_last_update = current_time - last_update_time
-                        
-                        # Calculate processing speed (tokens per second)
-                        if time_since_last_update > 0:
-                            tokens_per_second = processed_since_last_update / time_since_last_update
-                            
-                            # Estimate remaining time
-                            remaining_steps = max_steps_per_worker - batch_idx
-                            remaining_tokens = remaining_steps * self.args.batch_size * 256  # 256 tokens per image
-                            estimated_seconds = remaining_tokens / tokens_per_second if tokens_per_second > 0 else 0
-                            eta = datetime.now() + timedelta(seconds=estimated_seconds)
-                            
-                            print(
-                                f"Worker {rank}: Processed {total_tokens} tokens "
-                                f"({tokens_per_second:.1f} tokens/sec, "
-                                f"ETA: {eta.strftime('%Y-%m-%d %H:%M:%S')})"
-                            )
-                            
-                            # Reset counters for next update
-                            last_update_time = current_time
-                            processed_since_last_update = 0
-                        
-                    processed_since_last_update += embeddings_np.shape[0]
-            
-            logger.info(f"Worker {rank}: Completed. Total tokens: {total_tokens}")
+                
+                logger.info(f"Master: Saved embeddings with shape {gathered_embeddings.shape}")
+        
+        # Make sure all workers sync up
+        xm.rendezvous('save_complete')
 
-
-
-
-
+        logger.info(f"Worker {rank}: Processing complete")
 
             
 def main():
@@ -274,5 +297,11 @@ def main():
     if xm.get_ordinal() == 0:
         logger.info("Embedding generation complete for all workers")
 
-if __name__ == "__main__":
+def _mp_fn(index):
+    # cache init needs to happens inside the mp_fn.
+    xr.initialize_cache(f'/tmp/xla_cache_{index}', readonly=False)
     main()
+    
+
+if __name__ == "__main__":
+    torch_xla.launch(_mp_fn, args=())  # Launches multiple TPU processes
