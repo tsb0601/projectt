@@ -1323,7 +1323,7 @@ def train_tpu(index, args):
                 )
                 
                 # Only master logs
-                if xm.is_master_ordinal():
+                if xm.get_ordinal() == 0:
                     wandb.log({
                         "metrics/rfid": rfid,
                         "metrics/is_score": is_score,
