@@ -124,7 +124,7 @@ def setup_val_loader(
         num_workers=num_workers,
         pin_memory=True,
         # Need to try this
-        drop_last=False
+        drop_last=True
     )
     
     # Wrap for TPU
