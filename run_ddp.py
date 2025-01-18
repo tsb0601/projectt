@@ -123,7 +123,8 @@ def setup_val_loader(
         sampler=val_sampler,
         num_workers=num_workers,
         pin_memory=True,
-        drop_last=False
+        # Need to try this
+        drop_last=True
     )
     
     # Wrap for TPU
@@ -200,26 +201,19 @@ def compute_rfid_and_is(
             # print("666666666666")
             xm.mark_step()
 
-            # counter += 1
-            # if counter ==3:
-            #     break
-    
-    # print("111111111111111")
-    # Gather and concatenate all features
+    xm.rendezvous("end_of_eval_loop")
+
     inception_acts = torch.cat(inception_acts, dim=0)
     inception_acts = xm.all_gather(inception_acts, pin_layout=True)
     # print("2222222222222")
     inception_logits = torch.cat(inception_logits, dim=0)
     inception_logits = xm.all_gather(inception_logits, pin_layout=True)
-    # print("333333333333")
-    # Only master computes final scores
-    # if xm.is_master_ordinal():
-    
-    # print("444444444444")
 
     inception_acts = inception_acts.cpu().numpy()
     inception_logits = inception_logits.cpu().float()
-    
+
+    xm.rendezvous("post_gather")
+
     # Compute FID statistics
     mu = np.mean(inception_acts, axis=0)
     sigma = np.cov(inception_acts, rowvar=False)
@@ -234,27 +228,9 @@ def compute_rfid_and_is(
 
     
     print(f"FID score is {fid}")
-    # print("66666666666666")
-
-    # # Calculate IS
-    # scores = []
-    # splits = 10  # Number of splits for IS computation
-    # split_size = inception_logits.shape[0] // splits
-    
-    # for k in range(splits):
-    #     part = inception_logits[k * split_size: (k + 1) * split_size]
-    #     kl = part * (np.log(part) - np.log(np.expand_dims(np.mean(part, axis=0), 0)))
-    #     kl = np.mean(np.sum(kl, axis=1))
-    #     scores.append(np.exp(kl))
-        
-    # is_score = np.mean(scores)
-    # is_std = np.std(scores)
-    # print("77777777777777")
-
+  
     IS_value, IS_std = Inception_Score(inception_logits)
 
-    # print("IS 2:", IS_value)
-    # print("IS std 2:", IS_std)
     print(f"IS Score is {IS_value}")
     
 
@@ -1199,8 +1175,6 @@ def train_tpu(index, args):
     inception_model = setup_incetpion_model()
 
        
-    
-
 
 
     # Initialize schedulers
@@ -1325,7 +1299,9 @@ def train_tpu(index, args):
 
 
             if (state.global_step+1) % args.eval_freq == 0:
-                
+
+            # if (state.global_step) % args.eval_freq == 0:
+
                 print("Started online eval")
                 val_loader = setup_val_loader(
                     siglip_processor=siglip_encoder.processor,  # Add this line
@@ -1355,12 +1331,10 @@ def train_tpu(index, args):
                 # xm.rendezvous("rfid_eval")
                 print("Finished online eval")
 
-
-    
-            # print("55555555555")
             state.global_step += 1
 
             if (state.global_step+1) % args.save_step == 0:
+            # if (state.global_step) % args.save_step == 0:
             
                 print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
 
