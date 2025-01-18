@@ -124,7 +124,7 @@ def setup_val_loader(
         num_workers=num_workers,
         pin_memory=True,
         # Need to try this
-        drop_last=True
+        drop_last=False
     )
     
     # Wrap for TPU
@@ -201,7 +201,10 @@ def compute_rfid_and_is(
             # print("666666666666")
             xm.mark_step()
 
+    print("before end of eval loop")
     xm.rendezvous("end_of_eval_loop")
+    print("after end of eval loop")
+
 
     inception_acts = torch.cat(inception_acts, dim=0)
     inception_acts = xm.all_gather(inception_acts, pin_layout=True)
@@ -211,8 +214,10 @@ def compute_rfid_and_is(
 
     inception_acts = inception_acts.cpu().numpy()
     inception_logits = inception_logits.cpu().float()
-
+    
+    print("before post_gather")
     xm.rendezvous("post_gather")
+    print("after post_gather")
 
     # Compute FID statistics
     mu = np.mean(inception_acts, axis=0)
