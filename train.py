@@ -283,7 +283,7 @@ def preprocess_data(item, siglip_processor, args):
     return siglip_image, vae_image
 
 def get_scheduler_lambda(total_steps=500000):
-    warmup_steps = 10000
+    warmup_steps = total_steps//50
     decay_start = int(0.8 * total_steps)
     
     def lr_lambda(current_step):
