@@ -122,6 +122,8 @@ def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
     
     return loader, estimated_samples
 
+
+
 class EmbeddingGenerator:
     def __init__(self, args):
         self.args = args
@@ -161,16 +163,31 @@ class EmbeddingGenerator:
         start_time = time.time()
         last_update_time = start_time
         processed_since_last_update = 0
+        total_processed_images = 0
         
         # Calculate steps for chunked processing
-        chunk_size = 10000  # Process 10000 images at a time
+        chunk_size = 20000
         global_batch_size = self.args.batch_size * world_size
         steps_per_chunk = chunk_size // global_batch_size
         num_chunks = (self.args.max_images + chunk_size - 1) // chunk_size
         
-        logger.info(f"Worker {rank}: Processing {num_chunks} chunks of {chunk_size} images each")
+        # Initialize progress tracking
+        if rank == 0:
+            logger.info(f"\nTotal chunks to process: {num_chunks}")
+            logger.info(f"Images per chunk: {chunk_size}")
+            logger.info(f"Total images to process: {self.args.max_images}")
+            logger.info(f"Global batch size: {global_batch_size}\n")
+        
+        # Calculate total number of output files across all workers
+        total_output_files = num_chunks * world_size
+        
+        # Calculate file index offset for this worker
+        file_index_offset = rank * num_chunks
         
         for chunk_idx in range(num_chunks):
+            # Calculate the actual file index for this chunk
+            global_chunk_idx = file_index_offset + chunk_idx
+            
             # List to store embeddings for this chunk
             chunk_embeddings = []
             
@@ -179,33 +196,40 @@ class EmbeddingGenerator:
                                 self.args.max_images - chunk_idx * chunk_size)
             steps_this_chunk = (remaining_images + global_batch_size - 1) // global_batch_size
             
-            logger.info(f"Worker {rank}: Starting chunk {chunk_idx + 1}/{num_chunks}, "
-                    f"processing {remaining_images} images")
-            
+            if rank == 0:
+                overall_progress = (chunk_idx * chunk_size + total_processed_images) / self.args.max_images * 100
+                time_elapsed = time.time() - start_time
+                if chunk_idx > 0:
+                    time_per_chunk = time_elapsed / chunk_idx
+                    chunks_remaining = num_chunks - chunk_idx
+                    eta_seconds = time_per_chunk * chunks_remaining
+                    eta_time = datetime.now() + timedelta(seconds=eta_seconds)
+                    
+                    logger.info(f"\n{'='*50}")
+                    logger.info(f"Starting chunk {chunk_idx + 1}/{num_chunks} ({overall_progress:.1f}% complete)")
+                    logger.info(f"Estimated completion time: {eta_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    logger.info(f"Time elapsed: {timedelta(seconds=int(time_elapsed))}")
+                    logger.info(f"{'='*50}\n")
+                
             train_loader, _ = get_data_loader(
-                rank, world_size, chunk_idx,  # Use chunk_idx as epoch
+                rank, world_size, chunk_idx,
                 shard_files, self.model.processor, self.args
             )
             
             for batch_idx, batch in enumerate(tqdm(train_loader, 
-                                                desc=f"Worker {rank} Chunk {chunk_idx + 1}")):
+                                                desc=f"Worker {rank} Chunk {chunk_idx + 1}/{num_chunks}",
+                                                total=steps_this_chunk)):
                 if batch_idx >= steps_this_chunk:
                     break
                     
                 images = batch["image"]
-                
-                # Get embeddings (shape: [batch_size, 256, 1152])
                 embeddings = self.process_batch(images)
-                
-                # Convert to float16 and reshape
                 embeddings = embeddings.to(torch.float16)
                 embeddings = embeddings.reshape(-1, 1152)
-                
-                # Collect embeddings for this chunk
                 chunk_embeddings.append(embeddings)
                 
-                # Log progress
-                if batch_idx % 10 == 0:  # More frequent updates for chunks
+                # Update progress tracking
+                if batch_idx % 10 == 0:
                     current_time = time.time()
                     time_since_last_update = current_time - last_update_time
                     if time_since_last_update > 0:
@@ -216,45 +240,43 @@ class EmbeddingGenerator:
                         estimated_seconds = remaining_tokens / tokens_per_second if tokens_per_second > 0 else 0
                         eta = datetime.now() + timedelta(seconds=estimated_seconds)
                         
-                        print(
-                            f"Worker {rank} Chunk {chunk_idx + 1}: Processed {tokens_processed} tokens "
-                            f"({tokens_per_second:.1f} tokens/sec, "
-                            f"ETA: {eta.strftime('%Y-%m-%d %H:%M:%S')})"
-                        )
+                        if rank == 0:
+                            print(
+                                f"\rChunk Progress: {batch_idx}/{steps_this_chunk} batches "
+                                f"({tokens_per_second:.1f} tokens/sec, "
+                                f"ETA: {eta.strftime('%H:%M:%S')})",
+                                end=""
+                            )
                         
                         last_update_time = current_time
                         processed_since_last_update = 0
                 
                 xm.mark_step()
                 processed_since_last_update += embeddings.shape[0]
+                total_processed_images += embeddings.shape[0]
             
             # Concatenate embeddings for this chunk
             local_embeddings = torch.cat(chunk_embeddings, dim=0)
             
-            # All-gather embeddings from all workers for this chunk
-            gathered_embeddings = xm.all_gather(local_embeddings)
+            # Save chunk directly without gathering
+            chunk_filename = os.path.join(output_path, f'embeddings_chunk_{global_chunk_idx}.pt')
+            torch.save(local_embeddings.cpu(), chunk_filename)
             
-            xm.rendezvous(f'before save_complete_chunk_{chunk_idx}')
+            logger.info(f"Worker {rank}: Saved chunk {global_chunk_idx} to {chunk_filename}")
             
-            # Save chunk on master only
-            if rank == 0:
-                chunk_filename = os.path.join(output_path, f'embeddings_chunk_{chunk_idx}.pt')
-                print(f"Saving chunk {chunk_idx + 1} with shape {gathered_embeddings.shape}, at {chunk_filename}")
-                torch.save(gathered_embeddings.cpu(), chunk_filename)
-                logger.info(f"Master: Saved chunk {chunk_idx + 1} embeddings")
-                
-            
-            # Clear variables to free memory
-            del chunk_embeddings
+            # Clear memory
             del local_embeddings
-            del gathered_embeddings
+            del chunk_embeddings
             
-            # Make sure all workers sync up after each chunk
             xm.rendezvous(f'save_complete_chunk_{chunk_idx}')
-            logger.info(f"Worker {rank}: Completed sync after chunk {chunk_idx}")
+            
+        if rank == 0:
+            total_time = time.time() - start_time
+            logger.info(f"\nProcessing complete!")
+            logger.info(f"Total time: {timedelta(seconds=int(total_time))}")
+            logger.info(f"Average time per chunk: {timedelta(seconds=int(total_time/num_chunks))}")
+            logger.info(f"Total output files: {total_output_files}")
 
-        logger.info(f"Worker {rank}: All chunks processed")
-                
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -262,7 +284,7 @@ def main():
     parser.add_argument('--output_path', type=str, default="/mnt/disks/peter-pd-tokenization/saved_embed")
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument('--max_images', type=int, default=200000, help='Maximum number of images to process')
+    parser.add_argument('--max_images', type=int, default=150000, help='Maximum number of images to process')
     parser.add_argument('--resolution', type=int, default=384)
     args = parser.parse_args()
     
