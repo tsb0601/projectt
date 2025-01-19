@@ -947,9 +947,9 @@ def train_one_step(batch, models, optimizers, state):
         total_loss.backward()
 
         # Gradient clipping
-        # torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
-        # if args.train_encoder:
-        #     torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(vae.parameters(), args.max_grad_norm)
+        if args.train_encoder:
+            torch.nn.utils.clip_grad_norm_(siglip_encoder.parameters(), args.max_grad_norm)
         # print(vae)
         xm.optimizer_step(optimizer)
         # optimizer.step()
