@@ -121,10 +121,10 @@ def setup_val_loader(
         val_dataset,
         batch_size=batch_size,
         sampler=val_sampler,
-        num_workers=num_workers,
+        num_workers=0,
         pin_memory=True,
         # Need to try this
-        drop_last=True
+        drop_last=False
     )
     
     # Wrap for TPU
