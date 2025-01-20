@@ -1,220 +1,188 @@
-import h5py
-import numpy as np
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.preprocessing import normalize
 import torch
-from tqdm import tqdm
-import logging
+import torch_xla.core.xla_model as xm
 import os
+import glob
+from tqdm import tqdm
+import numpy as np
+import logging
+from torch.utils.data import Dataset, DataLoader, IterableDataset
+import time
 from datetime import datetime
-import matplotlib.pyplot as plt
-from collections import Counter
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-class LargeScaleKMeans:
-    def __init__(self, embedding_file, n_clusters=8192, batch_size=10000, 
-                 max_iter=100, random_state=42):
-        self.embedding_file = embedding_file
-        self.n_clusters = n_clusters
+class StreamingDataset(IterableDataset):
+    def __init__(self, embeddings_dir, batch_size):
+        self.chunk_files = sorted(glob.glob(os.path.join(embeddings_dir, "embeddings_chunk_*.pt")))
         self.batch_size = batch_size
-        self.max_iter = max_iter
-        self.random_state = random_state
-        self.kmeans = None
         
-    def _load_batch(self, dataset, start_idx, end_idx):
-        """Load and preprocess a batch of embeddings"""
-        batch = dataset[start_idx:end_idx]
-        # Convert to float32 for better numerical stability
-        batch = batch.astype(np.float32)
-        # Normalize the embeddings
-        batch = normalize(batch)
-        return batch
+        if not self.chunk_files:
+            raise RuntimeError(f"No chunk files found in {embeddings_dir}")
+            
+        first_chunk = torch.load(self.chunk_files[0], weights_only=True)
+        self.embedding_dim = first_chunk.shape[1]
+        del first_chunk
+        print(f"Embedding dimension: {self.embedding_dim}")
+        print(f"Total number of chunks: {len(self.chunk_files)}")
     
-    def fit(self, output_dir="cluster_results"):
-        """Fit KMeans on the embeddings using mini-batches"""
-        os.makedirs(output_dir, exist_ok=True)
-        start_time = datetime.now()
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
         
-        with h5py.File(self.embedding_file, 'r') as f:
-            embeddings = f['embeddings']
-            total_samples = embeddings.shape[0]
-            embedding_dim = embeddings.shape[1]
-            
-            logger.info(f"Starting clustering on {total_samples} samples "
-                       f"with {embedding_dim} dimensions into {self.n_clusters} clusters")
-            
-            # Initialize MiniBatchKMeans
-            self.kmeans = MiniBatchKMeans(
-                n_clusters=self.n_clusters,
-                batch_size=self.batch_size,
-                max_iter=self.max_iter,
-                random_state=self.random_state,
-                verbose=1
-            )
-            
-            # Process data in batches
-            for start_idx in tqdm(range(0, total_samples, self.batch_size)):
-                end_idx = min(start_idx + self.batch_size, total_samples)
-                batch = self._load_batch(embeddings, start_idx, end_idx)
-                self.kmeans.partial_fit(batch)
+        if worker_info is not None:
+            chunk_files = self.chunk_files[worker_info.id::worker_info.num_workers]
+        else:
+            chunk_files = self.chunk_files
+
+        for chunk_file in chunk_files:
+            try:
+                # print(f"Loading chunk: {os.path.basename(chunk_file)}")
+                chunk = torch.load(chunk_file, weights_only=True).to(torch.float32)  # Ensure 32-bit
+                
+                for start_idx in range(0, chunk.shape[0], self.batch_size):
+                    end_idx = min(start_idx + self.batch_size, chunk.shape[0])
+                    yield chunk[start_idx:end_idx]
+                
+                del chunk
+                torch.cuda.empty_cache()
+                
+            except Exception as e:
+                print(f"Error processing chunk {chunk_file}: {str(e)}")
+                continue
+
+class SimpleTPUKMeans:
+    def __init__(self, n_clusters, max_iter=100, tol=1e-4, batch_size=1024):
+        self.n_clusters = n_clusters
+        self.max_iter = max_iter
+        self.tol = tol
+        self.batch_size = batch_size
+        self.device = xm.xla_device()
+        self.centroids = None
         
-        # Save the model and clustering results
-        self._save_results(output_dir)
+        print(f"Initializing K-means with {n_clusters} clusters")
+        print(f"Parameters: max_iter={max_iter}, tol={tol}, batch_size={batch_size}")
+    
+    def _init_centroids(self, dataloader):
+        print("Initializing centroids...")
+        accumulated_samples = []
+        samples_needed = max(self.n_clusters * 2, 100000)
+        total_samples = 0
         
-        end_time = datetime.now()
-        logger.info(f"Clustering completed in {end_time - start_time}")
+        for batch in dataloader:
+            batch = batch.to(self.device)
+            total_samples += batch.shape[0]
+            accumulated_samples.append(batch)
+            
+            if total_samples >= samples_needed:
+                all_samples = torch.cat(accumulated_samples, dim=0)
+                # Use numpy for random sampling to avoid TPU 64-bit issues
+                indices = np.random.choice(all_samples.shape[0], self.n_clusters, replace=False)
+                indices = torch.tensor(indices, device=self.device, dtype=torch.int32)
+                self.centroids = all_samples[indices]
+                
+                print(f"Initialized centroids with shape: {self.centroids.shape}")
+                print(f"Used {total_samples:,} samples for initialization")
+                
+                del accumulated_samples, all_samples
+                return
+                
+        raise RuntimeError(f"Not enough samples ({total_samples}) to initialize {self.n_clusters} centroids")
+    
+    def _compute_distances(self, batch):
+        return torch.cdist(batch, self.centroids)
+    
+    def fit(self, dataloader):
+        if self.centroids is None:
+            self._init_centroids(dataloader)
+        
+        print(f"Starting training...")
+        
+        for iteration in range(self.max_iter):
+            start_time = time.time()
+            old_centroids = self.centroids.clone()
+            
+            new_centroids = torch.zeros_like(self.centroids)
+            counts = torch.zeros(self.n_clusters, device=self.device, dtype=torch.float32)
+            
+            n_samples = 0
+            
+            for batch in tqdm(dataloader, desc=f"Iteration {iteration + 1}"):
+                batch = batch.to(self.device)
+                n_samples += batch.shape[0]
+                
+                distances = self._compute_distances(batch)
+                labels = torch.argmin(distances, dim=1)
+                
+                labels_onehot = torch.zeros(
+                    batch.size(0), self.n_clusters,
+                    device=self.device,
+                    dtype=torch.float32  # Ensure 32-bit
+                )
+                labels_onehot.scatter_(1, labels.unsqueeze(1), 1)
+                
+                new_centroids += torch.matmul(labels_onehot.t(), batch)
+                counts += labels_onehot.sum(dim=0)
+                
+                xm.mark_step()
+                
+                del batch, distances, labels, labels_onehot
+            
+            # Update centroids
+            mask = counts > 0
+            new_centroids[mask] /= counts[mask].unsqueeze(1)
+            self.centroids = new_centroids
+            
+            centroid_shift = torch.norm(self.centroids - old_centroids).item()
+            iteration_time = time.time() - start_time
+            
+            print(f"Iteration {iteration + 1}: "
+                  f"shift = {centroid_shift:.6f}, "
+                  f"time = {iteration_time:.2f}s, "
+                  f"samples = {n_samples:,}, "
+                  f"centroid_shift = {centroid_shift}")
+            
+            if centroid_shift < self.tol:
+                print(f"Converged after {iteration + 1} iterations!")
+                break
         
         return self
     
-    def predict(self, output_dir="cluster_results"):
-        """Predict clusters for all samples and analyze results"""
-        if self.kmeans is None:
-            self.kmeans = self._load_model(output_dir)
-            
-        results = {
-            'labels': [],
-            'distances': []
+    def save(self, output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        save_dict = {
+            'centroids': self.centroids.cpu(),
+            'n_clusters': self.n_clusters,
+            'max_iter': self.max_iter,
+            'tol': self.tol,
+            'batch_size': self.batch_size,
+            'timestamp': timestamp
         }
         
-        with h5py.File(self.embedding_file, 'r') as f:
-            embeddings = f['embeddings']
-            total_samples = embeddings.shape[0]
-            
-            # Process predictions in batches
-            for start_idx in tqdm(range(0, total_samples, self.batch_size)):
-                end_idx = min(start_idx + self.batch_size, total_samples)
-                batch = self._load_batch(embeddings, start_idx, end_idx)
-                
-                batch_labels = self.kmeans.predict(batch)
-                batch_distances = self.kmeans.transform(batch).min(axis=1)
-                
-                results['labels'].extend(batch_labels)
-                results['distances'].extend(batch_distances)
-        
-        results['labels'] = np.array(results['labels'])
-        results['distances'] = np.array(results['distances'])
-        
-        # Save prediction results
-        self._save_predictions(results, output_dir)
-        
-        # Analyze clusters
-        self.analyze_clusters(results, output_dir)
-        
-        return results
-    
-    def _save_results(self, output_dir):
-        """Save clustering model and centers"""
-        model_file = os.path.join(output_dir, 'kmeans_model.npz')
-        np.savez(model_file,
-                cluster_centers=self.kmeans.cluster_centers_,
-                inertia=self.kmeans.inertia_)
-        logger.info(f"Saved clustering model to {model_file}")
-    
-    def _save_predictions(self, results, output_dir):
-        """Save prediction results"""
-        pred_file = os.path.join(output_dir, 'cluster_predictions.npz')
-        np.savez(pred_file,
-                labels=results['labels'],
-                distances=results['distances'])
-        logger.info(f"Saved predictions to {pred_file}")
-    
-    def _load_model(self, output_dir):
-        """Load saved clustering model"""
-        model_file = os.path.join(output_dir, 'kmeans_model.npz')
-        if not os.path.exists(model_file):
-            raise FileNotFoundError(f"No saved model found at {model_file}")
-            
-        data = np.load(model_file)
-        kmeans = MiniBatchKMeans(
-            n_clusters=self.n_clusters,
-            batch_size=self.batch_size,
-            random_state=self.random_state
-        )
-        kmeans.cluster_centers_ = data['cluster_centers']
-        kmeans.inertia_ = float(data['inertia'])
-        return kmeans
-    
-    def analyze_clusters(self, results, output_dir):
-        """Analyze clustering results and generate visualizations"""
-        # Compute cluster statistics
-        cluster_sizes = Counter(results['labels'])
-        distances = results['distances']
-        
-        stats = {
-            'cluster_sizes': cluster_sizes,
-            'mean_distance': np.mean(distances),
-            'median_distance': np.median(distances),
-            'std_distance': np.std(distances),
-            'min_cluster_size': min(cluster_sizes.values()),
-            'max_cluster_size': max(cluster_sizes.values()),
-            'empty_clusters': self.n_clusters - len(cluster_sizes)
-        }
-        
-        # Save statistics
-        stats_file = os.path.join(output_dir, 'cluster_statistics.txt')
-        with open(stats_file, 'w') as f:
-            for key, value in stats.items():
-                f.write(f"{key}: {value}\n")
-        
-        # Generate visualizations
-        self._plot_cluster_size_distribution(cluster_sizes, output_dir)
-        self._plot_distance_distribution(distances, output_dir)
-        
-        return stats
-    
-    def _plot_cluster_size_distribution(self, cluster_sizes, output_dir):
-        """Plot distribution of cluster sizes"""
-        plt.figure(figsize=(12, 6))
-        sizes = list(cluster_sizes.values())
-        plt.hist(sizes, bins=50)
-        plt.title('Cluster Size Distribution')
-        plt.xlabel('Cluster Size')
-        plt.ylabel('Count')
-        plt.savefig(os.path.join(output_dir, 'cluster_size_distribution.png'))
-        plt.close()
-    
-    def _plot_distance_distribution(self, distances, output_dir):
-        """Plot distribution of distances to cluster centers"""
-        plt.figure(figsize=(12, 6))
-        plt.hist(distances, bins=50)
-        plt.title('Distance to Cluster Center Distribution')
-        plt.xlabel('Distance')
-        plt.ylabel('Count')
-        plt.savefig(os.path.join(output_dir, 'distance_distribution.png'))
-        plt.close()
+        save_path = os.path.join(output_dir, f"kmeans_results_{timestamp}.pt")
+        torch.save(save_dict, save_path)
+        print(f"Saved model to {save_path}")
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--embedding_file', type=str, required=True,
-                        help='Path to H5 file containing embeddings')
-    parser.add_argument('--output_dir', type=str, default='cluster_results',
-                        help='Directory to save clustering results')
-    parser.add_argument('--n_clusters', type=int, default=8192,
-                        help='Number of clusters')
-    parser.add_argument('--batch_size', type=int, default=10000,
-                        help='Batch size for processing')
-    parser.add_argument('--max_iter', type=int, default=100,
-                        help='Maximum number of iterations')
-    args = parser.parse_args()
+    n_clusters = 16384
+    batch_size = 8192
+    max_iter = 200
+    embeddings_dir = "/mnt/disks/peter-pd-tokenization/saved_embed"
+    output_dir = os.path.join(embeddings_dir, "kmeans_results")
     
-    # Initialize and run clustering
-    kmeans = LargeScaleKMeans(
-        embedding_file=args.embedding_file,
-        n_clusters=args.n_clusters,
-        batch_size=args.batch_size,
-        max_iter=args.max_iter
+    dataset = StreamingDataset(embeddings_dir, batch_size)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=None,
+        num_workers=0
     )
     
-    # Fit the model
-    kmeans.fit(args.output_dir)
+    kmeans = SimpleTPUKMeans(
+        n_clusters=n_clusters,
+        max_iter=max_iter,
+        batch_size=batch_size
+    )
     
-    # Generate predictions and analysis
-    results = kmeans.predict(args.output_dir)
-    
-    logger.info("Clustering and analysis complete!")
+    kmeans.fit(dataloader)
+    kmeans.save(output_dir)
 
 if __name__ == "__main__":
     main()
