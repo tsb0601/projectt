@@ -568,7 +568,7 @@ def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, che
     # Load model states including VQ
     model.load_state_dict(checkpoint['model_state_dict'])
     if 'siglip_encoder_state_dict' in checkpoint:  # For backward compatibility
-        siglip_encoder.load_state_dict(checkpoint['siglip_encoder_state_dict'])
+        siglip_encoder.load_state_dict(checkpoint['siglip_encoder_state_dict'], strict=False)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     global_step = checkpoint['global_step']
@@ -969,7 +969,7 @@ def train_one_step(batch, models, optimizers, state):
     if state.args.encoder_mode == 'vq':
         metrics.update({
             "vq_loss": float(vq_loss.item()),
-            "total_vq_loss": float(total_feat_loss.item()),
+            # "total_vq_loss": float(total_feat_loss.item()),
         })
 
     return metrics, vae_images, recon_images, encoding_indices
@@ -1094,7 +1094,10 @@ def train_tpu(index, args):
         unfreeze_after_steps=args.unfreeze_after_steps,
         unfreeze_strategy=args.unfreeze_strategy,
         device=device,
-        use_vq=(args.encoder_mode == 'vq')  # Set VQ mode based on encoder_mode
+        use_vq=(args.encoder_mode == 'vq'),  # Set VQ mode based on encoder_mode
+        kmeans_path=args.kmeans_path,  # Pass kmeans path
+        trainable_codebook=args.trainable_codebook,
+
     )
     # Initialize codebook analyzer
     
@@ -1136,25 +1139,17 @@ def train_tpu(index, args):
     )
     
 
-        
-    # DDP
-    # siglip_encoder = dataparallel_and_sync(
-    #     siglip_encoder,
-    # )
-    # vae = dataparallel_and_sync(
-    #     vae,
-    # )
-
-    # if args.use_gan:
-    #     discriminator = dataparallel_and_sync(
-    #         discriminator,
-    #     )
-
-    #     # Get optimizer parameters - include encoder if trainable
     optimizer_params = list(vae.parameters())
     if args.train_encoder:
-        optimizer_params.extend(siglip_encoder.parameters())
-    
+        # optimizer_params.extend(siglip_encoder.parameters())
+
+
+        # Only add VQ parameters if codebook is trainable
+        for name, param in siglip_encoder.named_parameters():
+            if 'vq' not in name:  # Exclude VQ parameters
+                optimizer_params.append(param)
+
+
     # Initialize optimizers
     optimizer = torch.optim.AdamW(
         optimizer_params,
@@ -1301,6 +1296,7 @@ def train_tpu(index, args):
             # print("4444444444444")
             # Checkpointing
             # if (state.global_step+1) % args.save_step == 0:
+            state.global_step += 1
 
 
             if (state.global_step+1) % args.eval_freq == 0:
@@ -1336,7 +1332,7 @@ def train_tpu(index, args):
                 # xm.rendezvous("rfid_eval")
                 print("Finished online eval")
 
-            state.global_step += 1
+            # state.global_step += 1
 
             if (state.global_step+1) % args.save_step == 0:
             # if (state.global_step) % args.save_step == 0:
@@ -1368,6 +1364,12 @@ def add_vq_args(parser):
                        help="Weight of commitment loss if used")
     parser.add_argument("--analysis_steps", type=int, default=1000,
                        help="Steps between detailed codebook analysis")
+
+    # New arguments for codebook initialization
+    parser.add_argument("--kmeans_path", type=str, default=None,
+                       help="Path to pre-trained kmeans centroids")
+    parser.add_argument("--trainable_codebook", action="store_true",
+                       help="Whether to train the codebook or keep it frozen")
                        
     # Encoder training arguments
     parser.add_argument("--train_encoder", action="store_true",

@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from transformers import AutoProcessor, AutoModel
 import torch_xla.core.xla_model as xm
 from .quantizer import VectorQuantizer
+from .enhanced_quantizer import EnhancedVectorQuantizer
 
 
 class SigLIPVQEncoder(nn.Module):
@@ -23,7 +24,9 @@ class SigLIPVQEncoder(nn.Module):
         unfreeze_after_steps=50000,
         unfreeze_strategy='gradual',
         device=None,
-        use_vq=True  # New parameter to control VQ usage
+        use_vq=True,  # New parameter to control VQ usage
+        kmeans_path=None,  # New parameter
+        trainable_codebook=False,
     ):
         super().__init__()
         self.model_name = model_name
@@ -45,12 +48,22 @@ class SigLIPVQEncoder(nn.Module):
         
         # Add VQ layer only if using VQ mode
         if self.use_vq:
-            self.vq = VectorQuantizer(
+            # self.vq = VectorQuantizer(
+            #     num_embeddings=num_codebook_vectors,
+            #     embedding_dim=embedding_dim,
+            #     use_commitment=use_commitment,
+            #     commitment_cost=commitment_cost
+            # )
+
+            self.vq = EnhancedVectorQuantizer(
                 num_embeddings=num_codebook_vectors,
-                embedding_dim=embedding_dim,
+                embedding_dim=self.hidden_size,
+                kmeans_path=kmeans_path,  # Pass kmeans path
+                trainable=trainable_codebook,
                 use_commitment=use_commitment,
                 commitment_cost=commitment_cost
             )
+
             if self.device:
                 self.vq = self.vq.to(self.device)
         
