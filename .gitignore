@@ -7,3 +7,4 @@
 cc3m_embeddings/
 /tmp
 val_256_act_norm.npz
+kmeans_results_65536.pt

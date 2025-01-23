@@ -89,7 +89,7 @@ class SigLIPTransform:
 
 def setup_val_loader(
     val_root: str = '/mnt/disks/boyang/datasets/ImageNet/',
-    batch_size: int = 128,
+    batch_size: int = 16,
     num_workers: int = 4,
     device = None,
     siglip_processor = None
@@ -567,8 +567,11 @@ def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, che
     
     # Load model states including VQ
     model.load_state_dict(checkpoint['model_state_dict'])
-    if 'siglip_encoder_state_dict' in checkpoint:  # For backward compatibility
-        siglip_encoder.load_state_dict(checkpoint['siglip_encoder_state_dict'], strict=False)
+    if 'siglip_encoder_state_dict' in checkpoint:
+        vq_params = ['vq.embeddings', 'vq.usage_count'] 
+        state_dict = {k: v for k, v in checkpoint['siglip_encoder_state_dict'].items()
+                        if not any(vq_param in k for vq_param in vq_params)}
+        siglip_encoder.load_state_dict(state_dict, strict=False)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     global_step = checkpoint['global_step']
@@ -1356,7 +1359,7 @@ def train_tpu(index, args):
 
 def add_vq_args(parser):
     # VQ-specific arguments
-    parser.add_argument("--num_codebook_vectors", type=int, default=16384,
+    parser.add_argument("--num_codebook_vectors", type=int, default=65536,
                        help="Number of vectors in VQ codebook")
     parser.add_argument("--use_commitment", action="store_true",
                        help="Use commitment loss in VQ")
