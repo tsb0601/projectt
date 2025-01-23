@@ -1,7 +1,7 @@
 import os
 import io
 import logging
-# import h5py
+import gc
 import torch
 import torch_xla
 import torch_xla.core.xla_model as xm
@@ -15,6 +15,7 @@ from PIL import Image
 import webdataset as wds
 from rqvae.models.tokenizer.siglip_vq import SigLIPVQEncoder
 import torch_xla.runtime as xr
+import time 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,59 +46,43 @@ class WebDatasetAdapter:
         ])
     
     def create_webdataset(self, epoch):
-        # Create a unique seed for each epoch that's the same across all workers
         seed = 42 + epoch
-        
-        # Create dataset pipeline without max_images limitation
         dataset = (
             wds.WebDataset(self.urls, shardshuffle=1000)
-            .shuffle(5000, seed=seed)
+            .shuffle(1000, seed=seed)  # Reduced shuffle buffer
             .decode("pil")
             .to_tuple("jpg")
             .map(self.preprocess_sample)
             .batched(self.args.batch_size, collation_fn=self.collate_fn)
         )
-        
         return dataset
-
     
     def preprocess_sample(self, sample):
         image = sample[0]
         if not isinstance(image, Image.Image):
             image = Image.open(io.BytesIO(image)).convert('RGB')
             
-        # Preprocess for SigLIP
         siglip_image = self.siglip_processor(images=image, return_tensors="pt").pixel_values.squeeze(0)
-        
-        # Return as tuple (this is key for WebDataset batching)
         return (siglip_image,)
     
     def collate_fn(self, samples):
-        # Collate the tuples into batches
         siglip_images = torch.stack([sample[0] for sample in samples])
         return {"image": siglip_images}
 
 def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
-    """
-    Create a data loader for the current TPU core and epoch
-    """
-    # Calculate shards for this worker
     num_shards = len(urls)
     shards_per_worker = num_shards // world_size
     start_shard = rank * shards_per_worker
     end_shard = start_shard + shards_per_worker
-    if rank == world_size - 1:  # Last worker takes remaining shards
+    if rank == world_size - 1:
         end_shard = num_shards
     
     worker_urls = urls[start_shard:end_shard]
-    # print("Woker url is", worker_urls)
     logger.info(f"Worker {rank}: Processing {len(worker_urls)} shards")
     
-    # Estimate number of samples
-    samples_per_shard = 2500  # CC3M average
+    samples_per_shard = 2500
     estimated_samples = len(worker_urls) * samples_per_shard
     
-    # Create dataset
     dataset = WebDatasetAdapter(
         worker_urls,
         siglip_processor,
@@ -105,14 +90,13 @@ def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
         num_samples=estimated_samples
     ).create_webdataset(epoch)
     
-    # Create data loader
     cpu_loader = DataLoader(
         dataset,
-        batch_size=None,  # Already batched by WebDataset
-        num_workers=args.num_workers
+        batch_size=None,
+        num_workers=args.num_workers,
+        persistent_workers=False
     )
     
-    # Wrap with ParallelLoader for TPU
     device = xm.xla_device()
     loader = pl.ParallelLoader(
         cpu_loader,
@@ -122,8 +106,6 @@ def get_data_loader(rank, world_size, epoch, urls, siglip_processor, args):
     
     return loader, estimated_samples
 
-
-
 class EmbeddingGenerator:
     def __init__(self, args):
         self.args = args
@@ -131,7 +113,6 @@ class EmbeddingGenerator:
         self.setup_model()
         
     def setup_model(self):
-        """Initialize the SigLIP model"""
         self.model = SigLIPVQEncoder(
             model_name="google/siglip-so400m-patch14-384",
             num_tokens=256,
@@ -144,174 +125,168 @@ class EmbeddingGenerator:
         self.model.eval()
         
     def process_batch(self, images):
-        """Process a batch of images and return their embeddings"""
         with torch.no_grad():
             features, _, _, _, _ = self.model(images)
             return features
-            
+
     def generate_and_save_embeddings(self, output_path):
-        """Generate embeddings for all images and save them in chunks"""
         shard_files = get_cc3m_shards(self.args.data_path)
         rank = xm.get_ordinal()
         world_size = xm.xrt_world_size()
         
         os.makedirs(output_path, exist_ok=True)
         
-        # Initialize timing metrics
-        import time
-        from datetime import datetime, timedelta
-        start_time = time.time()
-        last_update_time = start_time
-        processed_since_last_update = 0
-        total_processed_images = 0
+        # 1) Create the single data loader once
+        train_loader, estimated_samples = get_data_loader(
+            rank,
+            world_size,
+            epoch=0,  # or use rank if you want different seeds per worker
+            urls=shard_files,
+            siglip_processor=self.model.processor,
+            args=self.args
+        )
         
-        # Calculate steps for chunked processing
-        chunk_size = 20000
-        global_batch_size = self.args.batch_size * world_size
-        steps_per_chunk = chunk_size // global_batch_size
-        num_chunks = (self.args.max_images + chunk_size - 1) // chunk_size
+        chunk_size = 4096*256  # for example
+        embedding_buffer = []
+        current_chunk_count = 0  # Number of chunk files written
         
-        # Initialize progress tracking
-        if rank == 0:
-            logger.info(f"\nTotal chunks to process: {num_chunks}")
-            logger.info(f"Images per chunk: {chunk_size}")
-            logger.info(f"Total images to process: {self.args.max_images}")
-            logger.info(f"Global batch size: {global_batch_size}\n")
-        
-        # Calculate total number of output files across all workers
-        total_output_files = num_chunks * world_size
-        
-        # Calculate file index offset for this worker
-        file_index_offset = rank * num_chunks
-        
-        for chunk_idx in range(num_chunks):
-            # Calculate the actual file index for this chunk
-            global_chunk_idx = file_index_offset + chunk_idx
-            
-            # List to store embeddings for this chunk
-            chunk_embeddings = []
-            
-            # Calculate remaining images for last chunk
-            remaining_images = min(chunk_size, 
-                                self.args.max_images - chunk_idx * chunk_size)
-            steps_this_chunk = (remaining_images + global_batch_size - 1) // global_batch_size
-            
-            if rank == 0:
-                overall_progress = (chunk_idx * chunk_size + total_processed_images) / self.args.max_images * 100
-                time_elapsed = time.time() - start_time
-                if chunk_idx > 0:
-                    time_per_chunk = time_elapsed / chunk_idx
-                    chunks_remaining = num_chunks - chunk_idx
-                    eta_seconds = time_per_chunk * chunks_remaining
-                    eta_time = datetime.now() + timedelta(seconds=eta_seconds)
-                    
-                    logger.info(f"\n{'='*50}")
-                    logger.info(f"Starting chunk {chunk_idx + 1}/{num_chunks} ({overall_progress:.1f}% complete)")
-                    logger.info(f"Estimated completion time: {eta_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    logger.info(f"Time elapsed: {timedelta(seconds=int(time_elapsed))}")
-                    logger.info(f"{'='*50}\n")
+        total_processed = 0
+        max_images = self.args.max_images //4 
+        total_chunks = (max_images + chunk_size - 1) // chunk_size  # Calculate total chunks for progress bar
+
+        # Wrap the data loader with tqdm
+        with tqdm(total=max_images, desc=f"Worker {rank}: Processing Images", unit="images") as pbar:
+            # Single pass over the entire loader
+            for batch_idx, batch in enumerate(train_loader):
+                if total_processed >= max_images:
+                    break  # Stop once we've processed the maximum number of images
                 
-            train_loader, _ = get_data_loader(
-                rank, world_size, chunk_idx,
-                shard_files, self.model.processor, self.args
-            )
-            
-            for batch_idx, batch in enumerate(tqdm(train_loader, 
-                                                desc=f"Worker {rank} Chunk {chunk_idx + 1}/{num_chunks}",
-                                                total=steps_this_chunk)):
-                if batch_idx >= steps_this_chunk:
-                    break
-                    
                 images = batch["image"]
-                embeddings = self.process_batch(images)
-                embeddings = embeddings.to(torch.float16)
-                embeddings = embeddings.reshape(-1, 1152)
-                chunk_embeddings.append(embeddings)
+                if total_processed + images.size(0) > max_images:
+                    needed = max_images - total_processed
+                    images = images[:needed]
                 
-                # Update progress tracking
-                if batch_idx % 10 == 0:
-                    current_time = time.time()
-                    time_since_last_update = current_time - last_update_time
-                    if time_since_last_update > 0:
-                        tokens_processed = len(chunk_embeddings) * self.args.batch_size * 256
-                        tokens_per_second = processed_since_last_update / time_since_last_update
-                        remaining_steps = steps_this_chunk - batch_idx
-                        remaining_tokens = remaining_steps * self.args.batch_size * 256
-                        estimated_seconds = remaining_tokens / tokens_per_second if tokens_per_second > 0 else 0
-                        eta = datetime.now() + timedelta(seconds=estimated_seconds)
-                        
-                        if rank == 0:
-                            print(
-                                f"\rChunk Progress: {batch_idx}/{steps_this_chunk} batches "
-                                f"({tokens_per_second:.1f} tokens/sec, "
-                                f"ETA: {eta.strftime('%H:%M:%S')})",
-                                end=""
-                            )
-                        
-                        last_update_time = current_time
-                        processed_since_last_update = 0
+                with torch.no_grad():
+                    embeddings = self.model(images)[0]  # the first output is features
+                    embeddings = embeddings.to(torch.float16).reshape(-1, 1152)
+                embedding_buffer.append(embeddings.cpu())
                 
-                xm.mark_step()
-                processed_since_last_update += embeddings.shape[0]
-                total_processed_images += embeddings.shape[0]
+                total_processed += images.size(0)
+                pbar.update(images.size(0))  # Update the tqdm progress bar
+                
+                # Check if buffer has reached chunk_size or if we're done
+                current_buffer_size = sum(t.shape[0] for t in embedding_buffer)
+                if current_buffer_size >= chunk_size:
+                    # Save current buffer to disk
+                    chunk_embeddings = torch.cat(embedding_buffer, dim=0)
+                    chunk_filename = os.path.join(output_path, f'embeddings_chunk_{rank}_{current_chunk_count}.pt')
+                    torch.save(chunk_embeddings, chunk_filename)
+                    
+                    embedding_buffer = []  # Clear the buffer
+                    current_chunk_count += 1
+                    
+                    # Log progress to tqdm
+                    pbar.set_postfix({
+                        "Chunks Saved": current_chunk_count,
+                        "Current Buffer": current_buffer_size
+                    })
+                    
+                    xm.mark_step()
             
-            # Concatenate embeddings for this chunk
-            local_embeddings = torch.cat(chunk_embeddings, dim=0)
+            # Save any remaining embeddings in the buffer
+            if len(embedding_buffer) > 0:
+                chunk_embeddings = torch.cat(embedding_buffer, dim=0)
+                chunk_filename = os.path.join(output_path, f'embeddings_chunk_{rank}_{current_chunk_count}.pt')
+                torch.save(chunk_embeddings, chunk_filename)
+                current_chunk_count += 1  # Increment chunk count
+                
+                pbar.set_postfix({
+                    "Chunks Saved": current_chunk_count,
+                    "Current Buffer": 0
+                })
+        
+        logger.info(f"Worker {rank}: Processed {total_processed} images, saved {current_chunk_count} chunk files.")
+        xm.rendezvous('embedding_generation_complete')
+    # def generate_and_save_embeddings(self, output_path):
+    #     shard_files = get_cc3m_shards(self.args.data_path)
+    #     rank = xm.get_ordinal()
+    #     world_size = xm.xrt_world_size()
+        
+    #     os.makedirs(output_path, exist_ok=True)
+        
+    #     start_time = time.time()
+    #     chunk_size = 2048
+    #     global_batch_size = self.args.batch_size * world_size
+    #     steps_per_chunk = chunk_size // global_batch_size
+    #     num_chunks = (self.args.max_images + chunk_size - 1) // chunk_size
+        
+    #     for chunk_idx in range(num_chunks):
+    #         global_chunk_idx = rank * num_chunks + chunk_idx
+    #         chunk_embeddings = []
+    #         remaining_images = min(chunk_size, self.args.max_images - chunk_idx * chunk_size)
+    #         steps_this_chunk = (remaining_images + global_batch_size - 1) // global_batch_size
+
+    #         try:
+    #             train_loader, _ = get_data_loader(
+    #                 rank, world_size, chunk_idx,
+    #                 shard_files, self.model.processor, self.args
+    #             )
+                
+    #             for batch_idx, batch in enumerate(tqdm(train_loader, 
+    #                                                  desc=f"Worker {rank} Chunk {chunk_idx + 1}/{num_chunks}",
+    #                                                  total=steps_this_chunk)):
+    #                 if batch_idx >= steps_this_chunk:
+    #                     break
+                        
+    #                 images = batch["image"]
+    #                 embeddings = self.process_batch(images)
+    #                 embeddings = embeddings.to(torch.float16).reshape(-1, 1152)
+    #                 chunk_embeddings.append(embeddings)
+    #                 xm.mark_step()
+                    
+    #         finally:
+    #             # Cleanup after processing chunk
+    #             del train_loader, batch, images, embeddings
+    #             gc.collect()
+
+    #         # Save and sync
+    #         local_embeddings = torch.cat(chunk_embeddings, dim=0)
+    #         chunk_filename = os.path.join(output_path, f'embeddings_chunk_{global_chunk_idx}.pt')
+    #         torch.save(local_embeddings.cpu(), chunk_filename)
+    #         logger.info(f"Worker {rank}: Saved chunk {global_chunk_idx}")
             
-            # Save chunk directly without gathering
-            chunk_filename = os.path.join(output_path, f'embeddings_chunk_{global_chunk_idx}.pt')
-            torch.save(local_embeddings.cpu(), chunk_filename)
-            
-            logger.info(f"Worker {rank}: Saved chunk {global_chunk_idx} to {chunk_filename}")
-            
-            # Clear memory
-            del local_embeddings
-            del chunk_embeddings
-            
-            xm.rendezvous(f'save_complete_chunk_{chunk_idx}')
-            
-        if rank == 0:
-            total_time = time.time() - start_time
-            logger.info(f"\nProcessing complete!")
-            logger.info(f"Total time: {timedelta(seconds=int(total_time))}")
-            logger.info(f"Average time per chunk: {timedelta(seconds=int(total_time/num_chunks))}")
-            logger.info(f"Total output files: {total_output_files}")
+    #         del local_embeddings, chunk_embeddings
+    #         gc.collect()
+    #         xm.rendezvous(f'save_complete_chunk_{chunk_idx}')
 
 def main():
     import argparse
+    import time
+    from datetime import datetime, timedelta
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, default="/mnt/disks/storage/cc3m/cc3m-wds")
-    parser.add_argument('--output_path', type=str, default="/mnt/disks/peter-pd-tokenization/saved_embed")
+    parser.add_argument('--output_path', type=str, default="/mnt/disks/peter-pd-tokenization/saved_embed/small_chunks")
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument('--max_images', type=int, default=150000, help='Maximum number of images to process')
+    parser.add_argument('--max_images', type=int, default=200000)
     parser.add_argument('--resolution', type=int, default=384)
     args = parser.parse_args()
     
-    # Initialize embedding generator
     if xm.get_ordinal() == 0:
         print(f"Starting embedding generation for {args.max_images} images")
         print(f"Estimated storage (fp16): {args.max_images * 256 * 1152 * 2 / (1024**3):.2f} GB")
+    
     generator = EmbeddingGenerator(args)
-    
-    # Generate and save embeddings
     generator.generate_and_save_embeddings(args.output_path)
-    
-    # Sync all workers before finishing
     xm.rendezvous('embedding_generation_complete')
     
     if xm.get_ordinal() == 0:
         logger.info("Embedding generation complete for all workers")
 
 def _mp_fn(index):
-    # cache init needs to happens inside the mp_fn.
     xr.initialize_cache(f'/tmp/xla_cache_{index}', readonly=False)
     main()
-    
 
 if __name__ == "__main__":
-    torch_xla.launch(_mp_fn, args=())  # Launches multiple TPU processes
-
-
-
-
+    torch_xla.launch(_mp_fn, args=())

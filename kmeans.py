@@ -2,62 +2,82 @@ import torch
 import torch_xla.core.xla_model as xm
 import os
 import glob
+import concurrent.futures
 from tqdm import tqdm
-import numpy as np
-import logging
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 import time
 from datetime import datetime
-import threading
-from queue import Queue
-from threading import Thread
+
 
 class StreamingDataset(IterableDataset):
-    def __init__(self, embeddings_dir):
+    def __init__(self, embeddings_dir, batch_size, prefetch=4):
         self.chunk_files = sorted(glob.glob(os.path.join(embeddings_dir, "embeddings_chunk_*.pt")))
+        self.batch_size = batch_size
+        self.prefetch = prefetch
+
         if not self.chunk_files:
             raise RuntimeError(f"No chunk files found in {embeddings_dir}")
+        
+        # Load the first chunk to infer embedding_dim
+        first_chunk = torch.load(self.chunk_files[0], map_location='cpu')  # Map to CPU for efficient processing
+        self.embedding_dim = first_chunk.shape[1]
+        del first_chunk
+        print(f"Embedding dimension: {self.embedding_dim}")
+        print(f"Total number of chunks: {len(self.chunk_files)}")
 
-    def _chunk_generator(self, chunk_files):
-        """Worker-specific chunk processing with background loading"""
-        next_chunk_queue = Queue(maxsize=1)  # For background loading
-        
-        def load_chunk_async(file_path):
-            try:
-                chunk = torch.load(file_path, weights_only=True).to(torch.float32)
-                next_chunk_queue.put(chunk)
-            except Exception as e:
-                next_chunk_queue.put(e)
-        
-        # Pre-load first chunk
-        current_chunk = torch.load(chunk_files[0], weights_only=True).to(torch.float32)
-        
-        for file_path in chunk_files[1:]:
-            # Start loading next chunk in background
-            loader = Thread(target=load_chunk_async, args=(file_path,))
-            loader.start()
-            
-            # Yield current chunk
-            yield from current_chunk
-            
-            # Get next chunk and clean up
-            current_chunk = next_chunk_queue.get()
-            if isinstance(current_chunk, Exception):
-                raise current_chunk
-                
-            loader.join()
-        
-        # Yield last chunk
-        yield from current_chunk
+    def _load_chunk(self, filename):
+        """Load a chunk from file and return it as a torch.Tensor."""
+        return torch.load(filename, map_location='cpu').float()
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
-        if worker_info is not None:  # Split chunks across workers
+        if worker_info is not None:
+            # Each worker only sees a subset of the files
             chunk_files = self.chunk_files[worker_info.id::worker_info.num_workers]
         else:
             chunk_files = self.chunk_files
-        
-        return self._chunk_generator(chunk_files)
+
+        # Use a ThreadPoolExecutor to prefetch chunks asynchronously
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.prefetch) as executor:
+            future_queue = []
+            def enqueue_chunk(cf):
+                return executor.submit(self._load_chunk, cf)
+
+            # Prefetch the first set of futures
+            for cf in chunk_files[:self.prefetch]:
+                future_queue.append(enqueue_chunk(cf))
+
+            idx = self.prefetch
+            for cf in chunk_files[self.prefetch:]:
+                # Wait for the oldest future to complete
+                done_future = future_queue.pop(0)
+                try:
+                    chunk = done_future.result()
+                except Exception as e:
+                    print(f"Error loading chunk {cf}: {e}")
+                    continue
+
+                # Yield sub-batches from this chunk
+                for start_idx in range(0, chunk.size(0), self.batch_size):
+                    yield chunk[start_idx:start_idx + self.batch_size]
+
+                del chunk  # Free memory
+                future_queue.append(enqueue_chunk(cf))  # Enqueue the next chunk
+
+            # Drain remaining futures in the queue
+            while future_queue:
+                done_future = future_queue.pop(0)
+                try:
+                    chunk = done_future.result()
+                except Exception as e:
+                    print(f"Error loading chunk: {e}")
+                    continue
+
+                # Yield sub-batches from this chunk
+                for start_idx in range(0, chunk.size(0), self.batch_size):
+                    yield chunk[start_idx:start_idx + self.batch_size]
+                del chunk
+
 
 class SimpleTPUKMeans:
     def __init__(self, n_clusters, max_iter=100, tol=1e-4, batch_size=1024):
@@ -70,7 +90,7 @@ class SimpleTPUKMeans:
         
         print(f"Initializing K-means with {n_clusters} clusters")
         print(f"Parameters: max_iter={max_iter}, tol={tol}, batch_size={batch_size}")
-    
+
     def _init_centroids(self, dataloader):
         print("Initializing centroids...")
         accumulated_samples = []
@@ -84,27 +104,22 @@ class SimpleTPUKMeans:
             
             if total_samples >= samples_needed:
                 all_samples = torch.cat(accumulated_samples, dim=0)
-                indices = np.random.choice(all_samples.shape[0], self.n_clusters, replace=False)
-                indices = torch.tensor(indices, device=self.device, dtype=torch.int32)
+                indices = torch.randint(0, all_samples.shape[0], (self.n_clusters,), device=self.device)
                 self.centroids = all_samples[indices]
-                
-                print(f"Initialized centroids with shape: {self.centroids.shape}")
-                print(f"Used {total_samples:,} samples for initialization")
-                
+                print(f"Centroids initialized with shape: {self.centroids.shape}")
                 del accumulated_samples, all_samples
                 return
-                
+
         raise RuntimeError(f"Not enough samples ({total_samples}) to initialize {self.n_clusters} centroids")
-    
+
     def _compute_distances(self, batch):
         return torch.cdist(batch, self.centroids)
-    
+
     def fit(self, dataloader):
         if self.centroids is None:
             self._init_centroids(dataloader)
-        
-        print(f"Starting training...")
-        
+
+        print("Starting K-means training...")
         for iteration in range(self.max_iter):
             start_time = time.time()
             old_centroids = self.centroids.clone()
@@ -113,89 +128,58 @@ class SimpleTPUKMeans:
             counts = torch.zeros(self.n_clusters, device=self.device, dtype=torch.float32)
             
             n_samples = 0
-            
             for batch in tqdm(dataloader, desc=f"Iteration {iteration + 1}"):
                 batch = batch.to(self.device)
                 n_samples += batch.shape[0]
-                
+
                 distances = self._compute_distances(batch)
                 labels = torch.argmin(distances, dim=1)
-                
-                labels_onehot = torch.zeros(
-                    batch.size(0), self.n_clusters,
-                    device=self.device,
-                    dtype=torch.float32
-                )
+
+                labels_onehot = torch.zeros(batch.size(0), self.n_clusters, device=self.device)
                 labels_onehot.scatter_(1, labels.unsqueeze(1), 1)
-                
-                new_centroids += torch.matmul(labels_onehot.t(), batch)
+                new_centroids += labels_onehot.t() @ batch
                 counts += labels_onehot.sum(dim=0)
-                
-                xm.mark_step()
-                
+
                 del batch, distances, labels, labels_onehot
-            
-            # Update centroids
+
             mask = counts > 0
             new_centroids[mask] /= counts[mask].unsqueeze(1)
             self.centroids = new_centroids
-            
+
             centroid_shift = torch.norm(self.centroids - old_centroids).item()
-            iteration_time = time.time() - start_time
-            
-            print(f"Iteration {iteration + 1}: "
-                  f"shift = {centroid_shift:.6f}, "
-                  f"time = {iteration_time:.2f}s, "
-                  f"samples = {n_samples:,}, "
-                  f"centroid_shift = {centroid_shift}")
-            
+            print(f"Iteration {iteration + 1}: shift = {centroid_shift:.6f}, time = {time.time() - start_time:.2f}s")
+
             if centroid_shift < self.tol:
                 print(f"Converged after {iteration + 1} iterations!")
                 break
-        
+
         return self
-    
+
     def save(self, output_dir):
         os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        save_dict = {
-            'centroids': self.centroids.cpu(),
-            'n_clusters': self.n_clusters,
-            'max_iter': self.max_iter,
-            'tol': self.tol,
-            'batch_size': self.batch_size,
-            'timestamp': timestamp
-        }
-        
         save_path = os.path.join(output_dir, f"kmeans_results_{timestamp}.pt")
-        torch.save(save_dict, save_path)
+        torch.save({
+            'centroids': self.centroids.cpu(),
+            'n_clusters': self.n_clusters
+        }, save_path)
         print(f"Saved model to {save_path}")
+
 
 def main():
     n_clusters = 65536
-    batch_size = 8192 * 4  # Increased batch size for TPU efficiency
-    max_iter = 100
+    batch_size = 8192
+    max_iter = 200
     embeddings_dir = "/mnt/disks/peter-pd-tokenization/saved_embed/small_chunks"
     output_dir = os.path.join(embeddings_dir, "kmeans_results")
-    
-    dataset = StreamingDataset(embeddings_dir)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=8,       # Matches XLA device count
-        prefetch_factor=4,   # Prefetch 4 batches per worker
-        pin_memory=False     # Disable for TPU compatibility
-    )
-    
-    kmeans = SimpleTPUKMeans(
-        n_clusters=n_clusters,
-        max_iter=max_iter,
-        batch_size=batch_size
-    )
-    
+
+    dataset = StreamingDataset(embeddings_dir, batch_size, prefetch=4)
+    dataloader = DataLoader(dataset, batch_size=None, num_workers=8, prefetch_factor=4, persistent_workers=True)
+
+    kmeans = SimpleTPUKMeans(n_clusters=n_clusters, max_iter=max_iter, batch_size=batch_size)
     kmeans.fit(dataloader)
     kmeans.save(output_dir)
+
 
 if __name__ == "__main__":
     main()
