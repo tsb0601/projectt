@@ -89,7 +89,7 @@ class SigLIPTransform:
 
 def setup_val_loader(
     val_root: str = '/mnt/disks/boyang/datasets/ImageNet/',
-    batch_size: int = 16,
+    batch_size: int = 4,
     num_workers: int = 4,
     device = None,
     siglip_processor = None
