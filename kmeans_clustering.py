@@ -185,7 +185,7 @@ class SimpleTPUKMeans:
             new_centroids[mask] /= counts[mask].unsqueeze(1)
             self.centroids = new_centroids
             
-            if (iteration + 1) % 1 == 0 and self.checkpoint_dir: self._save_checkpoint(iteration)
+            if (iteration + 1) % 10 == 0 and self.checkpoint_dir: self._save_checkpoint(iteration)
             
             diff = self.centroids - old_centroids
             centroid_shift = torch.norm(diff, p=2, dim=1).mean().item()
