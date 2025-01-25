@@ -230,7 +230,7 @@ def main():
     print("="*50 + "\n")
 
     # 🛠️ Configuration
-    n_clusters = 65536 * 4
+    n_clusters = 65536 * 2
     batch_size = 8192
     max_iter = 100
     embeddings_dir = "/mnt/disks/peter-pd-tokenization/saved_embed/small_chunks"
