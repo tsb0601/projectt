@@ -103,7 +103,7 @@ class SimpleTPUKMeans:
         latest_checkpoint = max(checkpoint_files, key=lambda f: int(os.path.basename(f).split("_")[2].split(".")[0]))
         print(f"🔍 Found checkpoint: {latest_checkpoint}")
         
-        checkpoint = xm.load(latest_checkpoint)
+        checkpoint = torch.load(latest_checkpoint)
         if checkpoint['n_clusters'] != self.n_clusters:
             raise ValueError(f"❌ Checkpoint n_clusters {checkpoint['n_clusters']} != current {self.n_clusters}")
         
