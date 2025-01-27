@@ -250,7 +250,7 @@ def main():
     args = parser.parse_args()
 
     # Define configuration parameters
-    batch_size = 8192
+    batch_size = 4096
     max_iter = 100
     embeddings_dir = "/mnt/disks/peter-pd-tokenization/saved_embed/small_chunks"
     output_dir = os.path.join(".", "kmeans_results")
