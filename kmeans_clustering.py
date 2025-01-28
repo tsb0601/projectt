@@ -123,7 +123,7 @@ class SimpleTPUKMeans:
             'batch_size': self.batch_size
         }, checkpoint_path)
         print(f"\n💾 Checkpoint saved: {checkpoint_path}")
-        wandb.save(checkpoint_path)
+        # wandb.save(checkpoint_path)
     
     def _init_centroids(self, dataloader):
         print("🎯 INITIALIZING CENTROIDS")
@@ -225,7 +225,7 @@ class SimpleTPUKMeans:
             'timestamp': timestamp
         }, save_path)
         print(f"\n💾 Model saved to: {save_path}")
-        wandb.save(save_path)
+        # wandb.save(save_path)
 
 
 # ------------------------------
@@ -250,7 +250,10 @@ def main():
     args = parser.parse_args()
 
     # Define configuration parameters
-    batch_size = 4096
+    if args.n_clusters > 300000:
+        batch_size = 3072
+    else:
+        batch_size = 4096
     max_iter = 100
     embeddings_dir = "/mnt/disks/peter-pd-tokenization/saved_embed/small_chunks"
     output_dir = os.path.join(".", "kmeans_results")
@@ -286,7 +289,7 @@ def main():
         checkpoint_root=checkpoint_root
     )
     kmeans.fit(dataloader)
-    kmeans.save(output_dir)
+    # kmeans.save(output_dir)
 
     print("\n" + "="*50)
     print("✅ TRAINING COMPLETE!".center(50))
