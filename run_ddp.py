@@ -636,6 +636,7 @@ def determine_checkpoint_to_load(save_dir, specified_checkpoint=None, rank=0):
     # Otherwise use specified checkpoint
     return specified_checkpoint, specified_step
 
+import time
 
 class WebDatasetAdapter:
     def __init__(self, urls, siglip_processor, args, num_samples=None):
@@ -653,7 +654,9 @@ class WebDatasetAdapter:
     
     def create_webdataset(self, epoch):
         # Create a unique seed for each epoch that's the same across all workers
-        seed = 42 + epoch
+        seed_offset = int(time.time())  # or read from your checkpoint
+
+        seed = 42 + epoch + seed_offset
         
         # Create dataset pipeline
         dataset = (
