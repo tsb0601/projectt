@@ -56,6 +56,18 @@ class VAEDecoder(nn.Module):
                 "num_heads": 16,
                 "mlp_ratio": 4.0
             },
+            "enormous": {  # Smaller intermediate
+                "decoder_dim": 1408,
+                "num_layers": 36,
+                "num_heads": 16,
+                "mlp_ratio": 6.0
+            },
+            "colossal": {  # Larger intermediate
+                "decoder_dim": 1472,
+                "num_layers": 40,
+                "num_heads": 16,
+                "mlp_ratio": 7.0
+            },
             "giant": {
                 "decoder_dim": 1536,
                 "num_layers": 48,

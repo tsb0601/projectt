@@ -1122,8 +1122,12 @@ def train_tpu(index, args):
             size = "huge"
         elif args.decoder_type == "vae-giant":
             size = "giant"
+        elif args.decoder_type == "vae-enormous":  # New intermediate size
+            size = "enormous"
+        elif args.decoder_type == "vae-colossal":  # New intermediate size
+            size = "colossal"
         else:
-            size = "large"
+            size = "large"  # Default to "large"
         vae = VAEDecoder(
             size=size, 
             num_tokens=args.num_tokens, 
