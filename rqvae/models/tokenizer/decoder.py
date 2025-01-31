@@ -31,42 +31,69 @@ class TransformerBlock(nn.Module):
 class VAEDecoder(nn.Module):
     def __init__(
         self,
-        input_dim=1152,     # SigLIP hidden dimension
-        decoder_dim=1024,   # ViT-L hidden dimension
-        num_layers=24,      # ViT-L depth
-        num_heads=16,       # ViT-L heads
-        num_tokens=256,     # Number of tokens from SigLIP
+        input_dim=1152,
+        num_tokens=256,
         output_resolution=256,
         patch_size=16,
+        size="large",  # "large", "huge", "giant"
+        decoder_dim=None,
+        num_layers=None,
+        num_heads=None,
+        mlp_ratio=None,
     ):
         super().__init__()
+        # Size configuration presets
+        size_configs = {
+            "large": {
+                "decoder_dim": 1024,
+                "num_layers": 24,
+                "num_heads": 16,
+                "mlp_ratio": 4.0
+            },
+            "huge": {
+                "decoder_dim": 1280,
+                "num_layers": 32,
+                "num_heads": 16,
+                "mlp_ratio": 4.0
+            },
+            "giant": {
+                "decoder_dim": 1536,
+                "num_layers": 48,
+                "num_heads": 24,
+                "mlp_ratio": 8.0
+            }
+        }
+        
+        # Get config for selected size
+        config = size_configs[size]
+        
+        # Set parameters (use explicit args if provided, else use size config)
+        self.decoder_dim = decoder_dim or config["decoder_dim"]
+        self.num_layers = num_layers or config["num_layers"]
+        self.num_heads = num_heads or config["num_heads"]
+        self.mlp_ratio = mlp_ratio or config["mlp_ratio"]
+
         self.num_tokens = num_tokens
         self.patch_size = patch_size
         self.output_resolution = output_resolution
         self.output_tokens = (output_resolution // patch_size) ** 2
 
-        # Project from SigLIP dim to ViT-L dim
-        self.input_proj = nn.Linear(input_dim, decoder_dim)
+        # Projection and transformer blocks
+        self.input_proj = nn.Linear(input_dim, self.decoder_dim)
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.output_tokens, self.decoder_dim))
         
-        # Position embeddings
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.output_tokens, decoder_dim))
-        
-        # ViT-L transformer blocks
         self.transformer_blocks = nn.ModuleList([
             TransformerBlock(
-                dim=decoder_dim,
-                num_heads=num_heads,
-                mlp_ratio=4.0
-            )
-            for _ in range(num_layers)
+                dim=self.decoder_dim,
+                num_heads=self.num_heads,
+                mlp_ratio=self.mlp_ratio
+            ) for _ in range(self.num_layers)
         ])
 
-        # Final layer norm per ViT-L spec
-        self.norm = nn.LayerNorm(decoder_dim)
-        
-        # Project to patches
+        # Final layers
+        self.norm = nn.LayerNorm(self.decoder_dim)
         self.head = nn.Sequential(
-            nn.Linear(decoder_dim, patch_size * patch_size * 3),
+            nn.Linear(self.decoder_dim, patch_size * patch_size * 3),
             nn.Tanh()
         )
 

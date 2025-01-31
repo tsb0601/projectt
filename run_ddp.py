@@ -1118,7 +1118,14 @@ def train_tpu(index, args):
             # num_res_blocks=3
         ).to(device)
     else:  # 'vae' (default)
+        if args.decoder_type == "vae-huge":
+            size = "huge"
+        elif args.decoder_type == "vae-giant":
+            size = "giant"
+        else:
+            size = "large"
         vae = VAEDecoder(
+            size=size, 
             num_tokens=args.num_tokens, 
             output_resolution=args.resolution
         ).to(device)
@@ -1413,7 +1420,7 @@ def main(index):
     
     # Basic training arguments
     # Add decoder choice argument
-    parser.add_argument("--decoder_type", type=str, choices=['vae', 'conv'], default='vae',
+    parser.add_argument("--decoder_type", type=str, choices=['vae', 'vae-huge', 'vae-giant', 'conv'], default='vae',
                        help="Type of decoder to use: 'vae' or 'conv'")
     parser.add_argument("--batch_size", type=int, default=24, help="Batch size per TPU core")
     parser.add_argument("--base_lr", type=float, default=4.5e-6, help="Base learning rate (default: 4.5e-6)")
