@@ -1171,7 +1171,8 @@ def train_tpu(index, args):
     optimizer = torch.optim.AdamW(
         optimizer_params,
         lr=scaled_lr,
-        betas=(0.9, 0.999),
+        # betas=(0.9, 0.999),
+        betas=(0.5, 0.9),
         weight_decay=0.01
     )
 
@@ -1181,7 +1182,9 @@ def train_tpu(index, args):
         d_optimizer = torch.optim.AdamW(
             discriminator.parameters(),
             lr=scaled_lr/args.disc_lr,
-            betas=(0.0, 0.99)
+            # betas=(0.0, 0.99)
+            betas=(0.5, 0.9)
+
         )
 
 
