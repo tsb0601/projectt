@@ -914,12 +914,13 @@ def train_one_step(batch, models, optimizers, state):
             if state.global_step % args.d_reg_every == 0:
                 d_optimizer.zero_grad()
                 d_loss.backward()
+                # Add gradient clipping for the discriminator here.
+                torch.nn.utils.clip_grad_norm_(discriminator.parameters(), clip_value=1.0)  # adjust the clip_value as needed
                 xm.optimizer_step(d_optimizer)
-                # d_optimizer.step()
                 xm.mark_step()
             else:
-                # If not updating D this step, don't keep grads
                 d_loss = d_loss.detach()
+
         else:
             d_loss = torch.tensor(0.0, device=device)
 
