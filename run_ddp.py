@@ -915,7 +915,7 @@ def train_one_step(batch, models, optimizers, state):
                 d_optimizer.zero_grad()
                 d_loss.backward()
                 # Add gradient clipping for the discriminator here.
-                torch.nn.utils.clip_grad_norm_(discriminator.parameters(), clip_value=1.0)  # adjust the clip_value as needed
+                torch.nn.utils.clip_grad_norm_(discriminator.parameters(), 1.0)  # adjust the clip_value as needed
                 xm.optimizer_step(d_optimizer)
                 xm.mark_step()
             else:
