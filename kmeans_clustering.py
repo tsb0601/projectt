@@ -185,7 +185,7 @@ class SimpleTPUKMeans:
             new_centroids[mask] /= counts[mask].unsqueeze(1)
             self.centroids = new_centroids
             
-            if (iteration + 1) % 10 == 0 and self.checkpoint_dir: self._save_checkpoint(iteration)
+            if (iteration + 1) % 5 == 0 and self.checkpoint_dir: self._save_checkpoint(iteration)
             
             diff = self.centroids - old_centroids
             centroid_shift = torch.norm(diff, p=2, dim=1).mean().item()
@@ -254,8 +254,8 @@ def main():
         batch_size = 3072
     else:
         batch_size = 4096
-    max_iter = 100
-    embeddings_dir = "/mnt/disks/peter-pd-tokenization/saved_embed/small_chunks"
+    max_iter = 20
+    embeddings_dir = "/mnt/storage/embeds/saved_embed/small_chunks"
     output_dir = os.path.join(".", "kmeans_results")
     checkpoint_root = os.path.join("ckpt_gcs", "tokenizer", "kmeans_checkpoints")
 
