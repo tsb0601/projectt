@@ -254,7 +254,7 @@ def main():
         batch_size = 3072
     else:
         batch_size = 4096
-    max_iter = 20
+    max_iter = 100
     embeddings_dir = "/mnt/storage/embeds/saved_embed/small_chunks"
     output_dir = os.path.join(".", "kmeans_results")
     checkpoint_root = os.path.join("ckpt_gcs", "tokenizer", "kmeans_checkpoints")
