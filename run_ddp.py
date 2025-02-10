@@ -774,30 +774,40 @@ def calculate_steps_per_epoch(total_shards, batch_size, world_size):
     return total_samples // (batch_size * world_size)
 
 
-def compute_d_loss(real_images, fake_images, discriminator):
+def compute_d_loss(real_images, fake_images, discriminator, loss_type="softplus"):
     """
-    Standard (non-saturating) discriminator loss:
-      D_loss = E[softplus(-D(real))] + E[softplus(D(fake))]
+    Compute the discriminator loss.
+    - If loss_type=="hinge": uses hinge loss.
+    - Otherwise: uses the non-saturating softplus loss.
     """
-    # Concatenate real and fake
-    combined = torch.cat([real_images, fake_images], dim=0)
-    preds = discriminator(combined)
-    real_pred, fake_pred = torch.chunk(preds, 2, dim=0)
+    if loss_type == "hinge":
+        # Hinge loss for discriminator:
+        #   L_real = ReLU(1 - D(real))
+        #   L_fake = ReLU(1 + D(fake))
+        real_pred = discriminator(real_images)
+        fake_pred = discriminator(fake_images)
+        loss_real = torch.mean(torch.relu(1.0 - real_pred))
+        loss_fake = torch.mean(torch.relu(1.0 + fake_pred))
+        return loss_real + loss_fake
+    else:
+        # Default softplus (non-saturating) loss:
+        combined = torch.cat([real_images, fake_images], dim=0)
+        preds = discriminator(combined)
+        real_pred, fake_pred = torch.chunk(preds, 2, dim=0)
+        return (F.softplus(-real_pred) + F.softplus(fake_pred)).mean()
 
-    # Logistic loss
-    d_loss = (F.softplus(-real_pred) + F.softplus(fake_pred)).mean()
-    return d_loss
-
-def compute_g_loss(fake_images, discriminator):
+def compute_g_loss(fake_images, discriminator, loss_type="softplus"):
     """
-    Standard (non-saturating) generator loss:
-      G_loss = E[softplus(-D(fake))]
+    Compute the generator loss.
+    - If loss_type=="hinge": uses the hinge loss formulation.
+    - Otherwise: uses the non-saturating softplus loss.
     """
-    fake_pred = discriminator(fake_images)
-    g_loss = F.softplus(-fake_pred).mean()
-    return g_loss
-
-
+    if loss_type == "hinge":
+        fake_pred = discriminator(fake_images)
+        return -torch.mean(fake_pred)
+    else:
+        fake_pred = discriminator(fake_images)
+        return F.softplus(-fake_pred).mean()
 
 # def train_one_step(batch, models, optimizers, state):
 #     """
@@ -908,7 +918,8 @@ def train_one_step(batch, models, optimizers, state):
             d_loss = compute_d_loss(
                 real_images=vae_images,
                 fake_images=fake_images,
-                discriminator=discriminator
+                discriminator=discriminator,
+                loss_type="hinge"
             )
 
             if state.global_step % args.d_reg_every == 0:
@@ -1179,14 +1190,15 @@ def train_tpu(index, args):
 
 
     d_optimizer = None
+    d_scheduler = None
+
     if args.use_gan:
         d_optimizer = torch.optim.AdamW(
             discriminator.parameters(),
-            lr=scaled_lr/args.disc_lr,
-            # betas=(0.0, 0.99)
+            lr=calculate_scaled_lr(args.base_lr, args.base_batch_size, args.batch_size, world_size) / args.disc_lr,            # betas=(0.0, 0.99)
             betas=(0.5, 0.9)
-
         )
+        d_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(d_optimizer, T_max=args.max_steps, eta_min=0)
 
 
     
@@ -1241,6 +1253,8 @@ def train_tpu(index, args):
     # Models and optimizers bundles
     models = (vae, discriminator, siglip_encoder, lpips_loss)
     optimizers = (optimizer, d_optimizer)
+
+    best_fid = float('inf')
     
     # Training loop
     while state.global_step < args.max_steps:
@@ -1276,6 +1290,9 @@ def train_tpu(index, args):
 
 
             scheduler.step()
+            if d_scheduler is not None:
+                d_scheduler.step()  # Update discriminator LR using cosine decay
+
             # print("1111111111111111111")
             # Logging
             if xm.get_ordinal() == 0:
@@ -1283,6 +1300,7 @@ def train_tpu(index, args):
                 log_dict = {
                     **losses,
                     "lr": scheduler.get_last_lr()[0],
+                    "disc_lr": d_optimizer.param_groups[0]["lr"] if d_optimizer is not None else None,
                     "epoch": state.epoch,
                     "global_step": state.global_step,
                 }
@@ -1322,8 +1340,6 @@ def train_tpu(index, args):
 
             if (state.global_step+1) % args.eval_freq == 0:
 
-            # if (state.global_step) % args.eval_freq == 0:
-
                 print("Started online eval")
                 val_loader = setup_val_loader(
                     siglip_processor=siglip_encoder.processor,  # Add this line
@@ -1353,9 +1369,24 @@ def train_tpu(index, args):
                 # xm.rendezvous("rfid_eval")
                 print("Finished online eval")
 
+
+                # When GAN training is active, save a checkpoint only if we improved the FID.
+                if state.global_step >= args.gan_start_steps:
+                    if rfid < best_fid:
+                        best_fid = rfid
+                        print(f"New best FID: {rfid} at step {state.global_step}, saving checkpoint")
+                        if xm.get_ordinal() == 0:
+                            save_checkpoint(
+                                vae, discriminator, optimizer, d_optimizer, scheduler,
+                                state.global_step,
+                                f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
+                                state.epoch,
+                                siglip_encoder
+                            )
+
             # state.global_step += 1
 
-            if (state.global_step+1) % args.save_step == 0:
+            if state.global_step < args.gan_start_steps and (state.global_step + 1) % args.save_step == 0:
             # if (state.global_step) % args.save_step == 0:
             
                 print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
