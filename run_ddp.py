@@ -89,7 +89,7 @@ class SigLIPTransform:
 
 def setup_val_loader(
     val_root: str = '/mnt/disks/boyang/datasets/ImageNet/',
-    batch_size: int = 4,
+    batch_size: int = 2,
     num_workers: int = 4,
     device = None,
     siglip_processor = None
@@ -521,54 +521,54 @@ def get_latest_checkpoint(save_dir):
 
 
 
-def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, global_step, path, epoch, siglip_encoder):
+def save_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, d_scheduler, global_step, path, epoch, siglip_encoder):
     xm.rendezvous('pre_save')
     
     os.makedirs(os.path.dirname(path), exist_ok=True)
     
-    # Add VQ state to checkpoint
+    # Save generator/VAE checkpoint
     vae_checkpoint = {
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
-        'siglip_encoder_state_dict': siglip_encoder.state_dict(),  # Added
+        'siglip_encoder_state_dict': siglip_encoder.state_dict(),
         'global_step': global_step,
         'epoch': epoch
     }
     
-    # Prepare the discriminator checkpoint if it exists
+    # Prepare discriminator checkpoint (if applicable)
     d_checkpoint = None
     if discriminator is not None and d_optimizer is not None:
         d_checkpoint = {
             'model_state_dict': discriminator.state_dict(),
             'optimizer_state_dict': d_optimizer.state_dict(),
             'global_step': global_step,
-            'epoch': epoch
+            'epoch': epoch,
         }
+        if d_scheduler is not None:
+            d_checkpoint['d_scheduler_state_dict'] = d_scheduler.state_dict()
     
     # Only master saves
     if xm.get_ordinal() == 0:
-        # Save VAE checkpoint
         xm.save(vae_checkpoint, path)
-        
-        # Save discriminator checkpoint if it exists
         if d_checkpoint is not None:
             d_path = path.replace('checkpoint', 'discriminator')
             xm.save(d_checkpoint, d_path)
     
-    xm.rendezvous('post_save')  # Final sync point
+    xm.rendezvous('post_save')
 
 
 
 
-def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, checkpoint_path, siglip_encoder):
+def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, d_scheduler, checkpoint_path, siglip_encoder):
     xm.rendezvous('checkpoint_load')
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     
-    # Load model states including VQ
+    # Load VAE/generator state
     model.load_state_dict(checkpoint['model_state_dict'])
     if 'siglip_encoder_state_dict' in checkpoint:
-        vq_params = ['vq.embeddings', 'vq.usage_count'] 
+        # Optionally filter out certain parameters if needed.
+        vq_params = ['vq.embeddings', 'vq.usage_count']
         state_dict = {k: v for k, v in checkpoint['siglip_encoder_state_dict'].items()
                         if not any(vq_param in k for vq_param in vq_params)}
         siglip_encoder.load_state_dict(state_dict, strict=False)
@@ -577,7 +577,7 @@ def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, che
     global_step = checkpoint['global_step']
     epoch = checkpoint['epoch']
 
-    # If using a discriminator, load it too
+    # Load discriminator state if applicable
     if discriminator is not None and d_optimizer is not None:
         try:
             d_path = checkpoint_path.replace('checkpoint', 'discriminator')
@@ -585,12 +585,12 @@ def load_checkpoint(model, discriminator, optimizer, d_optimizer, scheduler, che
                 d_checkpoint = torch.load(d_path, map_location='cpu')
                 discriminator.load_state_dict(d_checkpoint['model_state_dict'])
                 d_optimizer.load_state_dict(d_checkpoint['optimizer_state_dict'])
-        except:
-            print("didn't find matched discriminator")
-
-    # Final sync
+                if d_scheduler is not None and 'd_scheduler_state_dict' in d_checkpoint:
+                    d_scheduler.load_state_dict(d_checkpoint['d_scheduler_state_dict'])
+        except Exception as e:
+            print("Error loading discriminator checkpoint:", str(e))
+    
     xm.rendezvous('post_load')
-
     return global_step, epoch
 
 
@@ -1270,21 +1270,20 @@ def train_tpu(index, args):
         )
 
         if checkpoint_to_load:
-                
-            # Load both VAE and discriminator (if using GAN) in a synchronized way
             state.global_step, state.epoch = load_checkpoint(
                 model=vae,
                 discriminator=discriminator if args.use_gan else None,
                 optimizer=optimizer,
                 d_optimizer=d_optimizer if args.use_gan else None,
                 scheduler=scheduler,
+                d_scheduler=d_scheduler if args.use_gan else None,
                 checkpoint_path=checkpoint_to_load, 
                 siglip_encoder=siglip_encoder
             )
         else:
             if xm.get_ordinal() == 0:
                 logger.warning("No checkpoint found to resume from")
-        
+
     # Models and optimizers bundles
     models = (vae, discriminator, siglip_encoder, lpips_loss)
     optimizers = (optimizer, d_optimizer)
@@ -1412,10 +1411,10 @@ def train_tpu(index, args):
                         print(f"New best FID: {rfid} at step {state.global_step}, saving checkpoint")
                         if xm.get_ordinal() == 0:
                             save_checkpoint(
-                                vae, discriminator, optimizer, d_optimizer, scheduler,
+                                vae, discriminator, optimizer, d_optimizer, scheduler, d_scheduler,
                                 state.global_step,
                                 f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
-                                state.epoch,
+                                state.epoch, 
                                 siglip_encoder
                             )
 
@@ -1427,7 +1426,7 @@ def train_tpu(index, args):
                 print(f"[Rank={xm.get_ordinal()}] Entering save at step={state.global_step}")
 
                 save_checkpoint(
-                    vae, discriminator, optimizer, d_optimizer, scheduler,
+                    vae, discriminator, optimizer, d_optimizer, scheduler, d_scheduler,
                     state.global_step,
                     f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
                     state.epoch, 
