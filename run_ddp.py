@@ -1065,6 +1065,36 @@ def extract_step_from_checkpoint(checkpoint_path):
         return -1  # Return -1 if we can't parse the step number
 
 
+def get_delayed_warmup_cosine_scheduler(optimizer, gan_start_steps, warmup_steps, total_steps, min_lr_ratio=0.0):
+    """
+    Returns a LambdaLR scheduler that keeps the LR constant until gan_start_steps,
+    then warms up for warmup_steps and decays it following a cosine schedule until total_steps.
+    
+    Args:
+        optimizer: The optimizer for which to schedule the learning rate.
+        gan_start_steps: Step at which GAN training starts.
+        warmup_steps: Number of steps for the linear warmup after gan_start_steps.
+        total_steps: Total number of training steps.
+        min_lr_ratio: Minimum LR ratio (fraction of the initial LR) at the end of training.
+    """
+    def lr_lambda(current_step):
+        if current_step < gan_start_steps:
+            # Before GAN training starts, keep the LR factor at 1.0 (i.e. constant LR)
+            return 1.0
+        else:
+            # Effective step is measured from gan_start_steps onward.
+            effective_step = current_step - gan_start_steps
+            effective_total = total_steps - gan_start_steps
+            if effective_step < warmup_steps:
+                # Linear warmup from 0 to 1 (or you could choose to remain constant if desired)
+                return float(effective_step) / float(max(1, warmup_steps))
+            else:
+                progress = float(effective_step - warmup_steps) / float(max(1, effective_total - warmup_steps))
+                cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+                # The LR decays from 1.0 to min_lr_ratio
+                return cosine_decay * (1 - min_lr_ratio) + min_lr_ratio
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
 
 def train_tpu(index, args):
     # Setup TPU device and process
@@ -1198,8 +1228,13 @@ def train_tpu(index, args):
             lr=calculate_scaled_lr(args.base_lr, args.base_batch_size, args.batch_size, world_size) / args.disc_lr,            # betas=(0.0, 0.99)
             betas=(0.5, 0.9)
         )
-        d_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(d_optimizer, T_max=args.max_steps, eta_min=0)
-
+        d_scheduler = get_delayed_warmup_cosine_scheduler(
+            d_optimizer,
+            gan_start_steps=args.gan_start_steps,      # Delay scheduler until GAN training begins.
+            warmup_steps=5000,              # Warmup steps once GAN training is active.
+            total_steps=args.max_steps,
+            min_lr_ratio=0.0
+        )
 
     
 
