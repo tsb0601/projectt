@@ -1409,14 +1409,14 @@ def train_tpu(index, args):
                     if rfid < best_fid:
                         best_fid = rfid
                         print(f"New best FID: {rfid} at step {state.global_step}, saving checkpoint")
-                        if xm.get_ordinal() == 0:
-                            save_checkpoint(
-                                vae, discriminator, optimizer, d_optimizer, scheduler, d_scheduler,
-                                state.global_step,
-                                f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
-                                state.epoch, 
-                                siglip_encoder
-                            )
+                        # if xm.get_ordinal() == 0:
+                        save_checkpoint(
+                            vae, discriminator, optimizer, d_optimizer, scheduler, d_scheduler,
+                            state.global_step,
+                            f"{args.save_dir}/checkpoint_step_{state.global_step}.pt",
+                            state.epoch, 
+                            siglip_encoder
+                        )
 
             # state.global_step += 1
 
